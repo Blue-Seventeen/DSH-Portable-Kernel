@@ -1,0 +1,60 @@
+# ============================================================================
+# 本仓库只跟踪"便携壳"：根目录脚本 + tools\ + home\profiles 的清单/锁文件。
+# 官方那层（app / desktop / runtime 的二进制）不进仓库，理由：
+#   1) 单个文件就超 GitHub 100 MB 硬限制（desktop\DeepSeek Harness.exe 235 MB、
+#      app.asar 174 MB、libreoffice-kit.exe 170 MB）；
+#   2) 它本来就该由官方发布，用 preflight.cmd / dsh-portable.cmd bootstrap 现拉。
+# ============================================================================
+
+# 官方那层（bootstrap 下载）
+/app/
+/desktop/
+/app.next*/
+/desktop.next*/
+
+# runtime：只留 vcredist（Office 转换补丁要用的 7 个 DLL，1.3 MB），node 与 pnpm 由 bootstrap 下载
+/runtime/*
+!/runtime/vcredist/
+
+# 依赖目录：任何位置都不要（pnpm 装一次就是几万个文件）
+node_modules/
+
+# 插件依赖（bootstrap 会用 pnpm 重装）
+/home/profiles/node_modules/
+/home/profiles/*/node_modules/
+.modules.yaml
+
+# 运行时状态与个人数据：换一台机器就该是空的
+/shell-profile/
+/cache/
+/logs/
+/tmp/
+/legacy-deepseek/
+/plugins/
+/agents/skills/
+/home/sessions/
+/home/storages/
+/home/logs/
+/home/preset-runtime/
+/home/dsh-market/
+/home/.plugin-manager/
+/home/.credentials.yaml
+/home/.anonymous-user-id
+/home/settings.yaml
+/home/settings.yaml.imported
+
+# pnpm 每次运行会重写的"本机状态"文件（含绝对路径，换机器就没意义）
+.pnpm-workspace-state-v1.json
+pnpm-store-path.json
+
+# 系统与编辑器垃圾
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.part
+*.tmp
+*.bak
+*.bak-*

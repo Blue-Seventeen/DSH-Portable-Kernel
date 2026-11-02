@@ -1,0 +1,14 @@
+{
+  "name": "dsh-profile-shared",
+  "private": true,
+  "dependencies": {
+    "@smalltailqwq/dsh-client-ui-skin-deep-whale-manager": "0.1.8",
+    "@smalltailqwq/dsh-client-ui-skin-orca-link": "^0.1.9",
+    "dshmarket": "1.73.6"
+  },
+  "dsh": {
+    "profileShared": {
+      "disabled": []
+    }
+  }
+}

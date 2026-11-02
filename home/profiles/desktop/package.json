@@ -1,0 +1,27 @@
+{
+  "name": "dsh-profile-desktop",
+  "private": true,
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dshmarket",
+        "@smalltailqwq/dsh-client-ui-skin-deep-whale-manager",
+        "@deepseek-ai/dsh-experimental-agent-team-profile",
+        "@deepseek-ai/dsh-experimental-auto-review",
+        "@deepseek-ai/dsh-experimental-inspector-profile",
+        "@deepseek-ai/dsh-experimental-ralph-bundle",
+        "@deepseek-ai/dsh-experimental-tool-worktree",
+        "@deepseek-ai/dsh-experimental-terminal-bundle",
+        "@deepseek-ai/dsh-experimental-session-search",
+        "@smalltailqwq/dsh-client-ui-skin-orca-link"
+      ]
+    }
+  },
+  "dependencies": {
+    "@smalltailqwq/dsh-client-ui-skin-deep-whale-manager": "0.1.8",
+    "@smalltailqwq/dsh-client-ui-skin-orca-link": "^0.1.9",
+    "dshmarket": "1.73.6"
+  }
+}

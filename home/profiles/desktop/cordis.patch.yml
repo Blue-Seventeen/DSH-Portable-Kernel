@@ -1,0 +1,55 @@
+# Your patch layer for this dsh profile, applied after every bundle layer:
+# a top-level YAML array of loader patch entries (id-targeted config
+# overrides, disables, and insert lists; `!!js` expressions allowed).
+#
+# 这份文件是"壳"的一部分（随仓库走）：只留主题与界面偏好，不含任何
+# 第三方网关、模型供应商或密钥。想接自己的 OpenAI 兼容网关，照下面的形状加一段：
+#   - id: llm-pi-ai
+#     name: "@deepseek-ai/dsh-llm-pi-ai"
+#     config:
+#       providers:
+#         my-gateway:
+#           displayName: My Gateway
+#           apiKeyEnv: MY_GATEWAY_API_KEY   # 只写环境变量名，不要写明文
+#           api: openai-completions
+#           baseURL: https://example.com/v1
+#           models:
+#             - id: some-model
+#               name: some-model
+#   - id: agent-default-model
+#     name: "@deepseek-ai/dsh-agent-default-model"
+#     config:
+#       provider: my-gateway
+#       model: some-model
+- id: ui-settings-general
+  name: "@deepseek-ai/dsh-client-ui-settings-general"
+  config:
+    welcomeNoticeVersion: 2026-08-13.1
+- id: ui-chat
+  name: "@deepseek-ai/dsh-client-ui-chat"
+  config:
+    transcriptView: standard
+    performanceUsage: detailed
+- id: ui-settings
+  name: "@deepseek-ai/dsh-client-ui-settings"
+  config:
+    enabled: true
+- id: ui-settings-account
+  name: "@deepseek-ai/dsh-client-ui-settings-account"
+  config:
+    version: 1
+    step: done
+    usage: detailed
+    developerTools: true
+    purpose: null
+    process: standard
+    completion: api-key
+- id: ui-theme
+  name: "@deepseek-ai/dsh-client-ui-theme"
+  config:
+    preference: dark
+
+# --- dsh-skin managed (auto-generated; do not edit) ---
+- id: ui-skin-orca-link
+  disabled: false
+# --- end dsh-skin managed ---

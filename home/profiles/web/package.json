@@ -1,0 +1,21 @@
+{
+  "name": "dsh-profile-web",
+  "private": true,
+  "dependencies": {
+    "@smalltailqwq/dsh-client-ui-skin-deep-whale-manager": "0.1.8",
+    "@smalltailqwq/dsh-client-ui-skin-orca-link": "^0.1.9",
+    "dshmarket": "1.73.6"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dshmarket",
+        "@smalltailqwq/dsh-client-ui-skin-deep-whale-manager",
+        "@smalltailqwq/dsh-client-ui-skin-orca-link"
+      ],
+      "disabledBundles": []
+    }
+  }
+}

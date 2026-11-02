@@ -1,0 +1,18 @@
+# 通用规则放前面：属性是"后面的行覆盖前面的行"，所以具体规则必须写在 * 之后。
+* text=auto eol=lf
+
+# 壳对行尾敏感（.cmd 必须 CRLF，否则 cmd.exe 报 "cannot find the batch label"），
+# 这两类按"原样字节"处理，不参与任何换行转换。
+*.cmd -text
+*.bat -text
+*.ps1 -text
+
+*.mjs text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+
+*.dll binary
+*.exe binary

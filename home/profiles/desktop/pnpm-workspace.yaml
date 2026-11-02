@@ -1,0 +1,7 @@
+packages:
+  - '.'
+
+nodeLinker: hoisted
+autoInstallPeers: false
+
+modulesDir: ../node_modules
