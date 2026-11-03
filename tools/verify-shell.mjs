@@ -417,7 +417,7 @@ check('三份 pnpm-workspace.yaml 已记 packageImportMethod（本机重写后�
     if (m) wantImport = m[1].trim()
   } catch { }
   const bad = present.filter((f) => {
-    const m = read(join(ROOT, f)).match(/^\s*packageImportMethod\s*:\s*([A-Za-z]+)\s*$/m)
+    const m = read(join(ROOT, f)).match(/^\s*packageImportMethod\s*:\s*['"]?([A-Za-z]+)['"]?\s*$/m)
     if (!m) return true
     const v = m[1]
     if (!['copy', 'auto', 'hardlink', 'clone'].includes(v)) return true

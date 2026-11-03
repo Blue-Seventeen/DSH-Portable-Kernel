@@ -6,7 +6,7 @@
   "tag": "v0.1.1",
   "releasedAt": "2026-11-03T15:44:43.650Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-03T15:46:26.042Z",
+  "generatedAt": "2026-11-03T15:57:32.604Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -64,7 +64,7 @@
     "tools/shell-release.mjs": "2d1e8271d6fc1107732954b993ef94fa64b105613461696f56c0fe00e92583f7",
     "tools/shell-update.mjs": "b32affd97faae21c1b7858b07921bc3eae2effde430f3a020c7e753e63fffb22",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
-    "tools/verify-shell.mjs": "974184797ea6d79e71d8ebba0071cae792d29a286d0ce6d80e5d72f157898aeb"
+    "tools/verify-shell.mjs": "5ab8e3846d0ae50622ebeb4f9659322ca1c3c2b3865ac26c5ace5e6c5606e835"
   },
   "userOwned": [
     "home/cordis.patch.yml",
