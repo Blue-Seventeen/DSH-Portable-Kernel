@@ -18,6 +18,9 @@ rem (a market self-upgrade overwrites its lib\*.js, so this re-applies the patch
 rem every start: rewrite the version exemption to the CURRENT dsh version. Exact pin only - the
 rem official loader rejects "*" and a stale pin makes it silently skip the plugin (npm 0.2.1-rc.5)
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\plugin-shared.mjs" compat-heal --quiet
+rem compat profile: this drive may be exFAT (no hard links); keep the new-file fallback patch
+rem applied. Idempotent and cheap (~50 ms when already patched).
+if /i "%DSH_FS_PROFILE%"=="compat" "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\patch-fs.mjs" --apply --quiet >nul 2>nul
 rem once per machine+location: clear the "downloaded from another computer" mark (SmartScreen)
 if not exist "%ROOT%tmp\prep-%KEY%.flag" powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" auto-prepare >nul 2>&1
 call "%ROOT%check-update.cmd"
@@ -27,8 +30,13 @@ rem First ask whether it is already running. Starting a second instance is usele
 rem single-instance lock kills it, and its log redirect collides with the file already opened by
 rem the first instance - which is exactly why "double click did nothing" used to happen.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" show-desktop >nul 2>&1
-if errorlevel 3 goto dsh_focus
-if errorlevel 2 goto dsh_start
+set "SD=%ERRORLEVEL%"
+if "%SD%"=="3" goto dsh_focus
+if "%SD%"=="2" goto dsh_start
+if "%SD%"=="0" goto dsh_done
+if "%SD%"=="1" goto dsh_done
+echo Desktop probe failed with exit %SD%; not starting a second instance.
+set "RC=1"
 goto dsh_done
 :dsh_start
 rem The desktop app inherits this console and keeps it alive (its dsh-host child writes here),
@@ -36,12 +44,12 @@ rem so the launcher black box would stay open for the whole session. Redirect it
 rem log file instead (masked by tools\mask-log.mjs): the window closes by itself, log is kept.
 rem Set DSH_PORTABLE_KEEP_CONSOLE=1 to get the old behaviour (see the log live in the console).
 if "%DSH_PORTABLE_KEEP_CONSOLE%"=="1" (
-  start "" "%ROOT%desktop\DeepSeek Harness.exe" --user-data-dir="%ROOT%shell-profile"
+  start "" "%ROOT%desktop\DeepSeek Harness.exe" --user-data-dir="%ROOT%shell-profile" --crash-dumps-dir="%ROOT%logs\crash"
 ) else (
   powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" launch-desktop
   if errorlevel 1 (
     set "RC=1"
-    start "" "%ROOT%desktop\DeepSeek Harness.exe" --user-data-dir="%ROOT%shell-profile"
+    start "" "%ROOT%desktop\DeepSeek Harness.exe" --user-data-dir="%ROOT%shell-profile" --crash-dumps-dir="%ROOT%logs\crash"
   )
 )
 rem once per machine: make sure the window appears by itself (not only a tray icon)

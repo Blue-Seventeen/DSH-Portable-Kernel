@@ -16,6 +16,9 @@ rem (a market self-upgrade overwrites its lib\*.js, so this re-applies the patch
 rem every start: rewrite the version exemption to the CURRENT dsh version. Exact pin only - the
 rem official loader rejects "*" and a stale pin makes it silently skip the plugin (npm 0.2.1-rc.5)
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\plugin-shared.mjs" compat-heal --quiet
+rem compat profile: this drive may be exFAT (no hard links); keep the new-file fallback patch
+rem applied. Idempotent and cheap (~50 ms when already patched).
+if /i "%DSH_FS_PROFILE%"=="compat" "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\patch-fs.mjs" --apply --quiet >nul 2>nul
 rem once per machine+location: clear the SmartScreen mark
 if not exist "%ROOT%tmp\prep-%KEY%.flag" powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" auto-prepare >nul 2>&1
 call "%ROOT%check-update.cmd"

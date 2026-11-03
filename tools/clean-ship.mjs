@@ -8,7 +8,7 @@
  *   dsh-portable.cmd clean-ship            # dry-run：只列清单，不删任何东西
  *   dsh-portable.cmd clean-ship --apply    # 真删，并把 version.json 刷成出厂快照
  *   dsh-portable.cmd clean-ship verify     # 只断言：还没干净就 exit 1（打包门禁）
- *   dsh-portable.cmd clean-ship refresh    # 只刷 version.json 计数 + 重新生成 shell-version.json，不删任何文件
+ *   dsh-portable.cmd clean-ship refresh    # 只刷 version.json 计数 + 重新生成 shell-version.json（清单 schemaVersion 2），不删任何文件
  *
  * 提示：桌面程序运行中，tmp\dsh-* 属正常运行时目录，verify 会把该项降级为信息项。
  *
@@ -18,8 +18,11 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-// 壳自更新清单的口径只有一份（白名单 + sha256），这里直接复用，免得两边各写一套后漂移
-import { SHELL_MANIFEST, listLocalShellFiles, readShellVersion, sha256File } from './shell-update.mjs'
+// 壳自更新清单的口径只有一份（白名单 + sha256 + 清单 schema 版本），这里直接复用，免得两边各写一套后漂移
+import {
+  MANIFEST_SCHEMA, REPO, SHELL_MANIFEST, UPDATER_MIN, USER_OWNED,
+  listLocalShellFiles, readLocalManifest, sha256File,
+} from './shell-update.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 // 参数既接受 --apply/--verify，也接受裸词 apply/verify：
@@ -181,30 +184,58 @@ const refreshVersion = () => {
 }
 
 /**
- * 生成/更新仓库根的 shell-version.json（壳自更新清单）。
+ * 生成/更新仓库根的 shell-version.json（壳自更新清单，schemaVersion 2）。
  * 内容 = 白名单里"当前存在"的文件 + 各自 sha256；shell-version.json 自己不进 files 列表。
- * shellVersion 从旧文件继承、由人手动 bump（脚本绝不自己加版本号）；没有旧文件才写 0.1.0 并提示。
+ * v2 元数据（channel / tag / releasedAt / minShellVersion / requires / notes / notesUrl / zip）一律从旧清单继承：
+ * 那些字段由 tools/shell-release.mjs prepare 写入、由人决定，refresh 只重算 files 与 userOwned。
+ * shellVersion 同样继承、由人手动 bump（脚本绝不自己加版本号）；没有旧文件才写 0.1.0 并提示。
  */
 const refreshShellManifest = () => {
   try {
     const f = join(ROOT, SHELL_MANIFEST)
-    const had = existsSync(f)
-    let shellVersion = had ? readShellVersion() : ''
+    const prev = readLocalManifest()
+    const old = (prev.present && prev.json && typeof prev.json === 'object' && !Array.isArray(prev.json)) ? prev.json : {}
+    let shellVersion = String(old.shellVersion || '').trim()
     if (!shellVersion) {
       shellVersion = '0.1.0'
-      say('提示：' + SHELL_MANIFEST + (had ? ' 里的 shellVersion 读不动，' : ' 不存在，') + '先写 ' + shellVersion + '；发包前请手动改成正式版本号（脚本不会自动 bump）')
+      say('提示：' + SHELL_MANIFEST + (prev.present ? ' 里的 shellVersion 读不动，' : ' 不存在，') + '先写 ' + shellVersion + '；发包前请手动改成正式版本号（脚本不会自动 bump）')
     }
     const files = {}
     for (const rel of listLocalShellFiles()) files[rel] = sha256File(join(ROOT, rel))
     const sorted = {}
     for (const k of Object.keys(files).sort()) sorted[k] = files[k]
-    const out = { shellVersion, generatedAt: new Date().toISOString(), files: sorted }
+    // userOwned 只收"清单里真的存在"的那些，顺序沿用 shell-update 的 USER_OWNED（人读得懂、diff 稳定）
+    const userOwned = USER_OWNED.filter((rel) => Object.prototype.hasOwnProperty.call(sorted, rel))
+    // notes：旧值优先；旧清单里没有就写六个空数组（verify 的「清单 v2 合法」要求六个键都是数组，缺键要报出来）
+    const oldNotes = (old.notes && typeof old.notes === 'object' && !Array.isArray(old.notes)) ? old.notes : {}
+    const notes = {}
+    for (const k of ['added', 'fixed', 'optimized', 'breaking', 'upgrade', 'rollback']) notes[k] = Array.isArray(oldNotes[k]) ? oldNotes[k] : []
+    for (const k of Object.keys(oldNotes)) if (!(k in notes)) notes[k] = oldNotes[k]
+    const channel = String(old.channel || '').trim() || 'stable'
+    const tag = String(old.tag || '').trim() || 'v' + shellVersion
+    const out = {
+      schemaVersion: MANIFEST_SCHEMA,
+      updaterMin: UPDATER_MIN,
+      channel,
+      shellVersion,
+      tag,
+      releasedAt: String(old.releasedAt || '').trim() || new Date().toISOString(),
+      minShellVersion: String(old.minShellVersion || '').trim() || shellVersion,
+      generatedAt: new Date().toISOString(),
+      requires: (old.requires && typeof old.requires === 'object' && !Array.isArray(old.requires)) ? old.requires : { dsh: '>=0.2.1-rc.5', node: '>=24.0.0' },
+      files: sorted,
+      userOwned,
+      notes,
+      notesUrl: String(old.notesUrl || '').trim() || ('https://github.com/' + REPO + '/releases/tag/v' + shellVersion),
+    }
+    // zip 资产由 shell-release 打包后写回；refresh 不生成 zip，但已经存在就原样保住（否则发布后置校验必红）
+    if (old.zip && typeof old.zip === 'object' && !Array.isArray(old.zip)) out.zip = old.zip
     const text = JSON.stringify(out, null, 2) + '\n'
     // 明确按 UTF-8 写、无 BOM：tools/shell-update.mjs 会拒绝带 BOM 的清单
     writeFileSync(f, Buffer.from(text, 'utf8'))
     const back = readFileSync(f, 'utf8')
     if (back !== text) { say('⚠ ' + SHELL_MANIFEST + ' 写入后读回不一致（编码问题）'); return false }
-    say(SHELL_MANIFEST + ' 已刷新：shellVersion ' + shellVersion + '，' + Object.keys(sorted).length + ' 个文件（清单自己不计入）')
+    say(SHELL_MANIFEST + ' 已刷新：schemaVersion ' + out.schemaVersion + ' / updaterMin ' + out.updaterMin + ' / 文件 ' + Object.keys(sorted).length + ' 个 / userOwned ' + userOwned.length + ' 个 / channel ' + channel + ' / tag ' + tag + (out.zip ? ' / zip 已保留' : ''))
     return true
   } catch (e) { say(SHELL_MANIFEST + ' 生成失败：' + e.message); return false }
 }
@@ -255,7 +286,7 @@ const assertEmpty = (label, paths) => {
   checks.push({ label, ok: left.length === 0, detail: left.length ? left.map((p) => p.slice(ROOT.length + 1)).join(', ') : '' })
 }
 if (keepCreds) checks.push({ label: '凭证文件（按 --keep-creds 保留）', ok: true, detail: 'skipped' })
-else assertEmpty('无凭证文件', findDeep(join(ROOT, 'home'), '.credentials.yaml', ['node_modules']))
+else assertEmpty('无凭证文件', [...findDeep(join(ROOT, 'home'), '.credentials.yaml', ['node_modules']), ...findDeep(join(ROOT, 'shell-profile'), '.credentials.yaml', [])])
 assertEmpty('无会话历史', [join(ROOT, 'home', 'sessions')])
 assertEmpty('无投影缓存', [join(ROOT, 'home', 'storages', 'session_projcache')])
 assertEmpty('无 Cookies', [join(sp, 'Network', 'Cookies')])
@@ -277,6 +308,10 @@ if (verify) {
     say('  ' + (c.ok ? 'PASS' : 'FAIL') + '  ' + c.label + (c.detail ? '  ← ' + c.detail : ''))
   }
   say('')
+  if (bad === 0 && apply && failed > 0) {
+    say('结论：还有 ' + failed + ' 个文件删除失败（被占用），不算干净')
+    process.exit(1)
+  }
   if (bad === 0) { say('结论：交付快照干净（' + checks.length + ' 项全过）'); process.exit(0) }
   say('结论：还有 ' + bad + ' 项不干净 —— 先跑 dsh-portable.cmd clean-ship apply')
   process.exit(1)

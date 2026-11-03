@@ -65,8 +65,9 @@ const sharedManifestFile = join(sharedDir, 'package.json')
 const sharedWorkspaceFile = join(sharedDir, 'pnpm-workspace.yaml')
 const pnpmCmd = join(root, 'runtime', 'pnpm', 'bin', 'pnpm.cmd')
 const nodeExe = join(root, 'runtime', 'node', 'bin', 'node.exe')
-const localAppData = process.env.LOCALAPPDATA || join(process.env.USERPROFILE || root, 'AppData', 'Local')
-const storeRoot = argOf('--store') || join(localAppData, 'Hack3rX-Harness', 'pnpm-store')
+// store 只认盘内路径（env.cmd 的 DSH_PNPM_STORE）：不再回退主机用户目录，
+// 便携壳的定位就是"整包带走、不在宿主机器留任何东西"。
+const storeRoot = argOf('--store') || process.env.DSH_PNPM_STORE || join(root, 'cache', 'pnpm-store')
 /** 有独立插件集的 profile；新增模式时在这里加名字即可 */
 const PROFILES = ['web', 'desktop']
 const LABEL = { web: '浏览器模式', desktop: '桌面窗口' }
@@ -218,8 +219,8 @@ const writeWorkspace = (dir, isProfile) => {
   let old = ''
   try { old = readFileSync(file, 'utf8') } catch { /* 没有就新建 */ }
   // 保留原有的 storeDir 行（如果有），位置放在 autoInstallPeers 之后
-  const kept = old.split('\n').filter((l) => /^\s*storeDir\s*:/.test(l))
-  if (kept.length) lines.splice(5, 0, '', kept[0].trimEnd())
+  const kept = old.split('\n').filter((l) => /^\s*(storeDir|packageImportMethod)\s*:/.test(l))
+  if (kept.length) lines.splice(5, 0, '', ...kept.map((l) => l.trimEnd()))
   const text = lines.join('\n') + '\n'
   const differs = old !== text
   // 注意：先比较再决定要不要真的写/记账，否则 --check 会把三份本来就一致的文件也报成"待改"

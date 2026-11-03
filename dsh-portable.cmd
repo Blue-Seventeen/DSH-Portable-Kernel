@@ -10,6 +10,14 @@ rem NOTE: keep this file pure ASCII; Chinese text is printed by tools\say.ps1
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" %*
 set "RC=%ERRORLEVEL%"
 if "%RC%"=="0" goto :eof
+rem 4 = already up to date (shell-update check); not a failure
+if "%RC%"=="4" goto :eof
+if "%RC%"=="3" (
+  echo.
+  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key cmd-blocked -Value "%RC%"
+  if "%~1"=="" pause
+  exit /b %RC%
+)
 echo.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key cmd-failed -Value "%RC%"
 if "%~1"=="" pause

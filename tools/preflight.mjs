@@ -11,6 +11,25 @@ const bad = (m) => console.log('  [问题] ' + m)
 let problems = 0
 const fail = (m) => { bad(m); problems++ }
 
+// tmp\fs-profile.cmd 是 tools\fs-profile.ps1 探测本机卷后写下的 "set K=V" 片段。
+// 第一次探测之前它不存在 —— 所以这里一律"缺失 = 未探测"，只提示、不算问题。
+const readFsProfile = () => {
+  const p = join(root, 'tmp', 'fs-profile.cmd')
+  if (!existsSync(p)) return null
+  let text = ''
+  try { text = readFileSync(p, 'utf8') } catch { return null }
+  const vars = {}
+  for (const line of text.split(/\r?\n/)) {
+    // 兼容 set "K=V" / set K=V / 行尾注释；其它行（setlocal 等）忽略
+    const m = line.match(/^\s*set\s+"?([A-Za-z_][A-Za-z0-9_]*)=(.*?)"?\s*$/i)
+    if (m) vars[m[1].toUpperCase()] = m[2].trim()
+  }
+  return vars
+}
+const fsProfile = readFsProfile()
+// 片段没生成时退回环境（env.cmd 会读同一份片段），两者都没有就是"未探测"
+const profileName = () => (fsProfile && fsProfile.DSH_FS_PROFILE) || process.env.DSH_FS_PROFILE || ''
+
 console.log('\n=== Hack3rX-Harness 便携版 环境自检 ===\n')
 
 console.log('[1] 系统')
@@ -50,6 +69,61 @@ for (const d of ['tmp', 'home']) {
   try { writeFileSync(p, 'x'); unlinkSync(p); ok(`${d} 可写入`) }
   catch { fail(`${d} 不可写入（U 盘写保护？或权限不足）`) }
 }
+
+// 4.1 卷格式与档位：compat = exFAT/FAT32（无软链/硬链接），native = NTFS
+const prof = fsProfile || {}
+const volFmt = prof.DSH_FS_FORMAT || '未知'
+const volDrive = prof.DSH_FS_DRIVE || root.slice(0, 2)
+if (prof.DSH_FS_PROFILE) {
+  ok(`卷格式 ${volFmt}（${volDrive}），档位 ${prof.DSH_FS_PROFILE}（权限 ${prof.DSH_PERMISSION_MODE || '未声明'}，pnpm 导入 ${prof.DSH_PNPM_IMPORT_METHOD || '未声明'}）`)
+  if (String(prof.DSH_FS_PROFILE).toLowerCase() === 'compat') {
+    warn('compat 档：这个卷不支持软链接/硬链接，插件依赖改用 hoisted 布局 + copy 导入；同一份程序在这个卷上占用的空间会比 NTFS 大')
+  }
+} else {
+  warn('卷格式与档位：未探测（tmp\\fs-profile.cmd 还没生成；运行 tools\\fs-profile.ps1 或下次启动会自动探测）')
+}
+
+// 4.2 字节放大率：exFAT 的簇很大（实测本卷 128 KB），几万个小文件（node_modules）按整簇占用，
+// 逻辑字节数会比真实占用小一截 —— U 盘容量/复制时间要按"实际占用"算，所以这里显式量一次。
+// 只统计 app / desktop / home；最多给 1.5s，超时就用 ">" 标明是下界（大目录不可能全走完）。
+try {
+  const st = statfsSync(root)
+  const cluster = Number(st.bsize) || 4096
+  const GiB = (n) => (n / 1073741824).toFixed(1) + ' GB'
+  const usedGB = ((st.blocks - st.bfree) * st.bsize) / 1073741824
+  const totalGB = (st.blocks * st.bsize) / 1073741824
+  const deadline = Date.now() + 1500
+  let logical = 0
+  let allocated = 0
+  let files = 0
+  let timedOut = false
+  const stack = ['app', 'desktop', 'home'].map((d) => join(root, d)).filter((d) => existsSync(d))
+  while (stack.length) {
+    if (Date.now() > deadline) { timedOut = true; break }
+    const dir = stack.pop()
+    let ents = []
+    try { ents = readdirSync(dir, { withFileTypes: true }) } catch { continue }
+    for (const e of ents) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) { stack.push(p); continue }
+      if (!e.isFile()) continue // 软链/其它一律不计
+      let s
+      try { s = statSync(p) } catch { continue }
+      logical += s.size
+      // Windows 上 Node 的 blocks 是"按簇取整后的 512 字节块数"，正好等于真实占用；
+      // 拿不到 blocks 时退回按簇取整估算。
+      allocated += s.blocks ? s.blocks * 512 : Math.ceil(s.size / cluster) * cluster
+      files += 1
+    }
+  }
+  const pre = timedOut ? '>' : ''
+  const tail = timedOut ? '，1.5s 没走完所以是下界' : ''
+  const ampf = logical > 0 ? allocated / logical : 0
+  const head = `卷 ${totalGB.toFixed(1)} GB，已用 ${usedGB.toFixed(1)} GB；app+desktop+home 逻辑 ${pre}${GiB(logical)}，按簇占用 ${pre}${GiB(allocated)}（${files} 个文件，簇 ${Math.round(cluster / 1024)} KB）`
+  if (logical <= 0) warn('无法统计 app/desktop/home 的逻辑字节数（目录还没就位？）')
+  else if (ampf > 1.5) warn(`字节放大 ${pre}${ampf.toFixed(1)}×（实际/逻辑，即 逻辑/实际 ≈ ${(1 / ampf).toFixed(2)}）：${head}${tail} —— exFAT 大簇把每个小文件按整簇占用，复制到 U 盘/换机时要按"按簇占用"估容量`)
+  else ok(`字节放大 ${pre}${ampf.toFixed(2)}×（实际/逻辑）：${head}${tail}`)
+} catch (e) { warn('无法计算字节放大率：' + (e && e.message ? e.message : e)) }
 
 console.log('\n[5] 路径长度')
 // 长路径支持要读注册表，进程环境变量里没有这个信息
@@ -117,14 +191,14 @@ try {
   try { unlinkSync(join(root, 'tmp', 'ads-probe.txt')) } catch { }
 }
 if (!ntfs) {
-  ok('当前盘 ' + root.slice(0, 2) + ' 不支持“来自其他计算机”标记，不会被 SmartScreen 拦')
+  ok('当前盘 ' + root.slice(0, 2) + ' 不支持“来自其他计算机”标记，不会被 SmartScreen 拦（档位 ' + (profileName() || '未探测') + '）')
 } else {
   let stamp = null
   try { stamp = JSON.parse(readFileSync(join(root, 'tmp', 'motw.json'), 'utf8')) } catch { }
   if (stamp && stamp.blocked === 0) {
-    ok('可执行文件已无“来自其他计算机”标记（上次检查 ' + new Date(stamp.at).toLocaleString() + '，共 ' + stamp.scanned + ' 个）')
+    ok('可执行文件已无“来自其他计算机”标记（上次检查 ' + new Date(stamp.at).toLocaleString() + '，共 ' + stamp.scanned + ' 个；档位 ' + (profileName() || '未探测') + '）')
   } else {
-    warn('可能有文件带“来自其他计算机”标记（启动会被 SmartScreen 拦）：运行 dsh-portable.cmd unblock 清除')
+    warn('可能有文件带“来自其他计算机”标记（启动会被 SmartScreen 拦）：运行 dsh-portable.cmd unblock 清除（档位 ' + (profileName() || '未探测') + '）')
   }
 }
 // 9.2 插件目录里的 pnpm 记录是否还指向旧机器
@@ -170,5 +244,23 @@ else warn('没有 robocopy.exe：升级时的大目录搬运会失败（Windows 
 if (existsSync(join(sysRoot, 'System32', 'curl.exe'))) ok('系统 curl 就位（主下载失败时自动兜底）')
 else ok('没有系统 curl：主下载失败时不会兜底（不影响正常运行）')
 
+// 壳版本与更新状态：只读（不下载、不写任何文件；真正的检查由启动流程里的 shell-update check 负责）
+console.log('\n[11] 壳版本')
+let shellVer = ''
+let shellChan = 'stable'
+try {
+  const mf = JSON.parse(readFileSync(join(root, 'shell-version.json'), 'utf8'))
+  shellVer = String(mf.shellVersion || '')
+  shellChan = String(mf.channel || 'stable')
+} catch { }
+if (shellVer) console.log('  壳版本：' + shellVer + ' (' + shellChan + ')')
+else warn('读不到 shell-version.json（壳清单缺失：这个目录可能不是完整的壳）')
+try {
+  const c = JSON.parse(readFileSync(join(root, 'tmp', 'shell-check.json'), 'utf8'))
+  const s = c.summary || {}
+  const at = Number(c.at || s.at || 0)
+  // 只在 24h 缓存新鲜、且远端确实更新时提示；启动流程自己还有一次带缓存的上游检查
+  if (at > 0 && Date.now() - at < 24 * 3600 * 1000 && s.status === 'update-available') console.log('  壳更新：' + s.remote + ' 可用（启动时可选择更新）')
+} catch { }
 console.log('\n=== ' + (problems === 0 ? '自检通过，可以开始使用' : `发现 ${problems} 个需要处理的问题`) + ' ===\n')
 process.exit(problems === 0 ? 0 : 1)

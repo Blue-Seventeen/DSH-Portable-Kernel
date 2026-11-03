@@ -37,15 +37,39 @@ echo.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key bootstrap-done
 :dsh_ready
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\preflight.mjs"
+rem --- shell self-update: silent check (24h cache), show update details, only update on Y ---
+if not exist "%ROOT%tools\shell-update.mjs" goto :dsh_menu
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 1440 --prompt
+if errorlevel 4 goto :dsh_menu
+if errorlevel 3 goto :dsh_menu
+if errorlevel 2 goto :dsh_menu
+if errorlevel 1 goto :dsh_menu
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-update-prompt
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-update-hint
+choice /C YN /T 30 /D N /N /M " > "
+if errorlevel 2 goto :dsh_skip_upd
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" shell-update apply -Force
+if errorlevel 1 goto :dsh_menu
+echo.
+rem re-run the self-check so the user sees the new shell version right away
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\preflight.mjs"
+goto :dsh_menu
+:dsh_skip_upd
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-update-declined
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" snooze >nul 2>nul
+:dsh_menu
 echo.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key preflight-menu -NoNewline
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key preflight-hint
 rem choice returns 1..4 in the order of the letter list: W=1 D=2 N=3 U=4
 choice /C WDNU /T 30 /D N /N /M " > "
-if errorlevel 4 goto :shellupd
-if errorlevel 3 goto :end
-if errorlevel 2 goto :desk
-if errorlevel 1 goto :web
+set "CH=%ERRORLEVEL%"
+if "%CH%"=="1" goto :web
+if "%CH%"=="2" goto :desk
+if "%CH%"=="3" goto :end
+if "%CH%"=="4" goto :shellupd
+echo Invalid menu input; nothing done.
+goto :end
 :shellupd
 rem shell self-update: only the shell files are replaced; app/desktop/runtime and user data never are
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" shell-update apply -Force

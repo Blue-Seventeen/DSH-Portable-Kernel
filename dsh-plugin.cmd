@@ -2,11 +2,12 @@
 setlocal
 set "ROOT=%~dp0"
 call "%ROOT%env.cmd"
-rem pnpm keeps its content store outside the portable folder: this drive may be exFAT
-rem (no symlinks), so the store has to live on NTFS.
+rem pnpm keeps its content store inside the portable folder (portability first).
+rem This drive may be exFAT (no symlinks, no hard links), so imports are copies.
+if not defined DSH_PNPM_IMPORT_METHOD set "DSH_PNPM_IMPORT_METHOD=copy"
 rem Only mutating subcommands accept --store-dir, and the subcommand can appear
 rem anywhere in the argument list (usually after --profile <name>).
-set "STORE=%LOCALAPPDATA%\Hack3rX-Harness\pnpm-store"
+set "STORE=%DSH_PNPM_STORE%"
 if not exist "%STORE%" mkdir "%STORE%" >nul 2>nul
 set "NEEDSTORE="
 :scan
@@ -16,7 +17,7 @@ shift
 goto :scan
 :run
 set "STOREARG="
-if defined NEEDSTORE set STOREARG=--store-dir "%STORE%"
+if defined NEEDSTORE set STOREARG=--store-dir "%STORE%" --config.package-import-method=%DSH_PNPM_IMPORT_METHOD%
 rem after moving to another machine/user, node_modules still records the old store path and pnpm
 rem refuses to install/uninstall: align the records first
 if defined NEEDSTORE "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\fix-pnpm-state.mjs" --quiet

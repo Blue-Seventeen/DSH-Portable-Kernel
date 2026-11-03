@@ -37,6 +37,7 @@ import { readFileSync, writeFileSync, existsSync, readdirSync, copyFileSync, mkd
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
+import { homedir } from 'node:os'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const argv = process.argv.slice(2)
@@ -51,9 +52,12 @@ const say = (msg) => console.log((quiet ? '' : '  ') + msg)
 const node = join(root, 'runtime', 'node', 'bin', 'node.exe')
 const runtimePnpm = join(root, 'runtime', 'pnpm')
 const dshBin = join(root, 'app', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
-const localAppData =
-  process.env.LOCALAPPDATA || join(process.env.USERPROFILE || root, 'AppData', 'Local')
-const storeRoot = argOf('--store') || join(localAppData, 'Hack3rX-Harness', 'pnpm-store')
+// store 必须留在便携目录内（外置 store 已废弃）。env.cmd 导出 DSH_PNPM_STORE；
+// 单独运行时按盘内默认值兜底，保证任何入口都不会再往主机用户目录写。
+const storeRoot =
+  argOf('--store') || process.env.DSH_PNPM_STORE || join(root, 'cache', 'pnpm-store')
+// exFAT 没有硬链接/软链：compat 档用 copy 导入；NTFS 用 pnpm 默认（auto）。
+const importMethod = process.env.DSH_PNPM_IMPORT_METHOD || 'auto'
 const profilesDir = join(argOf('--root') ? join(argOf('--root'), 'home') : join(root, 'home'), 'profiles')
 
 const samePath = (a, b) =>
@@ -69,6 +73,33 @@ const versionMajor = (v) => {
 }
 
 /** '...\pnpm-store\v11' -> '11'（pnpm 总会把自己的大版本追加成 store 路径最后一段） */
+// store 是否真的有内容。注意：pnpm 的 store path 探测会顺手建一个空的 index.db（8 KB），
+// 所以不能只看文件是否存在，否则"空 store"会被当成"有内容"，把记录改成空库。
+const storeHasContent = (p) => {
+  try {
+    const idx = [join(p, 'v11', 'index.db'), join(p, 'index.db')].find((f) => existsSync(f))
+    if (idx) {
+      try { if (statSync(idx).size > 65536) return true } catch { }
+    }
+    const files = join(p, 'files')
+    if (!existsSync(files)) return false
+    let found = false
+    const walk = (dir, depth) => {
+      if (found || depth > 3) return
+      let ents = []
+      try { ents = readdirSync(dir, { withFileTypes: true }) } catch { return }
+      for (const e of ents) {
+        if (found) return
+        const q = join(dir, e.name)
+        if (e.isDirectory()) walk(q, depth + 1)
+        else if (e.isFile()) { found = true; return }
+      }
+    }
+    walk(files, 0)
+    return found
+  } catch { return false }
+}
+let storeMigrateWarned = false
 const storeMajor = (p) => {
   const m = String(p || '').replace(/[\\/]+$/, '').match(/[\\/]v(\d+)$/)
   return m ? m[1] : ''
@@ -267,13 +298,13 @@ const safeWrite = (file, text) => {
   writeFileSync(file, text, 'utf8')
 }
 
-const fixWorkspaceYaml = (profDir, name) => {
+const fixWorkspaceYaml = (profDir, name, storePath) => {
   const file = join(profDir, 'pnpm-workspace.yaml')
   if (!existsSync(file)) return false
   const raw = readFileSync(file, 'utf8')
   const eol = raw.includes('\r\n') ? '\r\n' : '\n'
   const lines = raw.split(/\r?\n/)
-  const want = `storeDir: '${storeRoot.replace(/'/g, "''")}'`
+  const want = `storeDir: '${storePath.replace(/'/g, "''")}'`
   let dirty = false
   const idx = lines.findIndex((l) => /^\s*storeDir\s*:/.test(l))
   if (idx >= 0) {
@@ -285,6 +316,16 @@ const fixWorkspaceYaml = (profDir, name) => {
   }
   // profile 必须把安装目录指到共享目录（home\profiles\node_modules）：
   // 这样插件市场/`dsh plugin` 装的东西才不会又落到 profile 自己的 node_modules 里变成第二份。
+  // 导入方式跟卷能力走：exFAT 只能 copy（没有硬链接），NTFS 用默认 auto。
+  const wantImport = `packageImportMethod: '${importMethod.replace(/'/g, "''")}'`
+  const ii = lines.findIndex((l) => /^\s*packageImportMethod\s*:/.test(l))
+  if (ii >= 0) {
+    if (lines[ii].trim() !== wantImport.trim()) { lines[ii] = wantImport; dirty = true }
+  } else {
+    while (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
+    lines.push(wantImport)
+    dirty = true
+  }
   if (profDir !== profilesDir) {
     const wantMod = 'modulesDir: ../node_modules'
     const mi = lines.findIndex((l) => /^\s*modulesDir\s*:/.test(l))
@@ -324,6 +365,15 @@ const fixModulesYaml = (nmDir, profDir, name, storePath) => {
     const j = JSON.parse(raw)
     let dirty = false
     if (!samePath(j.storeDir, storePath)) {
+      // 盘内 store 还空着、旧 store 有内容：绝不能把记录改成新路径，否则 pnpm 以为包都在新 store，
+      // 下一次装/卸插件直接炸在内容层。先把旧 store 搬进来（migrate-store）或重装（plugin-repair）。
+      if (!storeHasContent(storePath)) {
+        if (!storeMigrateWarned) {
+          storeMigrateWarned = true
+          say('STORE 位置已改到便携目录内，但盘内 store 还是空的：先运行 dsh-portable.cmd migrate-store（搬旧 store）或 plugin-repair（重装），本次不改 .modules.yaml')
+        }
+        return false
+      }
       say(`[${name}] .modules.yaml storeDir: ${j.storeDir} -> ${storePath}`)
       j.storeDir = storePath
       dirty = true
@@ -413,6 +463,16 @@ const main = () => {
     return 0
   }
   const store = resolveStore()
+  // 旧版把 store 放在宿主用户目录；盘内 store 还空着而旧 store 有内容时，继续沿用旧路径，
+  // 直到用户跑 migrate-store —— 否则 yaml 被改到空 store、记录还指着旧 store，pnpm 必报
+  // ERR_PNPM_UNEXPECTED_STORE，插件装/卸全废。
+  const legacyStore = join(homedir(), 'AppData', 'Local', 'Hack3rX-Harness', 'pnpm-store')
+  const useLegacy = !storeHasContent(storeRoot) && storeHasContent(legacyStore)
+  const effective = useLegacy ? legacyStore : storeRoot
+  if (useLegacy) say('盘内 store 还是空的，暂时继续用旧 store（运行 dsh-portable.cmd migrate-store 搬进来）：' + legacyStore)
+  // pnpm 记录的 storeDir 永远带 \vN 段；这里按"基路径 + 运行时大版本"拼，探测失败也能对齐
+  const wantMajor = runtimePnpmMajor()
+  const modulesPath = wantMajor ? join(effective, 'v' + wantMajor) : (store.path || effective)
   if (!quiet) {
     console.log('pnpm 状态检查')
     console.log('  便携仓库: ' + storeRoot)
@@ -428,9 +488,9 @@ const main = () => {
     const name = t.name
     const profDir = t.dir
     const nmDir = join(profDir, 'node_modules')
-    if (fixModulesYaml(nmDir, profDir, name, store.path)) changed++
+    if (fixModulesYaml(nmDir, profDir, name, modulesPath)) changed++
     if (fixWorkspaceState(nmDir, profDir, name, t.tail)) changed++
-    if (fixWorkspaceYaml(profDir, name)) changed++
+    if (fixWorkspaceYaml(profDir, name, effective)) changed++
   }
   if (!changed) {
     // 大版本冲突时护栏已经把"该怎么修"打印出来了，这里不能再报"一切正常"

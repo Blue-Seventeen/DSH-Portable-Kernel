@@ -1,16 +1,27 @@
 {
-  "shellVersion": "0.5.0",
-  "generatedAt": "2026-11-03T12:57:49.967Z",
+  "schemaVersion": 2,
+  "updaterMin": 2,
+  "channel": "stable",
+  "shellVersion": "0.1.0",
+  "tag": "v0.1.0",
+  "releasedAt": "2026-11-03T15:30:00.000Z",
+  "minShellVersion": "0.5.0",
+  "generatedAt": "2026-11-03T15:21:01.808Z",
+  "requires": {
+    "dsh": ">=0.2.1-rc.5",
+    "node": ">=24.0.0"
+  },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "793105ed659390938bfdd0ee2a970afaf9d7b298863951c4da149358c855b80b",
-    "check-update.cmd": "6dadcdef2c970ccc97447c7db61c824d39641fdacc20110efd66f4150f70ce90",
+    "README.md": "c386cd599e6dad17214a3714ca0c57b383c2c1eed7b1d38f534aed139507926b",
+    "RELEASE-NOTES.md": "e19152284f049642b8048f6b6a900d5dad4e0e524cea0288645734b7262dce40",
+    "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
-    "dsh-plugin.cmd": "0230184d07cb7ddb8fb8934aa63a7fadee2c315676bd0ea3612c285b857e556d",
-    "dsh-portable.cmd": "791eacce362d36e6a02b361af24ffc72348d8ac1af98e4385bf9ff879601a47c",
-    "dsh-portable.ps1": "3b8edc4568ac45480e845033f60d030594c7ae93d64914ca54a679b0cfc154d5",
+    "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
+    "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
+    "dsh-portable.ps1": "acdadc4f96122833d0b541c7614e884da0821f9775476a49bd50123446561db2",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
-    "env.cmd": "db726b5592f44ec7a6ed2b7717d59e9fde7dd39fb174249123f47b32dfd0c629",
+    "env.cmd": "e85c64c0f2133ff53d8a99215105e5e03194f103bb04fe657db1555f0ee2b7b1",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
     "home/profiles/desktop/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/desktop/package.json": "a8754342c50d77f213dc9078c1adc40d79a4f470b050fba09e93d61f22f1678a",
@@ -24,7 +35,7 @@
     "home/profiles/web/package.json": "392bd32b0781f8ec3375c2786051ece65b14a8324255dda5a983ae43a5ec4e43",
     "home/profiles/web/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
     "home/profiles/web/pnpm-workspace.yaml": "1449565fccc7a6a6d5b9bf7de8d6dc9a1516b79068deb9031ca63d5a4ef0d6b9",
-    "preflight.cmd": "a25736a8034c58f05e7a7bbfdc62720a455111dfeb43e922d3c059cc5ed7813a",
+    "preflight.cmd": "27f3cd616e8eec6ddd050f40521a1b2a58f7954875207400f34747265dd8c087",
     "runtime/vcredist/concrt140.dll": "2405355f0a58067b258f8df33c327e3a3d716eaac5a3a5aebb757842d85bd376",
     "runtime/vcredist/msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
     "runtime/vcredist/msvcp140_1.dll": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
@@ -32,20 +43,93 @@
     "runtime/vcredist/msvcp140_atomic_wait.dll": "640b2aefced484d0368eea5bdd06addd0658a3a70a49256e560d6923b404a479",
     "runtime/vcredist/vcruntime140.dll": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
     "runtime/vcredist/vcruntime140_1.dll": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
-    "start-desktop.cmd": "be1e8409ffb23a5cda509551b7e286b30d312f7190b6ffbf4d9a262584d3c770",
-    "start-web.cmd": "13f1197ae8b21f415d0b7e69d55ddc284d733d6f594421bba36415b8a6d93aef",
+    "start-desktop.cmd": "54c1f9bd1c192024c1e205314d7e8f0cd2e05c595e6497b5448eebe39749f3f7",
+    "start-web.cmd": "62bdc2198725ba86e7f1159680324cf4cc1b047134a972c956bc01373445f9ba",
     "tools/7z/7z.dll": "e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812",
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
-    "tools/clean-ship.mjs": "cdb7a874dbdbf920a716231334e920bf781e9986cf14996bffd1d1fd9999319e",
+    "tools/clean-ship.mjs": "8a516b5693f51e09c53f01fb16ce6928a05c45202dc5faa0089828dc3c924222",
     "tools/download.mjs": "b24e406b496acfe167f638ee04c9f02dfcf859dacd836ce2f00884a488257c78",
-    "tools/fix-pnpm-state.mjs": "f9f58ab1c434336b936a0e11dc206ed1fcebd476e8a9274dc5c883f6c6b72ee8",
+    "tools/fix-pnpm-state.mjs": "dcf027e6679f2baf2cb199e903a52f749d8cbe31935b8f5a76482ac2cccf80ce",
+    "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/mask-log.mjs": "e4b43a4d79ce0dc624b828fe281df364f601c3e0990b27cffaca6369cb722778",
+    "tools/normalize-eol.mjs": "4a9e38ab5dd180b803da334918c4fc1b7f060b89d7bbee9202cce2a82263f2eb",
+    "tools/patch-fs.mjs": "700850cc5c6405862a116b93a06f7df416b263b9efb6d1d76d0070ecb8ebb338",
     "tools/patch-market.mjs": "2e13e59fafe4d734473d8eaba8d64830db1cc2553ce2e65d8614187c30e2fc01",
-    "tools/plugin-shared.mjs": "3d1058df946faf3394461ba4daac4cf4634e03f39214058dbf986ec79cf45cd4",
-    "tools/preflight.mjs": "9e3e65b433afdc48b7b12ff5791465e052bb9d9c4b099c129b3d63763d2434a5",
-    "tools/say.ps1": "accaa37f5c51b5003948ec54536bfa7ebe62aaebedc0abbe1badbf7965a5d196",
-    "tools/shell-update.mjs": "98cd5e24c8c7fe4cf5afabaa208a28d36fbab9e810e3e687233519caac9a9abc",
+    "tools/plugin-shared.mjs": "10438b1716102b2957daa7677e9e5a13dbfad6a4f4f1afdae16d43987bb52b4b",
+    "tools/preflight.mjs": "605bd523d33000b8015426e5fc672acdfbe84068e2e3ac610dd9a73d0cf9a2f6",
+    "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
+    "tools/say.ps1": "986c7194a2731d5dcb0aa32f199625f9526f585327c6228cb7d66f5aba977207",
+    "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
+    "tools/shell-apply.mjs": "b7ba2577e5c8dc49b2ccdf7f4eee9e44992839bbb6738c006f0da1782a5b5cb9",
+    "tools/shell-release.mjs": "9dc3d45f287b45270202f79e78310d87fa9c9ebe96fe9a61951cab97ac3f0846",
+    "tools/shell-update.mjs": "2e866e23f2c1de07ffbda548cfc399bb2138114951bd9b372ad242288aae611c",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
-    "tools/verify-shell.mjs": "533e6a8c396581a9a6a58c52e5a9e6cb271e26e08afbc45b8848dbd59ab974a6"
+    "tools/verify-shell.mjs": "b6b7ba7051c49aa1271d3e65ad74fbc237dcecf6cd6247daf5ecd9e573b936bc"
+  },
+  "userOwned": [
+    "home/cordis.patch.yml",
+    "home/profiles/package.json",
+    "home/profiles/pnpm-workspace.yaml",
+    "home/profiles/pnpm-lock.yaml",
+    "home/profiles/web/package.json",
+    "home/profiles/web/pnpm-workspace.yaml",
+    "home/profiles/web/pnpm-lock.yaml",
+    "home/profiles/web/cordis.patch.yml",
+    "home/profiles/desktop/package.json",
+    "home/profiles/desktop/pnpm-workspace.yaml",
+    "home/profiles/desktop/pnpm-lock.yaml"
+  ],
+  "notes": {
+    "added": [
+      "壳自更新通道：`dsh-portable.cmd shell-update` 增加 `check` / `stage` / `apply` / `rollback` / `recover` / `notes` 子命令，默认更新源改为 `releases/latest/download/shell-version.json`（不再读 master 上的裸文件）。",
+      "清单升级到 schemaVersion 2：除每个文件的 sha256 外，还带 `tag` / `minShellVersion` / `requires`（dsh、node 版本要求）/ `userOwned`（用户私有文件清单）/ `notes`（更新细则）/ `zip`（整包的 name、sha256、bytes）。",
+      "更新前静默检查：`preflight.cmd` 调 `tools\\shell-update.mjs check --cached 1440 --prompt`，24 小时内只查一次、离线静默不打扰；有更新时先展示本文件里那个版本的\"更新细则\"，输入 Y 才继续（选 N 则 7 天内不再问，菜单 U 随时可手动更新）；更新完成后自动重跑自检。",
+      "换装引擎带备份与 journal：换装前把将被覆盖/删除的文件整份备份（`shell-backup-<yyyyMMdd-HHmmss>` 目录，apply 会打印确切路径），换装后自动跑 `verify-shell`；verify 不通过就整体回滚。",
+      "exFAT 双档 fs-profile：`tools\\fs-profile.ps1` 探测壳所在卷的文件系统并生成 `tmp\\fs-profile.cmd`。NTFS/ReFS 走 native 档（保留官方推荐的 ACL 沙箱、pnpm 默认导入方式）；exFAT/FAT32/UNC 走 compat 档（这类卷存不下安全描述符，自动关 ACL 沙箱、pnpm 改用 copy 导入）。",
+      "`migrate-store`：把 pnpm store 收进便携盘内，换机器后插件安装/卸载不再跨盘、不再因为换盘符报错。",
+      "第三个插件 `dsh-session-clean-delete`（1.0.2）进清单：会话列表里可以干净删除单个会话，不再需要手工删 `home\\sessions`。",
+      "`plugin-repair`：插件环境坏了（依赖树缺失、patch 被改）时按备份重建，备份落在 `cache\\plugin-repair-<时间戳>`。",
+      "发布工具链：新增 `tools\\shell-release.mjs`（`prepare` / `publish` / `verify-published` / `defaults` 四条命令）、本文件与 `RELEASING.md`。"
+    ],
+    "fixed": [
+      "pnpm 大版本错配：`runtime\\pnpm` 是 11.28.5（store 版本段 v11），但 dsh 是从 PATH 上取第一个 pnpm 来装的。新增 `runtime\\pnpm\\bin\\pnpm.cmd` 垫片 + `fix-state`，让 store 版本段与真正执行安装的那个 pnpm 一致，修掉 `ERR_PNPM_UNEXPECTED_STORE`（换机器后插件市场点卸载就报这个错）。",
+      "store 路径写死：`home\\profiles\\*\\node_modules` 里记着原机器的绝对路径（storeDir / virtualStoreDir / projects 键），搬盘或换用户名后 pnpm 拒绝一切安装。现在 `fix-state` / `plugin-repair` 能把它们对回本机解析出的 store。",
+      "壳升级半途中断会留下残缺目录：现在有 journal + 备份，`shell-update recover` 能把壳还原成换装前的样子。",
+      "只读动作不再顺手改包：`Repair-State` 从\"所有动作分派前无条件执行\"改成只在有副作用的分支里执行，`doctor` / `verify` / `check-quiet` 这类动作真的只读了。",
+      "交付前\"为了对齐计数就删会话\"的老做法去掉了：`clean-ship refresh` 只刷 `version.json` 计数与壳清单，不删任何文件。"
+    ],
+    "optimized": [
+      "升级前先给\"升级会做什么\"：用户能看到会替换哪些文件、要不要跑迁移、备份在哪，再决定按不按 Y。",
+      "清单与整包可复现：整包用 7z 打包时把所有文件时间戳钉死，同一个 tag 打两次包字节完全相同，所以清单里的 `zip.sha256` 可以被 publish 重新打包校验。",
+      "发布从手工操作收成四条命令，且带门禁（clean-ship refresh → verify-shell → selftest-shell-update）与 tag 自校验（tag 里清单的每个 sha256 都要等于 tag 里文件的真实字节）。",
+      "下载校验按字节：`shell-update` 只认 sha256 一致的文件，编码铁律（`.cmd` 纯 ASCII+CRLF、`.ps1` 单个 BOM、`.md/.json/.mjs/.yml` 无 BOM）在落盘前就校验。"
+    ],
+    "breaking": [
+      "**从 v0.1.0 起，壳的更新源改为 GitHub Release 版本线**（`releases/latest/download/shell-version.json`），不再从 master 分支读裸文件。更早的实例不认新清单（schemaVersion 2），必须先手工同步一次壳：把新版的 `tools\\shell-update.mjs`、`dsh-portable.ps1`、`preflight.cmd`、`tools\\preflight.mjs` 等覆盖进旧目录，之后才能自动升级。",
+      "清单 schemaVersion 从 1 升到 2。老的 `shell-update` 读 v2 清单会报\"清单不合法\"，这是上面那条\"必须先手工同步一次\"的直接原因。",
+      "`home\\profiles\\desktop\\cordis.patch.yml` 是**硬黑名单**（不在清单 `files` 里，永不随壳更新）：它是用户私有的网关/中转配置，升级不覆盖、回滚也不删。",
+      "整包 `harness-shell-<版本>.zip` **不含** `shell-version.json` 自己（清单里记着 zip 的 sha256，zip 里再装清单就成了死循环）；需要单独恢复清单时从 Release 页面单独下。"
+    ],
+    "upgrade": [
+      "先备份：把本次会被覆盖或删除的壳文件整份备份，apply 会打印备份目录（`shell-backup-<yyyyMMdd-HHmmss>`）。",
+      "只替换清单 `files` 里列出的壳文件：根脚本（`dsh-portable.ps1`、`*.cmd`）、`tools\\**`（含 `tools\\7z` 二进制）、`runtime\\vcredist`、`home\\profiles` 的清单/锁文件、`README.md` / `LICENSE` / `RELEASE-NOTES.md`。",
+      "不碰官方层与用户数据：`app\\`、`desktop\\`、`runtime\\node`、`runtime\\pnpm`、`home\\sessions`、`home\\storages`、`home\\settings.yaml`、`home\\.credentials.yaml` 一律不在更新范围。",
+      "`userOwned` 里的文件：本地改过就原样保留（不覆盖），没改过才更新；你自己放进 `tools\\` 的脚本永远不会被删。",
+      "换装后自动跑 `verify-shell`（`--update-gate` 模式）；不通过就整体回滚并把壳还原成换装前的样子。",
+      "verify 通过后才跑清单里声明的迁移脚本（`tools\\` 下已进清单的 `.mjs`）；迁移失败只记录、不整体回滚。"
+    ],
+    "rollback": [
+      "换装刚结束发现不对：`dsh-portable.cmd shell-update rollback` —— 用最新一份备份整体还原（包含被删掉的文件），还原后同样跑一次 verify。",
+      "半途断电/被杀进程（壳看起来\"少了一半\"）：`dsh-portable.cmd shell-update recover` —— 发现残留 journal 就按备份还原并清 journal；没有 journal 则什么都不做。",
+      "想退回某个更早的版本：`dsh-portable.cmd shell-update check --to v<旧版本>`，确认后 `stage --force` + `apply`（降级必须显式 `--force`，默认拒绝降级）。",
+      "备份目录可以手工清理（`tmp\\` 下 `shell-backup-*`），删之前建议先复制一份到盘外。",
+      "网页兜底：打开 GitHub Release 页面下载 `harness-shell-<版本>.zip` 整包手工覆盖；只想修清单就单独下 `shell-version.json`。"
+    ]
+  },
+  "notesUrl": "https://github.com/Blue-Seventeen/hack3rx-harness/releases/tag/v0.1.0",
+  "zip": {
+    "name": "harness-shell-0.1.0.zip",
+    "sha256": "99a869ccd806b8851d41b6ad72e61ff1800a0d2e79b78c452176b75a8b157fd9",
+    "bytes": 1810392
   }
 }

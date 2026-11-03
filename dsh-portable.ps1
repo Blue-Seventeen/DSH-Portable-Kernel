@@ -1,17 +1,42 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'bootstrap', 'shell-update')]
+  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
   [string]$Action = 'doctor',
   [Parameter(Position = 1)]
   [string]$From,
   [Parameter(Position = 2)]
   [string]$Arg2,
-  [switch]$Force
+  [switch]$Force,
+  [switch]$PurgeHostStore
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Node = Join-Path $Root 'runtime\node\bin\node.exe'
+# 所有可变状态都留在便携目录内（外置 store / staging 已废弃）：环境变量由 env.cmd 提供。
+# 单独用 powershell -File 跑本脚本（没经过 env.cmd）时，先把探测片段读进环境，
+# 否则 $ImportMethod 会退回 auto，在 exFAT 上又会去试硬链接。
+$fragPath = Join-Path $Root 'tmp\fs-profile.cmd'
+$rootDrive = ''
+try { $q = [System.IO.Path]::GetPathRoot($Root); if ($q -match '^([A-Za-z]):') { $rootDrive = $Matches[1].ToUpperInvariant() } } catch { }
+$loadFrag = {
+  if (-not (Test-Path -LiteralPath $fragPath)) { return }
+  foreach ($ln in @(Get-Content -LiteralPath $fragPath)) {
+    if ($ln -match '^\s*set\s+"?([A-Za-z_][A-Za-z0-9_]*)=(.*?)"?\s*$') { Set-Item -Path ('env:' + $Matches[1]) -Value $Matches[2] }
+  }
+}
+if (-not $env:DSH_FS_PROFILE) { & $loadFrag }
+# 片段缺失或盘符对不上（换机器/换盘）时先现场探测一次，别让 $ImportMethod 退回 auto
+if ((-not $env:DSH_FS_PROFILE) -or ($rootDrive -and $env:DSH_FS_DRIVE -ne $rootDrive)) {
+  $fsScript = Join-Path $Root 'tools\fs-profile.ps1'
+  if (Test-Path -LiteralPath $fsScript) {
+    & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $fsScript -Root $Root -Quiet | Out-Null
+    & $loadFrag
+  }
+}
+$StoreRoot = if ($env:DSH_PNPM_STORE) { $env:DSH_PNPM_STORE } else { Join-Path $Root 'cache\pnpm-store' }
+$StageRoot = if ($env:DSH_STAGE) { $env:DSH_STAGE } else { Join-Path $Root 'tmp\build' }
+$ImportMethod = if ($env:DSH_PNPM_IMPORT_METHOD) { $env:DSH_PNPM_IMPORT_METHOD } else { 'auto' }
 $SevenZip = Join-Path $Root 'tools\7z\7z.exe'
 $Journal = Join-Path $Root 'tmp\update-journal.json'
 $Journal2 = Join-Path $Root 'tmp\shell-update-journal.json'
@@ -284,7 +309,7 @@ function Repair-State {
       $backup = if ($j.backup) { PathOf $j.backup } else { $null }
       Warn2 ("检测到上次更新在切换中途中断（" + $j.target + "）")
       if (-not (Test-Path -LiteralPath $target)) {
-        if ((Test-Path -LiteralPath $next) -and -not (TreeLooksValid $next)) {
+        if ((Test-Path -LiteralPath $next) -and -not (Test-TreeFor $j.target $next)) {
           Rename-Item -LiteralPath $next -NewName $j.target
           Say ("  已补完切换：" + $j.next + " -> " + $j.target)
         }
@@ -297,6 +322,16 @@ function Repair-State {
       else { Say '  目标目录完好，无需修复' }
     }
     Remove-Item -LiteralPath $Journal -Force -ErrorAction SilentlyContinue
+  }
+  # 壳换装 journal：tools\shell-update.mjs apply 先写 tmp\shell-update-journal.json，
+  # 它还在就说明上次换装走到一半（断电 / 被杀）。交给 shell-update recover 按备份整体还原。
+  if (Test-Path -LiteralPath $Journal2) {
+    if (Test-Path -LiteralPath $Node) {
+      Warn2 '检测到上次壳换装中断，正在自动恢复……'
+      & $Node (Join-Path $Root 'tools\shell-update.mjs') recover 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { Warn2 '  自动恢复失败：请运行 dsh-portable.cmd shell-update recover' }
+      else { Say '  已恢复到换装前的壳' }
+    } else { Warn2 '检测到壳换装中断，但 runtime\node 不在：先 dsh-portable.cmd bootstrap' }
   }
   if (Test-Path -LiteralPath $UpdateCache) {
     Get-ChildItem -LiteralPath $UpdateCache -Filter '*.part' -Force -ErrorAction SilentlyContinue | ForEach-Object {
@@ -517,15 +552,16 @@ function Start-DesktopDetached {
   $logDir = Join-Path $Root 'logs'
   if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
   $ud = Join-Path $Root 'shell-profile'
+  $crash = Join-Path $Root 'logs\crash'
   $masker = Join-Path $Root 'tools\mask-log.mjs'
   $comspec = if ($env:ComSpec) { $env:ComSpec } else { Join-Path $env:SystemRoot 'System32\cmd.exe' }
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $comspec
   if ((Test-Path -LiteralPath $masker) -and (Test-Path -LiteralPath $Node)) {
-    $psi.Arguments = '/c ""' + $exe + '" "--user-data-dir=' + $ud + '" 2>&1 | "' + $Node + '" "' + $masker + '" "' + $Root.TrimEnd('\') + '""'
+    $psi.Arguments = '/c ""' + $exe + '" "--user-data-dir=' + $ud + '" "--crash-dumps-dir=' + $crash + '" 2>&1 | "' + $Node + '" "' + $masker + '" "' + $Root.TrimEnd('\') + '""'
   } else {
     Warn2 '脱敏器不可用（tools\mask-log.mjs 或 node 缺失），日志会含明文 token'
-    $psi.Arguments = '/c ""' + $exe + '" "--user-data-dir=' + $ud + '" > "' + (Join-Path $logDir 'desktop-console.log') + '" 2>&1"'
+    $psi.Arguments = '/c ""' + $exe + '" "--user-data-dir=' + $ud + '" "--crash-dumps-dir=' + $crash + '" > "' + (Join-Path $logDir 'desktop-console.log') + '" 2>&1"'
   }
   $psi.UseShellExecute = $false
   $psi.CreateNoWindow = $true
@@ -533,7 +569,7 @@ function Start-DesktopDetached {
   try { [void][System.Diagnostics.Process]::Start($psi); return $true }
   catch {
     Warn2 ('自动启动失败（' + $_.Exception.Message + '），改用普通方式启动')
-    try { Start-Process -FilePath $exe -ArgumentList ('--user-data-dir="' + $ud + '"') | Out-Null; return $true } catch { return $false }
+    try { Start-Process -FilePath $exe -ArgumentList ('--user-data-dir="' + $ud + '" --crash-dumps-dir="' + $crash + '"') | Out-Null; return $true } catch { return $false }
   }
 }
 function Invoke-DesktopWindow {
@@ -693,6 +729,18 @@ function Get-Installer([pscustomobject]$manifest) {
   }
   throw '无法获得可用的安装包'
 }
+function Test-AppTree([string]$dir) {
+  # app 是 npm 包树，不是 desktop 结构：别拿 TreeLooksValid 去校验它（否则 update-app 必然回滚）
+  if (-not (Test-Path -LiteralPath $dir)) { return '目录不存在' }
+  if (-not (Test-Path -LiteralPath (Join-Path $dir 'node_modules\@deepseek-ai\dsh\lib\bin.js'))) { return '缺少 node_modules\@deepseek-ai\dsh\lib\bin.js' }
+  if (-not (Test-Path -LiteralPath (Join-Path $dir 'package.json'))) { return '缺少 package.json' }
+  return $null
+}
+function Test-TreeFor([string]$name, [string]$dir) {
+  if ($name -eq 'desktop') { return TreeLooksValid $dir }
+  if ($name -eq 'app') { return Test-AppTree $dir }
+  return $null
+}
 function Swap-Tree([string]$name, [string]$nextName) {
   $target = Join-Path $Root $name
   $next = Join-Path $Root $nextName
@@ -714,7 +762,7 @@ function Swap-Tree([string]$name, [string]$nextName) {
         Rename-Item -LiteralPath $backup -NewName $name
         Say '  已回滚到旧版本'
       }
-      elseif ((Test-Path -LiteralPath $next) -and -not (TreeLooksValid $next)) {
+      elseif ((Test-Path -LiteralPath $next) -and -not (Test-TreeFor $name $next)) {
         Rename-Item -LiteralPath $next -NewName $name
         Say '  已用新版本顶上（旧目录已不可恢复）'
       }
@@ -723,7 +771,7 @@ function Swap-Tree([string]$name, [string]$nextName) {
     Remove-Item -LiteralPath $Journal -Force -ErrorAction SilentlyContinue
     throw '切换失败（已回滚，原版本完好）'
   }
-  $err = TreeLooksValid $target
+  $err = Test-TreeFor $name $target
   if ($err) {
     Warn2 "新目录自检失败（$err），正在回滚"
     Rename-Item -LiteralPath $target -NewName "$name.failed"
@@ -783,13 +831,13 @@ function Install-App {
   if ($cur -eq $latest) { Say 'app 已是最新'; return }
   $next = Join-Path $Root 'app.next'
   RemoveTree $next
-  # 和 bootstrap 一样先装到 %LOCALAPPDATA% 的短路径再搬回来：U 盘目录本来就深，
+  # 和 bootstrap 一样先装到盘内短路径（tmp\build）再搬回来：U 盘目录本来就深，
   # 直接 pnpm --dir app.next 会撞 MAX_PATH（"Could not find a part of the path ...js.map"）。
-  $build = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\build\app'
+  $build = Join-Path $StageRoot 'app'
   RemoveTree $build
   New-Item -ItemType Directory -Path $build -Force | Out-Null
-  $store = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store'
-  & $Node $pnpm --dir $build add ("@deepseek-ai/dsh@" + $latest) --store-dir $store --config.node-linker=hoisted --config.strict-dep-builds=false --reporter append-only
+  $store = $StoreRoot
+  & $Node $pnpm --dir $build add ("@deepseek-ai/dsh@" + $latest) --store-dir $store --config.package-import-method=$ImportMethod --config.node-linker=hoisted --config.strict-dep-builds=false --reporter append-only
   if ($LASTEXITCODE -ne 0) { RemoveTree $build; throw 'app 安装失败，旧版本未受影响' }
   Say '  搬到便携目录（robocopy，长路径安全）'
   $null = RoboCopyTree $build $next 'app'
@@ -1084,7 +1132,7 @@ function Get-MissingParts {
   if (-not (Have-Pnpm)) { $need += 'pnpm' }
   if (-not (Have-App)) { $need += 'app' }
   if (-not (Have-Desktop)) { $need += 'desktop' }
-  if (-not (Test-Path -LiteralPath (Join-Path $Root 'home\profiles\node_modules'))) { $need += 'plugins' }
+  if (-not (Test-Path -LiteralPath (Join-Path $Root 'home\profiles\node_modules\dshmarket\package.json'))) { $need += 'plugins' }
   return $need
 }
 
@@ -1354,9 +1402,9 @@ function Repair-PluginEnv {
   try {
     $pnpm = Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'
     if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 runtime\pnpm\dist\pnpm.mjs' }
-    $store = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store'
+    $store = $StoreRoot
     Say '  正在用壳自带的 pnpm 重装插件依赖（包大多已在本地 store 里，通常很快）……'
-    & $Node $pnpm --dir $prof install --store-dir $store --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
+    & $Node $pnpm --dir $prof install --store-dir $store --config.package-import-method=$ImportMethod --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
     if ($LASTEXITCODE -ne 0) { throw ('插件依赖安装失败（exit ' + $LASTEXITCODE + '）。清单已备份在 ' + $bak + '，处理完网络/权限后重跑本命令即可') }
     $null = Plugin-Tool @('sync', '--quiet')
     Fix-MarketPatch -Quiet
@@ -1385,15 +1433,20 @@ function RemoveTree([string]$path) {
   # "Could not find a part of the path"，用 \\?\ 前缀才能绕过 MAX_PATH。
   if (-not $path) { return }
   if (-not (Test-Path -LiteralPath $path)) { return }
-  $long = '\\?\' + $path
-  try { Remove-Item -LiteralPath $long -Recurse -Force -ErrorAction Stop; return } catch { }
-  # 这里同样不能 2>&1：$ErrorActionPreference='Stop' 会把 cmd 的 stderr 变成终止错误，
-  # 结果是"删不掉就静默回退"在最需要它的时候（文件被占用）反而抛出底层错误、盖住调用方真正关心的原因。
-  $rmLog = Join-Path $env:TEMP 'dsh-rmtree.log'
-  & $env:ComSpec ('/c rmdir /s /q "' + $long + '" 2> "' + $rmLog + '"') | Out-Null
-  if (Test-Path -LiteralPath $path) {
+  # exFAT + 杀软/索引器常把删除卡在 EBUSY/EPERM 上几秒：退避重试比"删不掉就静默放弃"可靠。
+  for ($attempt = 1; $attempt -le 3; $attempt++) {
+    $long = '\\?\' + $path
+    try { Remove-Item -LiteralPath $long -Recurse -Force -ErrorAction Stop; return } catch { }
+    # 这里同样不能 2>&1：$ErrorActionPreference='Stop' 会把 cmd 的 stderr 变成终止错误，
+    # 结果是"删不掉就静默回退"在最需要它的时候（文件被占用）反而抛出底层错误、盖住调用方真正关心的原因。
+    $rmLog = Join-Path $env:TEMP 'dsh-rmtree.log'
+    & $env:ComSpec ('/c rmdir /s /q "' + $long + '" 2> "' + $rmLog + '"') | Out-Null
+    if (-not (Test-Path -LiteralPath $path)) { return }
     Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath $path)) { return }
+    Start-Sleep -Milliseconds (200 * $attempt)
   }
+  Warn2 ('删不掉：' + $path + '（可能被占用；稍后重试或先关掉桌面窗口）')
 }
 
 function RoboCopyTree([string]$src, [string]$dst, [string]$label) {
@@ -1451,13 +1504,13 @@ function Bootstrap-App {
   #   2) pnpm 10+ 默认 strictDepBuilds：有包没被允许跑构建脚本就整条命令失败（其实已经装好了），
   #      所以带 --config.strict-dep-builds=false（node-pty 有 prebuilds，不需要本地编译）
   #   3) U 盘路径本来就深，pnpm 在 app.next 里展开的路径会超过 260（MAX_PATH），
-  #      报 "Could not find a part of the path 'xxx.js.map'"。所以先装到 %LOCALAPPDATA% 下的短路径，
+  #      报 "Could not find a part of the path 'xxx.js.map'"。所以先装到盘内短路径（tmp\build），
   #      再用 robocopy 搬回来（robocopy 原生支持长路径）。
-  $build = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\build\app'
+  $build = Join-Path $StageRoot 'app'
   RemoveTree $build
   New-Item -ItemType Directory -Path $build -Force | Out-Null
-  $store = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store'
-  & $Node $pnpm --dir $build add ("@deepseek-ai/dsh@" + $latest) --store-dir $store --config.node-linker=hoisted --config.strict-dep-builds=false --reporter append-only
+  $store = $StoreRoot
+  & $Node $pnpm --dir $build add ("@deepseek-ai/dsh@" + $latest) --store-dir $store --config.package-import-method=$ImportMethod --config.node-linker=hoisted --config.strict-dep-builds=false --reporter append-only
   if ($LASTEXITCODE -ne 0) { RemoveTree $build; throw 'app 安装失败' }
   if (-not (Test-Path -LiteralPath (Join-Path $build 'node_modules\@deepseek-ai\dsh\lib\bin.js'))) {
     RemoveTree $build
@@ -1520,8 +1573,8 @@ function Bootstrap-Profiles {
   $pnpm = Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'
   if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 pnpm，无法安装插件依赖（先看上面 pnpm 那一步的失败原因）' }
   Say '  插件：按 home\profiles\package.json 安装商城与主题（约 20 MB）'
-  $store = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store'
-  & $Node $pnpm --dir $prof install --store-dir $store --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
+  $store = $StoreRoot
+  & $Node $pnpm --dir $prof install --store-dir $store --config.package-import-method=$ImportMethod --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
   if ($LASTEXITCODE -ne 0) { throw '插件依赖安装失败（可重跑；或先 dsh-portable.cmd fix-state）' }
   $null = Plugin-Tool @('sync', '--quiet')
   Say '  插件：商城与主题就绪'
@@ -1529,10 +1582,21 @@ function Bootstrap-Profiles {
 try {
 # 只读动作不再顺手改包：原来 Repair-State 在分派前无条件执行（删 journal / .part / .next），
 # 于是"跑一次 doctor"本身就成了修改。清理统一走 tidy、启动路径或 repair。
-if ($Action -notin @('doctor', 'verify', 'plugin-list', 'check-quiet', 'check-updates', 'sync-home', 'focus-desktop', 'show-desktop', 'clean-ship')) { Repair-State }
+if ($Action -notin @('doctor', 'verify', 'plugin-list', 'check-quiet', 'check-updates', 'sync-home', 'focus-desktop', 'show-desktop', 'clean-ship', 'fs-profile')) { Repair-State }
 
 switch ($Action) {
-  'repair' { Fix-Bom; Fix-PnpmState; Fix-Motw -IfNeeded; Fix-OfficeCli; Fix-MarketPatch; Clean-TempJunk; $null = Plugin-Tool @('sync', '--quiet'); Say '已检查并修复中断残留'; break }
+  'repair' {
+    Fix-Bom; Fix-PnpmState; Fix-Motw -IfNeeded; Fix-OfficeCli; Fix-MarketPatch; Clean-TempJunk
+    # compat 档：exFAT 没有硬链接，给 dsh-fs-local 的"新建文件"补一条 rename 回退（NTFS 不动）
+    if ($env:DSH_FS_PROFILE -eq 'compat') {
+      $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --apply --quiet 2>&1
+      if ($LASTEXITCODE -notin @(0, 2)) { Warn2 '硬链接回退补丁未打上（锚点不匹配或桌面正在运行），详情：node tools\patch-fs.mjs --check' }
+      $null = & $Node (Join-Path $Root 'tools\probe-fs.mjs') --quiet 2>&1
+      $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --check --quiet 2>&1
+      if ($LASTEXITCODE -ne 0) { Warn2 '补丁仍不完整（asar 可能被占用）：退出桌面后再运行 dsh-portable.cmd repair' }
+    }
+    $null = Plugin-Tool @('sync', '--quiet'); Say '已检查并修复中断残留'; break
+  }
   'tidy' {
     # 显式清理：更新中断残留 + tmp 垃圾。doctor/verify 不再顺手做这些（只报 leftovers 计数）。
     # 桌面窗口在运行时默认拒绝（tmp\dsh-* 可能是活跃会话正在用的目录），-Force 可强来。
@@ -1542,9 +1606,41 @@ switch ($Action) {
     }
     Repair-State
     Clean-TempJunk -Force
+    if ($PurgeHostStore) {
+      $extRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Hack3rX-Harness'
+      $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+      $extFull = [System.IO.Path]::GetFullPath($extRoot).TrimEnd('\')
+      $hasInFolder = (Test-Path -LiteralPath (Join-Path $StoreRoot 'v11\index.db')) -or (Test-Path -LiteralPath (Join-Path $StoreRoot 'index.db'))
+      $storeUnderExt = ($StoreRoot -and ([System.IO.Path]::GetFullPath($StoreRoot).TrimEnd('\')).StartsWith($extFull + '\', [System.StringComparison]::OrdinalIgnoreCase))
+      if ($storeUnderExt) {
+        Warn2 ('拒绝清理：当前 store 就在外置残留目录里（' + $StoreRoot + '），它是正在用的，不是残留')
+      }
+      elseif ($rootFull -eq $extFull -or $rootFull.StartsWith($extFull + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        Warn2 ('拒绝清理：便携目录就在外置残留目录里（' + $extRoot + '），删了会把正在用的程序一起删掉')
+      }
+      elseif (-not (Test-Path -LiteralPath $extRoot)) { Say '外置残留：无' }
+      elseif ((Test-Path -LiteralPath (Join-Path $extRoot 'pnpm-store')) -and -not $hasInFolder) {
+        Warn2 '旧 store 还在用（盘内 store 是空的）：先运行 dsh-portable.cmd migrate-store，再清残留'
+      }
+      else {
+        # 只清已知的两个旧子目录，绝不整删宿主根（用户可能把便携包放在这个目录里）
+        foreach ($legacy in @('pnpm-store', 'build')) {
+          $lp = Join-Path $extRoot $legacy
+          if (Test-Path -LiteralPath $lp) { Say ('清理外置残留：' + $lp); RemoveTree $lp }
+        }
+        $left = @(Get-ChildItem -LiteralPath $extRoot -Force -ErrorAction SilentlyContinue)
+        if ($left.Count -eq 0) { RemoveTree $extRoot }
+        Say '外置残留：已清理'
+      }
+    }
     # 顺手把"每换一台机器留一份"的登录态备份收敛到 2 份（审计 F.1：原来保留上限是死代码）
     RemoveOldBackups 'shell-login-bak-' 2 -Dir (Join-Path $Root 'cache')
     RemoveOldBackups 'desktop.bak-' 2
+    RemoveOldBackups 'app.bak-' 2
+    # staging 残留（tmp\build）不是 dsh-* 前缀，Clean-TempJunk 不管，这里显式清
+    $stageLeft = Join-Path $Root 'tmp\build'
+    if (Test-Path -LiteralPath $stageLeft) { RemoveTree $stageLeft }
+    foreach ($bad in @(Get-ChildItem -LiteralPath $Root -Directory -Filter '*.failed' -Force -ErrorAction SilentlyContinue)) { RemoveTree $bad.FullName }
     Say '已清理临时残留'
     break
   }
@@ -1616,7 +1712,7 @@ switch ($Action) {
   'unblock' { Fix-Motw; break }
   'fix-state' { Fix-PnpmState; break }
   'reset-shell' { Reset-ShellCrypto; break }
-  'fix-office' { Fix-OfficeRuntime; Fix-OfficeCli; Clean-TempJunk; break }
+  'fix-office' { Fix-OfficeRuntime -Force:$Force; Fix-OfficeCli; Clean-TempJunk; break }
   'fix-market' { Fix-MarketPatch; break }
   'auto-prepare' {
     # 每个子步骤都记账：任何一步失败就不写 prep 标记（下次启动会重试），并留 logs\prep.err。
@@ -1684,94 +1780,21 @@ switch ($Action) {
   }
   'plugin-sync' { exit (Plugin-Tool @('sync')) }
   'shell-update' {
-    # 壳自更新：只替换"壳"（根脚本 + tools\ + home 的清单/主题 + README/LICENSE）。
-    # 官方层（app\ desktop\ runtime\node|pnpm）与 home\ 下的会话、凭证、私有网关配置永不触碰。
-    # 默认只预演；-Force 才真的换。换之前全部备份，换完跑 verify，不通过就整体回滚。
+    # 壳自更新 v2：真正干活的是 tools\shell-update.mjs（取版本线清单 → 校验 → 调 shell-apply.mjs 备份 /
+    # 换装 / 回滚，verify 不过就整体回滚）。这里只做三件事：子命令分派、占用检查、把 -Force 翻成 --force。
     $tool = Join-Path $Root 'tools\shell-update.mjs'
     if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\shell-update.mjs'; exit 2 }
-    $mode = if ($From -in @('check', 'apply')) { $From } else { 'check' }
-    # 第二个位置参数可给清单来源（本地文件或 URL）：镜像/离线/自测时用得上
-    $mArgs = @()
-    if ($Arg2) { $mArgs += @('--manifest', (PathOf $Arg2)) }
-    if ($mode -eq 'check') {
-      & $Node $tool check @mArgs
-      exit $LASTEXITCODE
-    }
-    if (-not $Force) {
-      Say '壳更新预演（只报告，不改文件）：'
-      & $Node $tool check @mArgs
-      Say ''
-      Say '这是预演，加 -Force 才真的替换（自动备份，失败自动回滚）'
-      break
-    }
-    if (DesktopRunning) { throw '桌面窗口正在运行：先退出 DeepSeek Harness 再更新壳（文件会被占用）' }
-    $raw = (@(& $Node $tool stage @mArgs --json) -join '')
-    $info = $null
-    try { $info = (@($raw -split "`n") | Where-Object { $_.Trim() } | Select-Object -Last 1) | ConvertFrom-Json } catch { }
-    if (-not $info -or -not $info.ok) {
-      Warn2 ('壳更新：取文件失败' + $(if ($raw) { '：' + $raw } else { '（没有任何输出）' }))
-      exit 1
-    }
-    $files = @($info.files)
-    if ($files.Count -eq 0) { Say ('壳已经是最新（' + $info.shellVersion + '），没有要换的文件'); break }
-    # 清单文件也要一并换回仓库根：stage 会把远端清单原字节写到 staging。
-    # 漏了它，本地版本号永远不前进 —— 下次 check 还报有更新，stage 又下 0 个文件，变成"永远提醒升级"。
-    $mfInStage = Join-Path ([string]$info.stage) 'shell-version.json'
-    if ((Test-Path -LiteralPath $mfInStage) -and -not ($files | Where-Object { [string]$_.path -eq 'shell-version.json' })) {
-      $files += [pscustomobject]@{ path = 'shell-version.json'; action = 'update'; bytes = 0 }
-    }
-    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $bak = Join-Path $Root ('cache\shell-backup-' + $stamp)
-    if (-not (Test-Path -LiteralPath $bak)) { New-Item -ItemType Directory -Path $bak -Force | Out-Null }
-    $plan = @()
-    foreach ($f in $files) {
-      $rel = [string]$f.path
-      $relWin = $rel -replace '/', '\'
-      $abs = Join-Path $Root $relWin
-      $existed = Test-Path -LiteralPath $abs
-      if ($existed) {
-        $dst = Join-Path $bak $relWin
-        $dd = Split-Path -Parent $dst
-        if (-not (Test-Path -LiteralPath $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
-        Copy-Item -LiteralPath $abs -Destination $dst -Force
-      }
-      $plan += [pscustomobject]@{ rel = $rel; abs = $abs; existed = $existed }
-    }
-    # journal 先落盘：换到一半断电/被杀时，下一次运行能看出备份在哪
-    $j = [pscustomobject]@{ version = [string]$info.shellVersion; backup = $bak; stage = [string]$info.stage; files = @($plan | ForEach-Object { $_.rel }) }
-    $j | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Journal2 -Encoding UTF8
-    try {
-      foreach ($p in $plan) {
-        $src = Join-Path ([string]$info.stage) ($p.rel -replace '/', '\')
-        if (-not (Test-Path -LiteralPath $src)) { throw ('staging 里缺文件：' + $p.rel) }
-        $dd = Split-Path -Parent $p.abs
-        if (-not (Test-Path -LiteralPath $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
-        Copy-Item -LiteralPath $src -Destination ($p.abs + '.new') -Force
-        Move-Item -LiteralPath ($p.abs + '.new') -Destination $p.abs -Force
-      }
-      # 换完立刻自检：宁可回到旧壳，也不要留一个半坏的壳
-      & $Node (Join-Path $Root 'tools\verify-shell.mjs')
-      if ($LASTEXITCODE -ne 0) { throw '换装后 verify 不通过' }
-    }
-    catch {
-      $err = $_.Exception.Message
-      Say '  换装失败，正在按备份回滚……'
-      foreach ($p in $plan) {
-        $bakFile = Join-Path $bak ($p.rel -replace '/', '\')
-        if ($p.existed -and (Test-Path -LiteralPath $bakFile)) {
-          Copy-Item -LiteralPath $bakFile -Destination $p.abs -Force
-        }
-        elseif (-not $p.existed -and (Test-Path -LiteralPath $p.abs)) {
-          Remove-Item -LiteralPath $p.abs -Force -ErrorAction SilentlyContinue
-        }
-      }
-      Remove-Item -LiteralPath $Journal2 -Force -ErrorAction SilentlyContinue
-      throw ($err + '（已按备份回滚到更新前的壳，备份在 ' + $bak + '）')
-    }
-    Remove-Item -LiteralPath $Journal2 -Force -ErrorAction SilentlyContinue
-    Say ('壳已更新到 ' + $info.shellVersion + '：' + $plan.Count + ' 个文件已替换，重启后生效')
-    Say ('旧文件备份在 ' + $bak)
-    break
+    if (-not (Test-Path -LiteralPath $Node)) { Warn2 'runtime\node 不在：先运行 dsh-portable.cmd bootstrap'; exit 2 }
+    $sub = if ($From -in @('check', 'apply', 'rollback', 'recover', 'notes', 'stage', 'backups', 'snooze')) { $From } else { 'check' }
+    # 桌面窗口占着壳文件：apply 之前必须没有桌面窗口（check / notes 只读，不受影响）
+    if ($sub -eq 'apply' -and $Force -and (DesktopRunning)) { throw '桌面窗口正在运行：先退出 DeepSeek Harness 再更新壳（文件会被占用）' }
+    $cli = @($sub)
+    # 第二个位置参数是清单来源（本地文件或 URL）：镜像 / 离线 / 自测时用得上
+    if ($Arg2) { $cli += @('--manifest', (PathOf $Arg2)) }
+    if ($sub -eq 'apply' -and $Force) { $cli += '--force' }
+    # 退出码由 node 侧决定：0 有更新 / 4 已最新 / 3 被兼容性挡下 / 1 失败 / 2 用法
+    & $Node $tool @cli
+    exit $LASTEXITCODE
   }
   'plugin-repair' {
     # 插件依赖环境重建。触发场景：换机器/换启动方式后，dsh 的插件操作从 PATH 上拿到的是
@@ -1798,6 +1821,32 @@ switch ($Action) {
     if (-not $From) { Say '用法：dsh-portable.cmd plugin-revoke <包名>'; exit 1 }
     exit (Plugin-Tool @('revoke', $From))
   }
+  'migrate-store' {
+    # 把旧版放在宿主用户目录的 pnpm store 搬进便携目录（一次性，GB 级，慢是正常的）
+    $legacy = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Hack3rX-Harness\pnpm-store'
+    if (-not (Test-Path -LiteralPath $legacy)) { Say '没有找到旧的外置 store，无需迁移'; break }
+    if (Test-Path -LiteralPath $StoreRoot) {
+      $hasContent = (Test-Path -LiteralPath (Join-Path $StoreRoot 'v11\index.db')) -or (Test-Path -LiteralPath (Join-Path $StoreRoot 'index.db'))
+      if ($hasContent) { Say ('盘内 store 已有内容：' + $StoreRoot + '（要重建请先手工删掉它）'); break }
+    }
+    if (DesktopRunning) { throw '桌面窗口正在运行：先退出桌面再搬 store（否则记录会被并发改写）' }
+    Say ('搬迁 store：' + $legacy + ' -> ' + $StoreRoot + '（GB 级，慢是正常的）')
+    New-Item -ItemType Directory -Path (Split-Path -Parent $StoreRoot) -Force | Out-Null
+    $null = RoboCopyTree $legacy $StoreRoot 'store'
+    $idx = Join-Path $StoreRoot 'v11\index.db'
+    if (-not (Test-Path -LiteralPath $idx)) { throw ('搬迁结果不完整：缺少 ' + $idx + '（先看 doctor，再决定是否重试）') }
+    Fix-PnpmState
+    Say '完成。若 pnpm 仍报 store 不一致，运行 dsh-portable.cmd plugin-repair'
+    break
+  }
+  'fs-profile' {
+    # 重新探测卷类型并打印生成的片段（排障/换机器后用）
+    & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tools\fs-profile.ps1') -Root $Root -Force
+    if ($LASTEXITCODE -ne 0) { Warn2 '卷类型探测失败（详见上面的输出），本次仍按残留片段/兜底值运行' }
+    $frag = Join-Path $Root 'tmp\fs-profile.cmd'
+    if (Test-Path -LiteralPath $frag) { Get-Content -LiteralPath $frag | Where-Object { $_ -like 'set *' } | ForEach-Object { Say ('  ' + $_) } }
+    break
+  }
   'doctor' {
     Say "root      : $Root"
     Say ("app       : " + (AppVersion) + "  (" + (Size (Join-Path $Root 'app')) + " MB)")
@@ -1808,10 +1857,54 @@ switch ($Action) {
     $vol = Split-Path -Qualifier $Root
     $fmt = 'unknown'; try { $fmt = ([System.IO.DriveInfo]::new($vol)).DriveFormat } catch { }
     Say ("volume    : " + $vol + " (" + $fmt + "), 剩余 " + (FreeMB $Root) + " MB")
-    Say ("store     : exists=" + (Test-Path (Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store')))
+    if (-not $env:DSH_FS_PROFILE) {
+      # 单独跑 dsh-portable.ps1 时没有 env.cmd 的环境：直接读探测片段
+      $frag = Join-Path $Root 'tmp\fs-profile.cmd'
+      if (Test-Path -LiteralPath $frag) {
+        foreach ($ln in @(Get-Content -LiteralPath $frag)) {
+          if ($ln -match '^\s*set\s+"?([A-Za-z_][A-Za-z0-9_]*)=(.*?)"?\s*$') { Set-Item -Path ('env:' + $Matches[1]) -Value $Matches[2] }
+        }
+      }
+    }
+    Say ("fs        : " + $(if ($env:DSH_FS_FORMAT) { $env:DSH_FS_FORMAT } else { 'unknown' }) + " -> " + $(if ($env:DSH_FS_PROFILE) { $env:DSH_FS_PROFILE } else { 'unknown' }) + " / " + $(if ($env:DSH_PERMISSION_MODE) { $env:DSH_PERMISSION_MODE } else { 'unknown' }))
+    if ($env:DSH_FS_PROFILE -eq 'compat') {
+      if (Test-Path -LiteralPath $Node) {
+        $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --check --quiet 2>&1
+        $patchState = switch ($LASTEXITCODE) { 0 { 'applied' } 2 { 'applied' } 4 { 'not-applied' } default { 'anchor-mismatch' } }
+      } else { $patchState = 'unknown (no node yet)' }
+      Say ("fs-patch  : " + $patchState)
+    } else { Say ("fs-patch  : n/a (" + $(if ($env:DSH_FS_PROFILE) { $env:DSH_FS_PROFILE } else { 'unknown' }) + ")") }
+    Say ("store     : " + $StoreRoot + "  exists=" + (Test-Path -LiteralPath $StoreRoot))
+    $extRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Hack3rX-Harness'
+    Say ("external  : " + $(if (Test-Path -LiteralPath $extRoot) { 'present: ' + $extRoot } else { 'none' }))
     Say ("7z        : " + (Get-SevenZipState))
     Say ("deps      : " + (Get-DepsText))
     Say ("pnpm      : " + (Get-PnpmStateText))
+    # 壳自身状态三行：版本与清单规模、上一次 check 的缓存结论、壳换装 journal 是否残留。
+    # 只读（doctor 是只读动作，分派前已跳过 Repair-State）；清 journal 要显式 shell-update recover。
+    $shMf = Json (Join-Path $Root 'shell-version.json')
+    $shVer = if ($shMf -and $shMf.shellVersion) { [string]$shMf.shellVersion } else { 'MISSING' }
+    $shChan = if ($shMf -and $shMf.channel) { [string]$shMf.channel } else { 'stable' }
+    $shCount = if ($shMf -and $shMf.files) { @($shMf.files.PSObject.Properties).Count } else { 0 }
+    Say ("shell-ver : " + $shVer + ' (' + $shChan + ') 清单 ' + $shCount + ' 文件 / 源 releases/latest')
+    $shUpd = '未知（还没检查）'
+    $chk = Json (Join-Path $Root 'tmp\shell-check.json')
+    if ($chk -and $chk.summary) {
+      $at = 0
+      try { if ($chk.at) { $at = [int64]$chk.at } elseif ($chk.summary.at) { $at = [int64]$chk.summary.at } } catch { $at = 0 }
+      $ageH = -1
+      if ($at -gt 0) {
+        $epoch = New-Object System.DateTime(1970, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
+        $ageH = ((([datetime]::UtcNow - $epoch).TotalMilliseconds) - $at) / 3600000
+      }
+      if ($ageH -lt 0 -or $ageH -gt 24) { $shUpd = '未知（缓存过期）' }
+      elseif ($chk.summary.status -eq 'update-available') { $shUpd = ([string]$chk.summary.remote + ' 可更新') }
+      elseif ($chk.summary.status -eq 'blocked') { $shUpd = ('被兼容性挡下（' + [string]$chk.summary.remote + '）') }
+      elseif ($chk.summary.status -eq 'local-newer') { $shUpd = ('本地比远端新（' + [string]$chk.summary.remote + '）') }
+      else { $shUpd = '已是最新' }
+    }
+    Say ("shell-upd : " + $shUpd)
+    Say ("journal   : " + $(if (Test-Path -LiteralPath $Journal2) { '有中断残留（运行 dsh-portable.cmd shell-update recover）' } else { 'none' }))
     Say ("office    : " + (Get-OfficePatchState))
     Say ("login-bak : " + (Get-LoginBackupCount))
     Say ("leftovers : " + (Get-LeftoverCount))

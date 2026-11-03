@@ -8,20 +8,31 @@
  *   编码不变式 / 三份依赖一致 / bundles 数量 / 豁免必须是精确版本（无 '*'）/
  *   compat-heal 已收敛 / 市场补丁 55 字面 / sync --check 只读且已一致 /
  *   结构下限 + asar 精确字节 / 7z 真跑一次 / tools 语法 / 启动器接线 / 共享插件清单 /
- *   pnpm 垫片在不在 + 记录里的 store 大版本与 runtime\pnpm 一致
+ *   pnpm 垫片在不在 + 记录里的 store 大版本与 runtime\pnpm 一致 /
+ *   便携优先（store / staging / 崩溃转储都收进盘内）/
+ *   清单 v2 合法 / 清单覆盖完整 / 清单里没有禁止路径 / 更新源是版本线 / RELEASE-NOTES 六小节齐全
+ *
+ * --update-gate：只跑"壳换装后必须立住"的那一小撮（tools/shell-apply.mjs 的 verify 闸用它），
+ * 其余行既不输出也不计数，结论行改成"结论（update-gate）：…"；正常模式行为完全不变。
  *
  * 只读：所有"同步/规整"类检查都走各自工具的 --check（不落盘），本脚本自己不写任何文件。
  * 任何一项 FAIL → exit 1；读文件抛异常也算 FAIL（不再整个脚本崩掉）。
  */
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// 清单口径只有一份：白名单谓词 / schema 版本 / 本地壳文件列表都从壳更新器取，不在这里另写一套
+import { MANIFEST_SCHEMA, SHELL_MANIFEST, UPDATER_MIN, isAllowedShellPath, listLocalShellFiles } from './shell-update.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const NODE = join(ROOT, 'runtime/node/bin/node.exe')
 const SEVEN = join(ROOT, 'tools/7z/7z.exe')
+/** --update-gate：换装后的窄门禁（只跑"壳换完必须立住"的那几项） */
+const UPDATE_GATE = process.argv.includes('--update-gate')
+/** 跑语法检查/子进程用哪个 node：内置运行时不在（空壳、新机器还没 bootstrap）就退回跑本脚本的这个 */
+const CHECK_NODE = existsSync(NODE) ? NODE : process.execPath
 const rows = []
 /** skip=true 记 SKIP：这一项在当前这份目录里不适用（比如只有壳的发布版没有 runtime\pnpm），不算失败 */
 const add = (label, ok, detail, skip) => rows.push({ label, ok: !!ok, detail: detail || '', skip: !!skip })
@@ -42,8 +53,8 @@ const countFiles = (p) => {
     return n
   } catch { return 0 }
 }
-const run = (args) => {
-  try { return { code: 0, out: execFileSync(NODE, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) } }
+const run = (args, node) => {
+  try { return { code: 0, out: execFileSync(node || NODE, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) } }
   catch (e) { return { code: e.status === undefined ? 1 : e.status, out: String(e.stdout || '') + String(e.stderr || '') } }
 }
 
@@ -236,7 +247,8 @@ check('解包不硬依赖系统 tar（1703 这类老机器能自举）', () => {
 
 // 6) tools 语法与启动器接线 ---------------------------------------------------
 check('tools/*.mjs 语法全过', () => {
-  const toolBad = readdirSync(join(ROOT, 'tools')).filter((n) => n.endsWith('.mjs')).filter((n) => run(['--check', join(ROOT, 'tools', n)]).code !== 0)
+  // 内置 node 不在时用 process.execPath：发布版/空壳目录里也必须能跑（换装闸门就靠这一项）
+  const toolBad = readdirSync(join(ROOT, 'tools')).filter((n) => n.endsWith('.mjs')).filter((n) => run(['--check', join(ROOT, 'tools', n)], CHECK_NODE).code !== 0)
   add('tools/*.mjs 语法全过', toolBad.length === 0, toolBad.join(', '))
 })
 check('dsh-portable.cmd 也 call env.cmd（两条入口环境一致）', () => {
@@ -297,18 +309,285 @@ check('pnpm 记录的 store 大版本与 runtime\\pnpm 一致', () => {
   add(label, got === want, got === want ? 'v' + want : 'v' + got + ' -> v' + want + '（需 dsh-portable.cmd plugin-repair）')
 })
 
+// 9) 便携优先：store / staging / 档位 / 崩溃转储 --------------------------------
+// 这一组锁"把 C 盘上的东西收回盘内"：pnpm store 与壳更新 staging 不许再落在 %LOCALAPPDATA%
+// （换台机器/换个用户就失效，而且 exFAT 盘上 C 盘 store 与盘内 node_modules 混用会互相打架）；
+// 桌面崩溃转储也要落进 logs\crash，否则换机时跟着本机一起丢。
+// 判据里凡是"本机运行时才生成"的（tmp\fs-profile.cmd、被 fix-pnpm-state 重写过的 yaml）一律
+// 存在才校验：没生成记 SKIP，生成了就必须自洽 —— 不能因为"还没跑过"而误报 FAIL。
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const YAML3 = ['home/profiles/pnpm-workspace.yaml', 'home/profiles/web/pnpm-workspace.yaml', 'home/profiles/desktop/pnpm-workspace.yaml']
+const setVar = (text, key) => {
+  // 解析 cmd 片段里的 set "K=V"（也容忍 set K=V 与行尾引号）
+  const m = text.match(new RegExp('^\\s*set\\s+"?' + esc(key) + '=(.*?)"?\\s*$', 'im'))
+  return m ? m[1].trim() : ''
+}
+check('便携脚本不再用 LOCALAPPDATA 拼 store/stage 路径（根目录 + tools\\）', () => {
+  const label = '便携脚本不再用 LOCALAPPDATA 拼 store/stage 路径（根目录 + tools\\）'
+  const files = readdirSync(ROOT, { withFileTypes: true })
+    .filter((d) => d.isFile() && /\.(cmd|ps1|mjs)$/i.test(d.name)).map((d) => d.name)
+  const walk = (dir, rel) => {
+    let ents = []
+    try { ents = readdirSync(dir, { withFileTypes: true }) } catch { return }
+    for (const e of ents) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) walk(p, rel + e.name + '/')
+      else if (/\.(cmd|ps1|mjs)$/i.test(e.name)) files.push(rel + e.name)
+    }
+  }
+  walk(join(ROOT, 'tools'), 'tools/')
+  // 只豁免"清理子进程继承的环境变量名清单"这一种写法：里面是变量名，不是路径拼接。
+  // 纯注释行（rem / # / // / *）提到 old %LOCALAPPDATA% 属于说明文字，天然不算（见下面 commented 计数）。
+  const ALLOW = [{ file: 'tools/shell-update.mjs', re: /^\s*for \(const k of \[[^\]]*LOCALAPPDATA/i }]
+  const hits = []
+  let allowed = 0
+  let commented = 0
+  for (const f of files) {
+    let text = ''
+    try { text = read(join(ROOT, f)) } catch { continue }
+    const id = f.replace(/\\/g, '/')
+    // 扫描器自己必然出现这些字面量（判据/白名单），跳过自身不算违规。
+    if (id === 'tools/verify-shell.mjs') continue
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (!/LOCALAPPDATA/i.test(line)) return
+      const t = line.trim()
+      if (/^(rem\b|::|#|\/\/|\*)/i.test(t)) { commented += 1; return }
+      if (ALLOW.some((a) => a.file === id && a.re.test(line))) { allowed += 1; return }
+      hits.push(id + ':' + (i + 1))
+    })
+  }
+  if (hits.length) { add(label, false, '仍在用：' + hits.slice(0, 4).join(', ') + (hits.length > 4 ? ' 等共 ' + hits.length + ' 处' : '')); return }
+  const extra = [allowed ? '豁免变量名清单 ' + allowed + ' 处' : '', commented ? '注释说明 ' + commented + ' 处不计' : ''].filter(Boolean).join('，')
+  add(label, true, files.length + ' 个脚本 0 处拼路径' + (extra ? '（' + extra + '）' : ''))
+})
+check('compat 档补丁已打 / native 档无残留补丁', () => {
+  const label = 'compat 档补丁已打 / native 档无残留补丁'
+  const node = join(ROOT, 'runtime', 'node', 'bin', 'node.exe')
+  const frag = join(ROOT, 'tmp', 'fs-profile.cmd')
+  if (!existsSync(node)) { add(label, true, '空壳（没有 node），跳过'); return }
+  if (!existsSync(frag)) { add(label, true, '还没有探测片段，跳过'); return }
+  let profile = ''
+  for (const line of read(frag).split(/\r?\n/)) {
+    const m = line.match(/^\s*set\s+"?DSH_FS_PROFILE=(.*?)"?\s*$/i)
+    if (m) profile = m[1].trim().toLowerCase()
+  }
+  const tool = join(ROOT, 'tools', 'patch-fs.mjs')
+  if (!existsSync(tool)) { add(label, false, '缺少 tools/patch-fs.mjs'); return }
+  // stdio ignore：受限会话里管道会 EPERM，只看退出码
+  const r = spawnSync(node, [tool, '--check', '--quiet'], { stdio: 'ignore', windowsHide: true })
+  const code = r.status
+  if (profile === 'compat') add(label, code === 0, code === 0 ? 'app 与 asar 都已打' : 'compat 档补丁未打全（code ' + code + '），运行 dsh-portable.cmd repair')
+  else if (profile === 'native') add(label, code === 4, code === 4 ? 'native 档无补丁（正常）' : 'NTFS 上仍有补丁（code ' + code + '），运行 patch-fs.mjs --revert')
+  else add(label, true, '档位未知，跳过')
+})
+
+check('env.cmd 把 pnpm store / staging 收进便携目录', () => {
+  const label = 'env.cmd 把 pnpm store / staging 收进便携目录'
+  let text = ''
+  try { text = read(join(ROOT, 'env.cmd')) } catch (e) { add(label, false, '读不到 env.cmd: ' + e.message); return }
+  const want = [['DSH_PNPM_STORE', '%ROOT%cache\\pnpm-store'], ['DSH_STAGE', '%ROOT%tmp\\build']]
+  const bad = want.filter(([k, v]) => !new RegExp('set\\s+"?' + esc(k + '=' + v) + '"?', 'i').test(text)).map(([k, v]) => k + '=' + v)
+  add(label, bad.length === 0, bad.length ? '缺少/路径不对：' + bad.join(', ') : want.map(([k]) => k).join(' / ') + ' 都指向盘内')
+})
+check('tools/fs-profile.ps1 就位（UTF-8 BOM，且只有一个）', () => {
+  const label = 'tools/fs-profile.ps1 就位（UTF-8 BOM，且只有一个）'
+  const p = join(ROOT, 'tools/fs-profile.ps1')
+  if (!exists(p)) { add(label, false, '文件不存在：卷探测与档位生成没有实现'); return }
+  const n = bomCount(p)
+  add(label, n === 1, n === 1 ? 'BOM 个数 1，' + bytes(p) + ' B' : 'BOM 个数 ' + n)
+})
+check('三份 pnpm-workspace.yaml 都写 nodeLinker: hoisted（exFAT 无软链）', () => {
+  const label = '三份 pnpm-workspace.yaml 都写 nodeLinker: hoisted（exFAT 无软链）'
+  const bad = YAML3.filter((f) => !exists(join(ROOT, f)) || !/^\s*nodeLinker\s*:\s*hoisted\s*$/m.test(read(join(ROOT, f))))
+  add(label, bad.length === 0, bad.length ? '缺少 nodeLinker: hoisted → ' + bad.join(', ') : '3 份都 hoisted')
+})
+check('三份 pnpm-workspace.yaml 已记 packageImportMethod（本机重写后才校验）', () => {
+  const label = '三份 pnpm-workspace.yaml 已记 packageImportMethod（本机重写后才校验）'
+  const present = YAML3.filter((f) => exists(join(ROOT, f)))
+  if (!present.length) { add(label, true, '三份 yaml 都不在（只有壳的发布版，由 bootstrap 生成）', true); return }
+  // packageImportMethod 是 fix-pnpm-state.mjs 在每次启动时和 storeDir 一起写进 yaml 的本机信息：
+  // 还没被重写过（yaml 里没有 storeDir 行）就谈不上"该有"，记 SKIP 而不是 FAIL。
+  const rewritten = present.filter((f) => /^\s*storeDir\s*:/m.test(read(join(ROOT, f))))
+  if (!rewritten.length) { add(label, true, 'yaml 还没被 fix-pnpm-state 重写（下次启动会写 packageImportMethod）', true); return }
+  let wantImport = ''
+  try {
+    const frag = read(join(ROOT, 'tmp', 'fs-profile.cmd'))
+    const m = frag.match(/^\s*set\s+"?DSH_PNPM_IMPORT_METHOD=(.*?)"?\s*$/im)
+    if (m) wantImport = m[1].trim()
+  } catch { }
+  const bad = present.filter((f) => {
+    const m = read(join(ROOT, f)).match(/^\s*packageImportMethod\s*:\s*([A-Za-z]+)\s*$/m)
+    if (!m) return true
+    const v = m[1]
+    if (!['copy', 'auto', 'hardlink', 'clone'].includes(v)) return true
+    // 有档位片段时必须与档位一致：compat=copy（exFAT 没有硬链接），native=auto
+    return wantImport ? v !== wantImport : false
+  })
+  add(label, bad.length === 0, bad.length ? 'packageImportMethod 缺失或与档位不符 → ' + bad.join(', ') + (wantImport ? '（期望 ' + wantImport + '）' : '') : '已重写 ' + rewritten.length + ' 份，导入方式与档位一致')
+})
+check('start-desktop.cmd 两处启动都接 --crash-dumps-dir（转储落 logs\\crash）', () => {
+  const label = 'start-desktop.cmd 两处启动都接 --crash-dumps-dir（转储落 logs\\crash）'
+  let text = ''
+  try { text = read(join(ROOT, 'start-desktop.cmd')) } catch (e) { add(label, false, '读不到 start-desktop.cmd: ' + e.message); return }
+  const starts = text.split(/\r?\n/).filter((l) => /DeepSeek Harness\.exe/i.test(l) && !/^\s*rem\b/i.test(l))
+  const want = '--crash-dumps-dir="%ROOT%logs\\crash"'
+  if (starts.length < 2) { add(label, false, '只找到 ' + starts.length + ' 处启动命令（应有 2 处：正常启动 + launch-desktop 失败兜底）'); return }
+  const bad = starts.filter((l) => {
+    const iFlag = l.indexOf(want)
+    const iUser = l.indexOf('--user-data-dir')
+    return iFlag < 0 || iUser < 0 || iUser > iFlag // 必须在 --user-data-dir 之后
+  })
+  add(label, bad.length === 0, bad.length ? bad.length + ' 处没接（或没放在 --user-data-dir 之后）' : starts.length + ' 处都接了')
+})
+check('tmp\\fs-profile.cmd 的权限模式与档位自洽（存在才校验）', () => {
+  const label = 'tmp\\fs-profile.cmd 的权限模式与档位自洽（存在才校验）'
+  const p = join(ROOT, 'tmp/fs-profile.cmd')
+  if (!exists(p)) { add(label, true, 'tmp\\fs-profile.cmd 还没生成（未探测）', true); return }
+  let text = ''
+  try { text = read(p) } catch (e) { add(label, true, '读不到 tmp\\fs-profile.cmd: ' + e.message, true); return }
+  const prof = setVar(text, 'DSH_FS_PROFILE').toLowerCase()
+  const mode = setVar(text, 'DSH_PERMISSION_MODE').toLowerCase()
+  const want = prof === 'compat' ? 'danger-full-access' : prof === 'native' ? 'workspace-write' : ''
+  if (!want) { add(label, false, 'DSH_FS_PROFILE 取值无法识别：' + JSON.stringify(setVar(text, 'DSH_FS_PROFILE'))); return }
+  add(label, mode === want, mode === want
+    ? prof + ' → ' + mode
+    : prof + ' 应配 ' + want + '，实际 ' + (mode || '（缺 DSH_PERMISSION_MODE）'))
+})
+
+// 10) 清单 v2（shell-version.json）与发布链路 -----------------------------------
+// 这一组锁"壳自更新通道本身"：清单是不是 v2、覆盖是否完整、有没有把用户数据写进清单、
+// 默认源是不是版本线（不是 master）、随包的 RELEASE-NOTES 六小节在不在。
+const MANIFEST_FILE = join(ROOT, SHELL_MANIFEST)
+/** notes 的六个小节键（与 tools/shell-update.mjs 的 NOTES_SECTIONS 一一对应） */
+const MANIFEST_NOTES = ['added', 'fixed', 'optimized', 'breaking', 'upgrade', 'rollback']
+/** RELEASE-NOTES.md 里六个小节的中文标题 */
+const MANIFEST_NOTE_TITLES = ['新增', '修复', '优化', '破坏性变更', '升级会做什么', '如何回退']
+/**
+ * 永远不许进清单的路径：官方层（app/desktop/runtime）、用户数据（会话/存储/附件/凭证）、
+ * 仓库元数据（version.json/.git*），以及桌面模式那份用户私有网关配置。
+ */
+const MANIFEST_DENY = ['app', 'desktop', 'runtime/node', 'runtime/pnpm', 'home/sessions', 'home/storages',
+  'home/attachments', 'home/.credentials', 'version.json', '.gitignore', '.gitattributes',
+  'home/profiles/desktop/cordis.patch.yml']
+const manifestJson = () => {
+  const j = JSON.parse(read(MANIFEST_FILE))
+  return j && typeof j === 'object' && !Array.isArray(j) ? j : {}
+}
+const denyHit = (rel) => {
+  const low = String(rel).toLowerCase()
+  return MANIFEST_DENY.some((d) => low === d || low.startsWith(d + '/') || low.startsWith(d + '.'))
+}
+
+check('清单 v2 合法', () => {
+  const label = '清单 v2 合法'
+  if (!exists(MANIFEST_FILE)) { add(label, false, 'shell-version.json 不存在（先跑 node tools\\clean-ship.mjs refresh）'); return }
+  const j = manifestJson()
+  const bad = []
+  // schemaVersion / updaterMin 都得是本更新器读得懂的整数（上限就是本工具支持的 2）
+  if (!Number.isInteger(j.schemaVersion) || j.schemaVersion < 1 || j.schemaVersion > MANIFEST_SCHEMA) bad.push('schemaVersion=' + JSON.stringify(j.schemaVersion) + '（应 1..' + MANIFEST_SCHEMA + ' 的整数）')
+  if (!Number.isInteger(j.updaterMin) || j.updaterMin < 1 || j.updaterMin > UPDATER_MIN) bad.push('updaterMin=' + JSON.stringify(j.updaterMin) + '（应 1..' + UPDATER_MIN + ' 的整数）')
+  if (!String(j.shellVersion || '').trim()) bad.push('shellVersion 为空')
+  const filesObj = j.files
+  const usable = !!filesObj && typeof filesObj === 'object' && !Array.isArray(filesObj)
+  const rels = usable ? Object.keys(filesObj) : []
+  if (!usable || !rels.length) bad.push('files 不是非空对象')
+  const selfName = SHELL_MANIFEST.toLowerCase()
+  for (const rel of rels) {
+    // 清单自己会随每次 refresh 变，写进 files 就永远对不上（白名单也明确排除它）
+    if (rel.toLowerCase() === selfName) bad.push('files 里不该出现清单自己：' + rel)
+    if (!isAllowedShellPath(rel)) bad.push('白名单拒绝的路径：' + rel)
+    if (!/^[0-9a-f]{64}$/.test(String(filesObj[rel]))) bad.push('sha256 不是 64 位小写十六进制：' + rel)
+  }
+  const owned = j.userOwned
+  if (!Array.isArray(owned)) bad.push('userOwned 不是数组')
+  else {
+    const relSet = new Set(rels)
+    const lost = owned.filter((p) => !relSet.has(p))
+    if (lost.length) bad.push('userOwned 不在 files 里：' + lost.slice(0, 3).join(', '))
+  }
+  if (!j.notes || typeof j.notes !== 'object' || Array.isArray(j.notes)) bad.push('notes 不是对象')
+  else {
+    const missing = MANIFEST_NOTES.filter((k) => !Array.isArray(j.notes[k]))
+    if (missing.length) bad.push('notes 缺数组键：' + missing.join(', '))
+  }
+  add(label, bad.length === 0, bad.length ? bad.slice(0, 5).join('；') : 'schemaVersion ' + j.schemaVersion + ' / updaterMin ' + j.updaterMin + ' / files ' + rels.length + ' / userOwned ' + (Array.isArray(owned) ? owned.length : 0))
+})
+
+check('清单覆盖完整', () => {
+  const label = '清单覆盖完整'
+  if (!exists(MANIFEST_FILE)) { add(label, false, 'shell-version.json 不存在（先跑 node tools\\clean-ship.mjs refresh）'); return }
+  const filesObj = manifestJson().files || {}
+  const local = listLocalShellFiles()
+  const localSet = new Set(local)
+  const bad = []
+  // 正方向：白名单里"当前存在"的每个壳文件都必须进清单
+  for (const rel of local) if (!Object.prototype.hasOwnProperty.call(filesObj, rel)) bad.push('漏收 ' + rel)
+  // 反方向：清单里每条都得在磁盘上、在白名单内、且字节与清单 sha 一致（用户改过代码文件时这里就该红）
+  for (const rel of Object.keys(filesObj)) {
+    if (!exists(join(ROOT, rel))) { bad.push('磁盘缺少 ' + rel); continue }
+    if (!localSet.has(rel)) { bad.push('清单里多出（白名单不再收）' + rel); continue }
+    if (sha(join(ROOT, rel)) !== String(filesObj[rel])) bad.push('哈希不符 ' + rel)
+  }
+  add(label, bad.length === 0, bad.length ? bad.length + ' 处：' + bad.slice(0, 5).join('，') : local.length + ' 个壳文件与清单逐一对齐')
+})
+
+check('清单里没有禁止路径', () => {
+  const label = '清单里没有禁止路径'
+  if (!exists(MANIFEST_FILE)) { add(label, false, 'shell-version.json 不存在（先跑 node tools\\clean-ship.mjs refresh）'); return }
+  const rels = Object.keys(manifestJson().files || {})
+  const bad = rels.filter(denyHit)
+  add(label, bad.length === 0, bad.length ? bad.length + ' 条命中黑名单：' + bad.slice(0, 4).join(', ') : rels.length + ' 条都没碰 app/desktop/runtime/会话/凭证/版本文件')
+})
+
+check('更新源是版本线', () => {
+  const label = '更新源是版本线'
+  const r = run([join(ROOT, 'tools/shell-update.mjs'), 'defaults', '--json'], CHECK_NODE)
+  if (r.code !== 0) { add(label, false, '取不到 defaults（退出码 ' + r.code + '）：' + String(r.out).trim().split(/\r?\n/)[0]); return }
+  let j = null
+  try { j = JSON.parse(String(r.out).trim().split(/\r?\n/).pop()) } catch { add(label, false, 'defaults 输出不是 JSON：' + String(r.out).trim().slice(0, 100)); return }
+  const bad = []
+  const wantManifest = 'https://github.com/Blue-Seventeen/hack3rx-harness/releases/latest/download/shell-version.json'
+  if (String(j.manifest || '') !== wantManifest) bad.push('manifest 不是 releases/latest：' + String(j.manifest || '（空）'))
+  if (!/\/refs\/tags\/v<version>\//.test(String(j.tagTemplate || ''))) bad.push('tagTemplate 不含 refs/tags/v<version>：' + String(j.tagTemplate || '（空）'))
+  if (/master/i.test(String(j.rawBase || ''))) bad.push('rawBase 还在 master：' + String(j.rawBase))
+  add(label, bad.length === 0, bad.length ? bad.join('；') : '清单走 releases/latest、字节走 refs/tags/v<version>')
+})
+
+check('RELEASE-NOTES 六小节齐全', () => {
+  const label = 'RELEASE-NOTES 六小节齐全'
+  const p = join(ROOT, 'RELEASE-NOTES.md')
+  if (!exists(p)) { add(label, true, 'RELEASE-NOTES.md 还不存在（只有壳的发布版才带；v0.1.0 起必须有）', true); return }
+  const ver = String((exists(MANIFEST_FILE) ? manifestJson().shellVersion : '') || '').trim()
+  if (!ver) { add(label, false, '读不到当前 shellVersion（先跑 node tools\\clean-ship.mjs refresh）'); return }
+  const lines = read(p).replace(/\r\n/g, '\n').split('\n')
+  const headRe = new RegExp('^##\\s+v' + esc(ver) + '(\\s|$)')
+  const head = lines.findIndex((l) => headRe.test(l.trim()))
+  if (head < 0) { add(label, false, 'RELEASE-NOTES.md 里没有 `## v' + ver + '` 这一节'); return }
+  let end = lines.length
+  for (let i = head + 1; i < lines.length; i += 1) if (/^##\s+/.test(lines[i])) { end = i; break }
+  const section = lines.slice(head + 1, end).join('\n')
+  const missing = MANIFEST_NOTE_TITLES.filter((t) => !new RegExp('^###\\s+' + esc(t) + '\\s*$', 'm').test(section))
+  add(label, missing.length === 0, missing.length ? '## v' + ver + ' 缺小节：' + missing.join('、') : '## v' + ver + ' 的 ' + MANIFEST_NOTE_TITLES.length + ' 个小节都在')
+})
+
 // ---- 输出 -------------------------------------------------------------------
+// update-gate：换装引擎（tools/shell-apply.mjs）只在乎"换完之后壳还能不能立住"，所以只跑这一小撮；
+// 其余行既不输出也不计数 —— 正常模式行为完全不变。
+const GATE_RE = /^(UTF-8 BOM|根目录 \d+ 个 \.cmd|所有 \.cmd|无 BOM 且无乱码|tools\/\*\.mjs 语法全过|dsh-portable\.cmd 也 call|启动器都接了|清单 v2 合法|清单覆盖完整|清单里没有禁止路径|更新源是版本线|RELEASE-NOTES 六小节齐全)/
+const shown = UPDATE_GATE ? rows.filter((r) => GATE_RE.test(r.label)) : rows
 console.log('')
 let fails = 0
 let skips = 0
-for (const r of rows) {
+for (const r of shown) {
   if (r.skip) skips += 1
   else if (!r.ok) fails += 1
   const tag = r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL')
   console.log('  ' + tag + '  ' + r.label + (r.ok || r.skip ? (r.detail ? '  (' + r.detail + ')' : '') : '  ← ' + r.detail))
 }
 console.log('')
+const total = shown.length
+const conclusionHead = UPDATE_GATE ? '结论（update-gate）：' : '结论：'
 console.log(fails === 0
-  ? '结论：' + rows.length + ' 项全过' + (skips ? '（其中 ' + skips + ' 项不适用，记 SKIP）' : '')
-  : '结论：' + fails + ' / ' + rows.length + ' 项失败')
+  ? conclusionHead + total + ' 项全过' + (skips ? '（其中 ' + skips + ' 项不适用，记 SKIP）' : '')
+  : conclusionHead + fails + ' / ' + total + ' 项失败')
 process.exit(fails === 0 ? 0 : 1)

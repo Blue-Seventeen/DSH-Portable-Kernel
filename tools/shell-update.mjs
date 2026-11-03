@@ -1,50 +1,80 @@
 /**
- * 便携壳自更新：清单 + 下载 + 校验 + 落 staging。
+ * 便携壳自更新 v2 —— 版本线（GitHub Release）清单 + 校验 + staging + 换装编排。
  *
- * 分工：本脚本**只**把远端壳文件取下来、按字节校验、落到 staging 目录；
- * 换装（备份 → 覆盖 → 回滚）由 dsh-portable.ps1 的 shell-update 动作负责，这里绝不直接改仓库里的文件。
+ * 分工：本脚本负责"取清单 / 算计划 / 下载校验 / 落 staging / 调换装引擎"；
+ * 真正改文件（备份 → 原子替换 → verify → 回滚 → 恢复）在 tools\shell-apply.mjs，PS 侧只做前置检查与提示。
  *
- * 壳 = 根脚本 + tools\ + runtime\vcredist + home\profiles 清单/锁文件 + README/LICENSE。
- * 官方层（app\ desktop\ runtime\node|pnpm）与运行时数据永不在更新范围内，见下面的白名单。
+ * 版本线（永不从 master 拉）：
+ *   发现最新稳定版  https://github.com/<repo>/releases/latest/download/shell-version.json
+ *   取该版文件      https://raw.githubusercontent.com/<repo>/refs/tags/v<版本>/<path>
+ *   锁定/降级       https://raw.githubusercontent.com/<repo>/refs/tags/v<版本>/shell-version.json
  *
- *   node tools\shell-update.mjs check [--manifest <url|本地路径>] [--base <url|目录>] [--json]
- *   node tools\shell-update.mjs stage [--manifest <url|本地路径>] [--stage <目录>] [--base <url|目录>] [--force] [--json]
+ *   node tools\shell-update.mjs check    [--cached <分钟>] [--prompt] [--json] [--to <版本>] [--manifest <路径|URL>] [--base <路径|URL>]
+ *   node tools\shell-update.mjs stage    [--to <版本>] [--full] [--stage <目录>] [--json]
+ *   node tools\shell-update.mjs apply    [--force] [--dry-run] [--to <版本>] [--full] [--no-verify] [--json]
+ *   node tools\shell-update.mjs rollback [--json]
+ *   node tools\shell-update.mjs recover  [--json]
+ *   node tools\shell-update.mjs notes    [--to <版本>] [--json]
+ *   node tools\shell-update.mjs defaults [--json]
  *
- * 退出码：check → 0 有更新 / 4 已最新（或远端更旧）/ 1 取不到清单；
- *         stage → 0 成功（没有要下的文件也算成功）/ 1 失败。
+ * 退出码：0 有更新/成功 · 4 已最新 · 3 被兼容性挡下 · 1 失败 · 2 用法错误
  *
- * 三条铁律（按字节判定，绝不重新编码后落盘：下载即写字节）：
- *   *.cmd                 纯 ASCII 且 CRLF（LF-only 会让 cmd.exe 报 cannot find the batch label）
+ * 三条铁律（按字节判定，绝不重新编码后落盘）：
+ *   *.cmd                 纯 ASCII 且 CRLF
  *   *.ps1                 必须以 EF BB BF 开头，且不能有两个连续 BOM
  *   *.md/.json/.mjs/.yml  不得以 BOM 开头
- * 任何一条不过 → 整次 stage 失败并点名文件，一个字节都不落盘（先全部下到内存，校验过了才写）。
  */
 import { createHash } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { APPLY_JOURNAL, applyUpdate, listBackups, recoverUpdate, rollbackUpdate } from './shell-apply.mjs'
 
 export const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
-/** 壳版本清单（仓库根）：既是"当前版本号"也是"当前文件 sha256 表"，由 clean-ship refresh 生成 */
 export const SHELL_MANIFEST = 'shell-version.json'
-const DEFAULT_BASE = 'https://raw.githubusercontent.com/Blue-Seventeen/hack3rx-harness/master'
-const DEFAULT_MANIFEST = DEFAULT_BASE + '/' + SHELL_MANIFEST
+/** 清单/换装语义版本（读得懂的最高版本） */
+export const MANIFEST_SCHEMA = 2
+/** 本更新器自身的能力级别（写进清单的 updaterMin 不能高于它） */
+export const UPDATER_MIN = 2
+export const REPO = 'Blue-Seventeen/hack3rx-harness'
+export const RELEASES = 'https://github.com/' + REPO + '/releases'
+export const DEFAULT_MANIFEST = RELEASES + '/latest/download/' + SHELL_MANIFEST
+export const RAW_BASE = 'https://raw.githubusercontent.com/' + REPO
+export const ALLOWED_HOSTS = ['github.com', 'raw.githubusercontent.com', 'objects.githubusercontent.com', 'codeload.github.com']
+export const TAG_PREFIX = 'v'
+export const EXIT_OK = 0
+export const EXIT_FAIL = 1
+export const EXIT_USAGE = 2
+export const EXIT_BLOCKED = 3
+export const EXIT_UP_TO_DATE = 4
 const FETCH_TIMEOUT_MS = 8000
 const RETRIES = 1
 const CONCURRENCY = 4
+const CACHE_FILE = 'tmp/shell-check.json'
+const SNOOZE_FILE = 'tmp/shell-snooze.json'
 
 const USAGE = [
   '用法：',
-  '  node tools\\shell-update.mjs check [--manifest <url|本地路径>] [--base <url|目录>] [--json]',
-  '  node tools\\shell-update.mjs stage [--manifest <url|本地路径>] [--stage <目录>] [--base <url|目录>] [--force] [--json]',
+  '  node tools\\shell-update.mjs check    [--cached <分钟>] [--prompt] [--json] [--to <版本>] [--manifest <路径|URL>] [--base <路径|URL>]',
+  '  node tools\\shell-update.mjs stage    [--to <版本>] [--full] [--stage <目录>] [--json]',
+  '  node tools\\shell-update.mjs apply    [--force] [--dry-run] [--to <版本>] [--full] [--no-verify] [--json]',
+  '  node tools\\shell-update.mjs rollback [--json]',
+  '  node tools\\shell-update.mjs recover  [--json]',
+  '  node tools\\shell-update.mjs snooze   [--json]',
+  '  node tools\\shell-update.mjs notes    [--to <版本>] [--json]',
+  '  node tools\\shell-update.mjs defaults [--json]',
   '',
-  '  --manifest  远端清单（默认 ' + DEFAULT_MANIFEST + '）；也可给本地文件路径（测试接缝）',
-  '  --base      文件基址（默认取清单所在目录）；远端默认 ' + DEFAULT_BASE + '/<path>',
-  '  --stage     staging 目录（默认 %LOCALAPPDATA%\\Hack3rX-Harness\\build\\shell-<version>）',
-  '  --force     stage 时忽略 sha 相同，全部重下（也用于允许降级）',
-  '  --json      只输出一行机器可读 JSON（纯 ASCII，供 PowerShell ConvertFrom-Json）',
+  '  --manifest   清单来源（默认 ' + DEFAULT_MANIFEST + '）；本地文件路径 = 自测/离线接缝',
+  '  --base       文件基址（默认由清单来源推导：远端 → refs/tags/v<版本>/）',
+  '  --to <版本>  锁定到某个已发布版本（取 refs/tags/v<版本>/shell-version.json）',
+  '  --cached <分钟>  check 用缓存（0=强制刷新）',
+  '  --prompt     只打印一段紧凑提示（给 preflight 用）',
+  '  --full       整包 zip 换装（跨版本/壳被改花时用）',
+  '  --force      apply 真的换（不加只预演）；也用于允许降级',
+  '  --json       只输出一行机器可读 JSON（纯 ASCII，\\u 转义中文，供 PowerShell ConvertFrom-Json）',
   '',
-  '退出码：check 0=有更新 / 4=已最新 / 1=失败；stage 0=成功 / 1=失败',
+  '退出码：0 有更新/成功 · 4 已最新 · 3 被兼容性挡下 · 1 失败 · 2 用法错误',
 ].join('\n')
 
 // ---- 壳文件白名单（唯一权威；tools\clean-ship.mjs 生成清单时复用同一份） ------
@@ -53,11 +83,29 @@ export const ROOT_SHELL_FILES = [
   'dsh-portable.ps1', 'preflight.cmd', 'start-web.cmd', 'start-desktop.cmd', 'dsh-portable.cmd',
   'dsh.cmd', 'dsh-plugin.cmd', 'dsh-plugin-shared.cmd', 'check-update.cmd', 'env.cmd',
 ]
-/** 整条路径点名（不支持通配）：README/LICENSE + home\profiles 的清单与锁文件 */
+/**
+ * 用户可变文件：正常使用中会被插件市场 / fix-pnpm-state / 用户自己改写。
+ * 换装时"改过就保留"：只有与已安装清单哈希一致（= 用户没动过）时才覆盖。
+ */
+export const USER_OWNED = [
+  'home/cordis.patch.yml',
+  'home/profiles/package.json',
+  'home/profiles/pnpm-workspace.yaml',
+  'home/profiles/pnpm-lock.yaml',
+  'home/profiles/web/package.json',
+  'home/profiles/web/pnpm-workspace.yaml',
+  'home/profiles/web/pnpm-lock.yaml',
+  'home/profiles/web/cordis.patch.yml',
+  'home/profiles/desktop/package.json',
+  'home/profiles/desktop/pnpm-workspace.yaml',
+  'home/profiles/desktop/pnpm-lock.yaml',
+]
+/** 整条路径点名（不支持通配）：README/LICENSE/发布说明 + home\profiles 的固定根 */
 const SHELL_EXACT = [
   ...ROOT_SHELL_FILES,
   'README.md',
   'LICENSE',
+  'RELEASE-NOTES.md',
   SHELL_MANIFEST,
   'home/cordis.patch.yml',
   'home/profiles/package.json',
@@ -73,19 +121,23 @@ const SHELL_EXACT = [
   'home/profiles/desktop/pnpm-lock.yaml',
   'home/profiles/desktop/cordis.yml',
 ]
-/** 这俩目录下任意文件（tools\7z 的二进制也随壳走） */
+/** 这俩目录下任意文件（tools\7z 的二进制、vcredist 也随壳走） */
 const SHELL_PREFIXES = ['tools/', 'runtime/vcredist/']
 /**
  * 显式禁止，优先级最高：
- *   home/profiles/desktop/cordis.patch.yml 是用户私有网关配置（一回滚就把人家的中转打没了）
+ *   home/profiles/desktop/cordis.patch.yml 是用户私有网关配置（一覆盖就把人家的中转打没了）
+ *   home/profiles/web/cordis.patch.yml    反过来：它是用户网页模式的网关配置，属"用户可变"，不禁止但要保留改动
  *   version.json 是官方层出厂快照、.gitattributes/.gitignore 是仓库元数据，都不属于"壳"
  */
 const SHELL_DENY = ['home/profiles/desktop/cordis.patch.yml', 'version.json', '.gitattributes', '.gitignore']
 
 const SHELL_EXACT_SET = new Set(SHELL_EXACT.map((s) => s.toLowerCase()))
 const SHELL_DENY_SET = new Set(SHELL_DENY.map((s) => s.toLowerCase()))
+const USER_OWNED_SET = new Set(USER_OWNED.map((s) => s.toLowerCase()))
 
 const toPosix = (p) => String(p).replace(/\\/g, '/')
+const hex8 = (x) => '0x' + x.toString(16).padStart(2, '0')
+const lower = (p) => String(p).toLowerCase()
 
 /** 清单里的相对路径 → 规范化正斜杠路径；含 .. / 绝对路径 / 盘符 / NUL 一律返回 null */
 const normalizeRel = (p) => {
@@ -104,10 +156,16 @@ const normalizeRel = (p) => {
 export const isAllowedShellPath = (p) => {
   const rel = normalizeRel(p)
   if (!rel) return false
-  const low = rel.toLowerCase()
+  const low = lower(rel)
   if (SHELL_DENY_SET.has(low)) return false
   if (SHELL_EXACT_SET.has(low)) return true
   return SHELL_PREFIXES.some((pre) => low.startsWith(pre) && low.length > pre.length)
+}
+
+/** 该路径是否属于"用户可变"（改过就保留） */
+export const isUserOwnedPath = (p) => {
+  const rel = normalizeRel(p)
+  return !!rel && USER_OWNED_SET.has(lower(rel))
 }
 
 const walkFiles = (absDir, relPrefix, out) => {
@@ -116,7 +174,7 @@ const walkFiles = (absDir, relPrefix, out) => {
   for (const d of ents) {
     const rel = relPrefix + d.name
     if (d.isDirectory()) walkFiles(join(absDir, d.name), rel + '/', out)
-    else if (d.isFile() && isAllowedShellPath(rel) && rel.toLowerCase() !== SHELL_MANIFEST) out.push(rel)
+    else if (d.isFile() && isAllowedShellPath(rel) && lower(rel) !== lower(SHELL_MANIFEST)) out.push(rel)
   }
 }
 
@@ -124,8 +182,8 @@ const walkFiles = (absDir, relPrefix, out) => {
 export const listLocalShellFiles = () => {
   const out = []
   for (const rel of SHELL_EXACT) {
-    if (rel.toLowerCase() === SHELL_MANIFEST) continue
-    try { if (statSync(join(ROOT, rel)).isFile() && isAllowedShellPath(rel)) out.push(rel) } catch {}
+    if (lower(rel) === lower(SHELL_MANIFEST)) continue
+    try { if (statSync(join(ROOT, rel)).isFile() && isAllowedShellPath(rel)) out.push(rel) } catch { }
   }
   for (const pre of SHELL_PREFIXES) walkFiles(join(ROOT, pre), pre, out)
   return out.filter((v, i, a) => a.indexOf(v) === i).sort()
@@ -133,25 +191,24 @@ export const listLocalShellFiles = () => {
 
 export const sha256 = (buf) => createHash('sha256').update(buf).digest('hex')
 export const sha256File = (abs) => sha256(readFileSync(abs))
+
 // ---- 编码校验（仓库铁律，按字节判定） ---------------------------------------
 const startsWithBom = (b) => b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf
 const NO_BOM_EXT = ['md', 'json', 'mjs', 'yml', 'yaml']
-const hex = (x) => '0x' + x.toString(16).padStart(2, '0')
 
 /**
- * 校验一份即将落盘的壳文件字节。
+ * 校验一份即将落盘的壳文件字节。只拒绝、不改写（改了就等于偷偷重编码）。
  * @returns {{ok: boolean, error?: string, warnings?: string[]}}
- * 注意：只拒绝、不改写。哪怕行尾不合约定也只警告，落盘仍是远端原字节（改了就等于偷偷重编码）。
  */
 export const validateShellBytes = (relPath, buf) => {
   const rel = normalizeRel(relPath) || toPosix(String(relPath))
-  const low = rel.toLowerCase()
+  const low = lower(rel)
   const name = rel.replace(/\//g, '\\')
   const warnings = []
   if (low.endsWith('.cmd')) {
     const bad = buf.findIndex((x) => x > 0x7f)
     if (bad !== -1) {
-      return { ok: false, error: name + ' 不是纯 ASCII（偏移 ' + bad + ' 处是 ' + hex(buf[bad]) + '）；.cmd 必须纯 ASCII + CRLF' }
+      return { ok: false, error: name + ' 不是纯 ASCII（偏移 ' + bad + ' 处是 ' + hex8(buf[bad]) + '）；.cmd 必须纯 ASCII + CRLF' }
     }
     for (let i = 0; i < buf.length; i++) {
       if (buf[i] === 0x0a && (i === 0 || buf[i - 1] !== 0x0d)) {
@@ -167,9 +224,6 @@ export const validateShellBytes = (relPath, buf) => {
     if (buf.length >= 6 && buf[3] === 0xef && buf[4] === 0xbb && buf[5] === 0xbf) {
       return { ok: false, error: name + ' 有两个连续 BOM（EF BB BF EF BB BF）；PowerShell 直接语法错' }
     }
-    for (let i = 0; i < buf.length; i++) {
-      if (buf[i] === 0x0a && (i === 0 || buf[i - 1] !== 0x0d)) warnings.push(name + ' 含 LF-only 行尾（偏移 ' + i + '）')
-    }
     return { ok: true, warnings }
   }
   const dot = low.lastIndexOf('.')
@@ -182,7 +236,7 @@ export const validateShellBytes = (relPath, buf) => {
 }
 
 // ---- 版本比较（与 tools\update-check.mjs 同一套语义：只在"远端更新"时才算更新） -----
-const parseVer = (v) => {
+export const parseVer = (v) => {
   const s = String(v == null ? '' : v).trim().replace(/^v/i, '')
   const dash = s.indexOf('-')
   const core = dash === -1 ? s : s.slice(0, dash)
@@ -214,10 +268,38 @@ export const isNewer = (latest, cur) => {
   return cmpPre(a.pre, b.pre) > 0
 }
 
+/** 极简范围判定：支持 ">=x" ">x" "<=x" "<x" "=x" 与逗号组合；解析不了返回 null（= 不判） */
+export const satisfiesRange = (ver, range) => {
+  const cur = String(ver || '').trim()
+  if (!cur || !range) return null
+  const conds = String(range).split(',').map((s) => s.trim()).filter(Boolean)
+  for (const c of conds) {
+    const m = /^(>=|<=|>|<|=)?\s*v?(.+)$/.exec(c)
+    if (!m) return null
+    const op = m[1] || '='
+    const target = m[2].trim()
+    if (op === '>=') { if (isNewer(target, cur) && !equalVer(target, cur)) return false }
+    else if (op === '>') { if (!isNewer(cur, target)) return false }
+    else if (op === '<=') { if (isNewer(cur, target)) return false }
+    else if (op === '<') { if (!isNewer(target, cur)) return false }
+    else if (!equalVer(cur, target)) return false
+  }
+  return true
+}
+const equalVer = (a, b) => {
+  const x = parseVer(a), y = parseVer(b)
+  const n = Math.max(x.nums.length, y.nums.length, 3)
+  for (let i = 0; i < n; i++) if ((x.nums[i] || 0) !== (y.nums[i] || 0)) return false
+  if (x.pre.length !== y.pre.length) return false
+  return cmpPre(x.pre, y.pre) === 0
+}
+
 // ---- IO ---------------------------------------------------------------------
 const isUrl = (s) => /^https?:\/\//i.test(String(s == null ? '' : s))
 const trimUrl = (s) => String(s).replace(/\/+$/, '')
 const joinUrl = (base, rel) => trimUrl(base) + '/' + rel.split('/').map(encodeURIComponent).join('/')
+const tagFor = (ver) => TAG_PREFIX + String(ver == null ? '' : ver).replace(/^v/i, '')
+const hostOf = (u) => { try { return new URL(u).host.toLowerCase() } catch { return '' } }
 
 /** 定时器必须 unref：否则 fetch 早结束也得等满 8 秒才退 */
 const withTimeout = (ms) => {
@@ -232,13 +314,13 @@ const fetchBytes = async (url) => {
   let last = ''
   for (let attempt = 0; attempt <= RETRIES; attempt++) {
     try {
-      const r = await fetch(url, { signal: withTimeout(FETCH_TIMEOUT_MS), cache: 'no-store' })
+      const r = await fetch(url, { signal: withTimeout(FETCH_TIMEOUT_MS), cache: 'no-store', redirect: 'follow' })
       if (!r.ok) {
         last = 'HTTP ' + r.status + (r.statusText ? ' ' + r.statusText : '')
         if (r.status >= 400 && r.status < 500) break
         continue
       }
-      return { ok: true, buf: Buffer.from(await r.arrayBuffer()) }
+      return { ok: true, buf: Buffer.from(await r.arrayBuffer()), finalUrl: r.url || url }
     } catch (e) {
       last = e && e.name === 'AbortError' ? '超时（' + FETCH_TIMEOUT_MS + 'ms）' : String((e && e.message) || e)
     }
@@ -256,28 +338,61 @@ const getBytes = async (base, rel) => (isUrl(base) ? fetchBytes(joinUrl(base, re
 /** 读本地清单（只用来取版本号与"上一版装过哪些文件"） */
 export const readLocalManifest = () => {
   try {
-    const j = JSON.parse(readFileSync(join(ROOT, SHELL_MANIFEST), 'utf8'))
-    const files = j && j.files && typeof j.files === 'object' && !Array.isArray(j.files) ? Object.keys(j.files) : []
-    return { present: true, shellVersion: String((j && j.shellVersion) || '').trim(), files }
-  } catch { return { present: false, shellVersion: '', files: [] } }
+    const raw = readFileSync(join(ROOT, SHELL_MANIFEST))
+    const j = JSON.parse(raw.toString('utf8'))
+    const files = j && j.files && typeof j.files === 'object' && !Array.isArray(j.files) ? j.files : {}
+    return { present: true, raw, json: j, shellVersion: String((j && j.shellVersion) || '').trim(), files: normalizeShaMap(files) }
+  } catch { return { present: false, raw: null, json: null, shellVersion: '', files: {} } }
+}
+const normalizeShaMap = (obj) => {
+  const out = {}
+  for (const [k, v] of Object.entries(obj || {})) {
+    const rel = normalizeRel(k)
+    const sha = String(v || '').trim().toLowerCase()
+    if (rel && /^[0-9a-f]{64}$/.test(sha)) out[rel] = sha
+  }
+  return out
 }
 
 /** 本地壳版本号（clean-ship / PS 侧都可以直接用，不必自己再解析 JSON） */
 export const readShellVersion = () => readLocalManifest().shellVersion
 
+const NOTES_SECTIONS = [
+  ['added', '新增'],
+  ['fixed', '修复'],
+  ['optimized', '优化'],
+  ['breaking', '破坏性变更'],
+  ['upgrade', '升级会做什么'],
+  ['rollback', '如何回退'],
+]
+export { NOTES_SECTIONS }
+
+/** 默认文件基址：远端清单 → refs/tags/v<版本>/；本地清单 → 所在目录 */
+export const deriveBase = (source, tag) => {
+  if (!isUrl(source)) return dirname(resolve(process.cwd(), source))
+  if (/\/releases\/(?:latest|download)\//i.test(source)) return RAW_BASE + '/refs/tags/' + tag
+  return trimUrl(source).replace(/\/[^/]*$/, '')
+}
+
 /**
- * 拉远端清单并逐条校验（路径白名单 / sha256 格式 / 大小写重名 / 清单编码）。
- * 清单本身也是 .json：无 BOM 才收。
+ * 拉远端清单并逐条校验（schema / 路径白名单 / sha256 / 大小写重名 / 编码）。
+ * @returns {{ok: boolean, errorCode?: string, error?: string, blockers?: array, ...}}
  */
-const loadManifest = async (manifestArg, baseArg) => {
-  const source = manifestArg || DEFAULT_MANIFEST
+const loadManifest = async (opts) => {
+  const tagHint = opts.to ? tagFor(opts.to) : ''
+  const source = opts.manifest || (tagHint ? RAW_BASE + '/refs/tags/' + tagHint + '/' + SHELL_MANIFEST : DEFAULT_MANIFEST)
+  if (isUrl(source) && !opts.allowUntrusted && !ALLOWED_HOSTS.includes(hostOf(source))) {
+    return { ok: false, errorCode: 'untrusted-host', error: '清单来源不是可信主机：' + source + '（确需使用请加 --allow-untrusted）' }
+  }
   let buf = null
   let kind = 'url'
   let localPath = null
+  let finalUrl = source
   if (isUrl(source)) {
     const r = await fetchBytes(source)
     if (!r.ok) return { ok: false, errorCode: 'manifest-unreachable', error: '取不到清单 ' + source + '：' + r.error }
     buf = r.buf
+    finalUrl = r.finalUrl || source
   } else {
     kind = 'file'
     localPath = resolve(process.cwd(), source)
@@ -288,9 +403,13 @@ const loadManifest = async (manifestArg, baseArg) => {
 
   let json = null
   try { json = JSON.parse(buf.toString('utf8')) } catch (e) { return { ok: false, errorCode: 'manifest-invalid', error: '清单不是合法 JSON：' + e.message } }
-  if (!json || typeof json !== 'object') return { ok: false, errorCode: 'manifest-invalid', error: '清单不是 JSON 对象' }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) return { ok: false, errorCode: 'manifest-invalid', error: '清单不是 JSON 对象' }
+
   const shellVersion = typeof json.shellVersion === 'string' ? json.shellVersion.trim() : ''
   if (!shellVersion) return { ok: false, errorCode: 'manifest-invalid', error: '清单缺少 shellVersion' }
+  const schemaVersion = Number.isInteger(json.schemaVersion) ? json.schemaVersion : 1
+  const updaterMin = Number.isInteger(json.updaterMin) ? json.updaterMin : 1
+  const tag = typeof json.tag === 'string' && json.tag.trim() ? json.tag.trim() : tagFor(shellVersion)
   if (!json.files || typeof json.files !== 'object' || Array.isArray(json.files)) {
     return { ok: false, errorCode: 'manifest-invalid', error: '清单缺少 files 对象' }
   }
@@ -304,8 +423,8 @@ const loadManifest = async (manifestArg, baseArg) => {
     if (!rel) { bad.push(String(rawPath) + '（路径非法）'); continue }
     if (!/^[0-9a-f]{64}$/.test(sha)) { bad.push(String(rawPath) + '（sha256 不是 64 位 hex）'); continue }
     if (!isAllowedShellPath(rel)) { bad.push(String(rawPath) + '（不在白名单）'); continue }
-    if (rel.toLowerCase() === SHELL_MANIFEST) { bad.push(String(rawPath) + '（清单不能更新自己）'); continue }
-    const low = rel.toLowerCase()
+    if (lower(rel) === lower(SHELL_MANIFEST)) { bad.push(String(rawPath) + '（清单不能更新自己）'); continue }
+    const low = lower(rel)
     if (seen.has(low)) { bad.push(seen.get(low) + ' / ' + rel + '（大小写重名）'); continue }
     seen.set(low, rel)
     files[rel] = sha
@@ -317,83 +436,205 @@ const loadManifest = async (manifestArg, baseArg) => {
     return { ok: false, errorCode: 'manifest-invalid', error: '清单 files 为空（等于让壳变空目录），拒绝' }
   }
 
-  // 基址：--base 优先；否则取清单所在目录（URL 或本地目录），远端默认就是仓库 master
-  const base = baseArg ? String(baseArg) : (kind === 'url' ? trimUrl(source).replace(/\/[^/]*$/, '') : dirname(localPath))
+  // userOwned：清单可以显式给，但必须是 files 的子集；缺省用代码里的名单
+  const userOwned = []
+  if (Array.isArray(json.userOwned)) {
+    for (const p of json.userOwned) {
+      const rel = normalizeRel(p)
+      if (!rel) return { ok: false, errorCode: 'manifest-invalid', error: 'userOwned 里有非法路径：' + String(p) }
+      if (!isUserOwnedPath(rel)) return { ok: false, errorCode: 'manifest-invalid', error: 'userOwned 里有非"用户可变"路径：' + rel }
+      if (!Object.prototype.hasOwnProperty.call(files, rel)) return { ok: false, errorCode: 'manifest-invalid', error: 'userOwned 里有 files 中不存在的路径：' + rel }
+      userOwned.push(rel)
+    }
+  } else {
+    for (const rel of Object.keys(files)) if (isUserOwnedPath(rel)) userOwned.push(rel)
+  }
+
+  const migrations = Array.isArray(json.migrations) ? json.migrations.filter((m) => m && typeof m.id === 'string' && typeof m.script === 'string' && /^tools\/[A-Za-z0-9._-]+\.mjs$/.test(m.script) && Object.prototype.hasOwnProperty.call(files, m.script)) : []
+  const zip = json.zip && typeof json.zip === 'object' && typeof json.zip.name === 'string' && /^[A-Za-z0-9._-]+\.zip$/.test(json.zip.name)
+    ? { name: json.zip.name, sha256: String(json.zip.sha256 || '').toLowerCase(), bytes: Number(json.zip.bytes) || 0 }
+    : null
+
+  const base = opts.base ? String(opts.base) : (typeof json.base === 'string' && json.base.trim() ? json.base.trim() : deriveBase(kind === 'url' ? finalUrl : localPath, tag))
+
   return {
     ok: true,
     source,
+    finalUrl,
     kind,
     localPath,
     base,
     raw: buf,
+    json,
+    schemaVersion,
+    updaterMin,
     shellVersion,
-    generatedAt: typeof json.generatedAt === 'string' ? json.generatedAt : '',
+    tag,
+    channel: typeof json.channel === 'string' ? json.channel.trim() : 'stable',
+    minShellVersion: typeof json.minShellVersion === 'string' ? json.minShellVersion.trim() : '',
+    requires: json.requires && typeof json.requires === 'object' ? json.requires : {},
+    notes: json.notes && typeof json.notes === 'object' ? json.notes : {},
+    notesUrl: typeof json.notesUrl === 'string' ? json.notesUrl : '',
+    migrations,
+    zip,
     files,
+    userOwned,
+    generatedAt: typeof json.generatedAt === 'string' ? json.generatedAt : '',
   }
 }
 
-/** 远端清单 vs 本地实物：逐文件 add/update/skip */
-const computePlan = (files) => {
+/** 本地官方层版本（用于 requires.dsh） */
+const localDshVersion = () => {
+  const paths = ['app/node_modules/@deepseek-ai/dsh/package.json', 'app/package.json']
+  for (const rel of paths) {
+    try {
+      const j = JSON.parse(readFileSync(join(ROOT, rel), 'utf8'))
+      if (j && j.version) return String(j.version)
+    } catch { }
+  }
+  return ''
+}
+
+/** 兼容性闸门：schema / updater / minShellVersion / requires */
+const compatBlockers = (m, installed, opts) => {
+  const blockers = []
+  if (m.schemaVersion > MANIFEST_SCHEMA) {
+    blockers.push({ code: 'schema-too-new', message: '这份清单是 schema v' + m.schemaVersion + '，本壳只读得懂 v' + MANIFEST_SCHEMA, fix: '从 Release 页下载 harness-shell-' + m.shellVersion + '.zip 手工覆盖壳文件后再升级' })
+  }
+  if (m.updaterMin > UPDATER_MIN) {
+    blockers.push({ code: 'updater-too-old', message: '这份清单要求更新器至少 v' + m.updaterMin + '（本壳是 v' + UPDATER_MIN + '）', fix: '先升到中间版本，或从 Release 页下载 zip 手工覆盖壳文件' })
+  }
+  if (m.minShellVersion && installed.present && isNewer(m.minShellVersion, installed.shellVersion)) {
+    blockers.push({ code: 'need-full', message: '跨版本太大：要升到 ' + m.shellVersion + ' 至少得先有 ' + m.minShellVersion + '（本壳是 ' + installed.shellVersion + '）', fix: '改跑 apply --full（整包 zip 换装）' })
+  }
+  const wantDsh = m.requires && typeof m.requires.dsh === 'string' ? m.requires.dsh : ''
+  if (wantDsh) {
+    const have = localDshVersion()
+    if (have) {
+      const ok = satisfiesRange(have, wantDsh)
+      if (ok === false) blockers.push({ code: 'requires-dsh', message: '这份壳要求官方层 dsh ' + wantDsh + '，本机是 ' + have, fix: '先 dsh-portable.cmd update-app -Force / update-desktop -Force' })
+    }
+  }
+  const wantNode = m.requires && typeof m.requires.node === 'string' ? m.requires.node : ''
+  if (wantNode) {
+    const have = process.versions.node
+    const ok = satisfiesRange(have, wantNode)
+    if (ok === false) blockers.push({ code: 'requires-node', message: '这份壳要求 node ' + wantNode + '，本机是 ' + have, fix: '先 dsh-portable.cmd bootstrap 更新运行时' })
+  }
+  return opts && opts.force ? blockers.map((b) => Object.assign({}, b, { ignoredByForce: true })) : blockers
+}
+
+/** 远端清单 vs 本地实物：code/update、user-owned 保留、add、skip。userOwned 以清单为准（缺省回退到代码常量） */
+export const computePlan = (m, installed) => {
   const rows = []
-  for (const rel of Object.keys(files).sort()) {
+  const ownedSet = new Set((Array.isArray(m.userOwned) ? m.userOwned : USER_OWNED).map(lower))
+  for (const rel of Object.keys(m.files).sort()) {
     const abs = join(ROOT, rel)
     let have = null
     let size = 0
     try {
       const st = statSync(abs)
       if (st.isFile()) { have = sha256File(abs); size = st.size }
-    } catch {}
-    const action = have === null ? 'add' : (have === files[rel] ? 'skip' : 'update')
-    rows.push({ path: rel, action, localSha: have, remoteSha: files[rel], bytes: size })
+    } catch { }
+    const remoteSha = m.files[rel]
+    const owned = ownedSet.has(lower(rel))
+    let action = 'skip'
+    if (have === null) action = 'add'
+    else if (have === remoteSha) action = 'skip'
+    else if (owned && (installed.files[rel] ? installed.files[rel] !== have : true)) action = 'preserved'
+    else action = 'update'
+    rows.push({ path: rel, action, class: owned ? 'user-owned' : 'code', localSha: have, remoteSha, bytes: size })
   }
   return rows
 }
 
-/**
- * removed = 本地上一版清单里有、远端这版没有的文件。
- * 只认"自己装过"的那些：绝不把用户在 tools\ 下手放的东西算成待删。
- */
-const computeRemoved = (files) => {
-  const local = readLocalManifest()
-  if (!local.present || !local.files.length) return []
-  const remote = new Set(Object.keys(files).map((p) => p.toLowerCase()))
+/** removed = 本地上一版清单里有、远端这版没有的文件（只认自己装过的，且不动用户可变/用户自建） */
+export const computeRemoved = (m, installed) => {
+  if (!installed.present) return []
+  const ownedSet = new Set((Array.isArray(m.userOwned) ? m.userOwned : USER_OWNED).map(lower))
+  const remote = new Set(Object.keys(m.files).map(lower))
   const out = []
-  for (const raw of local.files) {
-    const rel = normalizeRel(raw)
-    if (!rel) continue
-    if (rel.toLowerCase() === SHELL_MANIFEST) continue
+  for (const rel of Object.keys(installed.files)) {
+    if (lower(rel) === lower(SHELL_MANIFEST)) continue
     if (!isAllowedShellPath(rel)) continue
-    if (!remote.has(rel.toLowerCase())) out.push(rel)
+    if (ownedSet.has(lower(rel))) continue
+    if (!remote.has(lower(rel))) out.push(rel)
   }
   return out.sort()
 }
 
-const fmtSize = (n) => (n >= 1048576 ? (Math.round((n / 1048576) * 10) / 10) + ' MB' : n >= 1024 ? (Math.round((n / 1024) * 10) / 10) + ' KB' : n + ' B')
-// ---- CLI --------------------------------------------------------------------
-const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage' }
-const parseArgs = (argv) => {
-  const a = { cmd: '', manifest: '', base: '', stage: '', json: false, force: false, help: false, bad: '' }
-  for (let i = 0; i < argv.length; i++) {
-    const t = argv[i]
-    if (t === '-h' || t === '--help') { a.help = true; continue }
-    if (t === '--json') { a.json = true; continue }
-    if (t === '--force') { a.force = true; continue }
-    const eq = t.indexOf('=')
-    if (t.startsWith('--') && eq > 2 && VALUE_FLAGS[t.slice(0, eq)]) { a[VALUE_FLAGS[t.slice(0, eq)]] = t.slice(eq + 1); continue }
-    if (VALUE_FLAGS[t]) {
-      const v = argv[i + 1]
-      if (v === undefined || (v.startsWith('--') && !VALUE_FLAGS[v])) { a.bad = t + ' 缺少取值'; return a }
-      a[VALUE_FLAGS[t]] = v
-      i += 1
-      continue
-    }
-    if (t.startsWith('-')) { a.bad = '未知参数 ' + t; return a }
-    if (!a.cmd) { a.cmd = t; continue }
-    a.bad = '多余的参数 ' + t
-    return a
-  }
-  return a
+// ---- 缓存 / 贪睡 ---------------------------------------------------------------
+const readJsonFile = (rel) => { try { return JSON.parse(readFileSync(join(ROOT, rel), 'utf8')) } catch { return null } }
+const writeJsonFile = (rel, obj) => {
+  try {
+    const abs = join(ROOT, rel)
+    mkdirSync(dirname(abs), { recursive: true })
+    writeFileSync(abs, JSON.stringify(obj, null, 2) + '\n')
+  } catch { }
 }
+const readCache = () => readJsonFile(CACHE_FILE)
+const readSnooze = () => readJsonFile(SNOOZE_FILE)
+const snoozedFor = (version) => {
+  const s = readSnooze()
+  if (!s || !s.version || !s.at) return false
+  if (String(s.version) !== String(version)) return false
+  return Date.now() - Number(s.at) < 7 * 24 * 3600 * 1000
+}
+
+// ---- 打印 --------------------------------------------------------------------
+const fmtSize = (n) => (n >= 1048576 ? (Math.round((n / 1048576) * 10) / 10) + ' MB' : n >= 1024 ? (Math.round((n / 1024) * 10) / 10) + ' KB' : n + ' B')
+const write = (s) => process.stdout.write(s)
+const line = (s) => process.stdout.write((s == null ? '' : s) + '\n')
+
+const printNotes = (m, compact) => {
+  const n = m.notes || {}
+  const rows = []
+  for (const [key, label] of NOTES_SECTIONS) {
+    const arr = Array.isArray(n[key]) ? n[key].filter((x) => String(x).trim()) : []
+    if (!arr.length) continue
+    rows.push([label, arr])
+  }
+  if (!rows.length) { line('  更新细则：这一版没有提供（见 ' + (m.notesUrl || 'Release 页面') + '）'); return }
+  for (const [label, arr] of rows) {
+    if (label === '破坏性变更') line('  ⚠ 破坏性变更：')
+    else line('  ' + label + '：')
+    const show = compact ? arr.slice(0, 2) : arr
+    for (const x of show) line('    - ' + String(x).trim())
+    if (show.length < arr.length) line('    … 还有 ' + (arr.length - show.length) + ' 条')
+  }
+  if (m.notesUrl) line('  详情：' + m.notesUrl)
+}
+
+const printBlockers = (blockers) => {
+  if (!blockers.length) return
+  line('  被兼容性挡下：')
+  for (const b of blockers) {
+    line('    ✗ ' + b.message + (b.ignoredByForce ? '（已用 --force 忽略）' : ''))
+    if (b.fix && !b.ignoredByForce) line('      → ' + b.fix)
+  }
+}
+
+const printPlan = (m, rows, removed, installed) => {
+  const add = rows.filter((r) => r.action === 'add')
+  const upd = rows.filter((r) => r.action === 'update')
+  const keep = rows.filter((r) => r.action === 'preserved')
+  line('  变更文件：' + (add.length + upd.length) + ' 个（新增 ' + add.length + ' / 更新 ' + upd.length + '）' + (removed.length ? '；清单已删 ' + removed.length + ' 个' : ''))
+  for (const r of upd.slice(0, 12)) line('    更新  ' + r.path + '  ' + fmtSize(r.bytes))
+  if (upd.length > 12) line('    … 还有 ' + (upd.length - 12) + ' 个更新')
+  for (const r of add.slice(0, 12)) line('    新增  ' + r.path)
+  if (add.length > 12) line('    … 还有 ' + (add.length - 12) + ' 个新增')
+  if (keep.length) {
+    line('  保留你的改动（不覆盖）：' + keep.length + ' 个')
+    for (const r of keep) line('    保留  ' + r.path)
+  }
+  if (removed.length) for (const p of removed.slice(0, 12)) line('    删除  ' + p)
+  line('  清单：' + (m.kind === 'url' ? m.finalUrl : m.localPath) + (m.generatedAt ? '（generatedAt ' + m.generatedAt + '）' : ''))
+}
+
+// ---- 结果与 JSON ----------------------------------------------------------------
+/** 单行 + 纯 ASCII（中文转成 \\uXXXX，PS 的 ConvertFrom-Json 会正确解码） */
+const asciiJson = (obj) => JSON.stringify(obj).replace(/[\u007f-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0'))
+const emitJson = (obj) => process.stdout.write(asciiJson(obj) + '\n')
 
 /** 直接 process.exit 在管道里可能截断 stdout（PS 侧就是重定向抓取），先等 stdout 排空 */
 const finish = (code) => {
@@ -402,64 +643,119 @@ const finish = (code) => {
   if (t.unref) t.unref()
 }
 
-const emitJson = (obj) => process.stdout.write(JSON.stringify(obj) + '\n')
-
 const fail = (jsonMode, action, errorCode, error, extra) => {
-  if (jsonMode) emitJson(Object.assign({ ok: false, action, errorCode, error, exitCode: 1 }, extra || {}))
+  if (jsonMode) emitJson(Object.assign({ ok: false, action, errorCode, error, exitCode: EXIT_FAIL }, extra || {}))
   else process.stderr.write('shell-update: ' + error + '\n')
-  finish(1)
+  finish(EXIT_FAIL)
 }
 
 // ---- check ------------------------------------------------------------------
-const runCheck = async (opts) => {
-  const m = await loadManifest(opts.manifest, opts.base)
-  if (!m.ok) return fail(opts.json, 'check', m.errorCode, m.error)
-  const local = readLocalManifest()
-  const rows = computePlan(m.files)
-  const changedRows = rows.filter((r) => r.action !== 'skip')
-  const added = changedRows.filter((r) => r.action === 'add').length
-  const updated = changedRows.filter((r) => r.action === 'update').length
-  const changed = changedRows.length
-  const removed = computeRemoved(m.files)
-  const localVer = local.shellVersion
+const buildSummary = (m, installed, rows, removed, blockers, opts) => {
+  const add = rows.filter((r) => r.action === 'add')
+  const upd = rows.filter((r) => r.action === 'update')
+  const keep = rows.filter((r) => r.action === 'preserved')
+  const localVer = installed.shellVersion
   const remoteVer = m.shellVersion
   let status = 'up-to-date'
-  let code = 4
-  if (!local.present) { status = 'update-available'; code = 0 }
-  else if (localVer && isNewer(localVer, remoteVer) && !opts.force) { status = 'local-newer'; code = 4 }
-  else if (isNewer(remoteVer, localVer) || changed > 0) { status = 'update-available'; code = 0 }
-  const summary = {
+  let code = EXIT_UP_TO_DATE
+  if (blockers.some((b) => !b.ignoredByForce)) { status = 'blocked'; code = EXIT_BLOCKED }
+  else if (!installed.present) { status = 'update-available'; code = EXIT_OK }
+  else if (localVer && isNewer(localVer, remoteVer) && !opts.force) { status = 'local-newer'; code = EXIT_UP_TO_DATE }
+  else if (isNewer(remoteVer, localVer) || add.length + upd.length > 0) { status = 'update-available'; code = EXIT_OK }
+  return {
     ok: true,
     action: 'check',
+    schema: m.schemaVersion,
     local: localVer,
     remote: remoteVer,
-    changed,
-    upToDate: code === 4,
-    files: changedRows.map((r) => r.path),
-    added,
-    updated,
-    skipped: rows.length - changed,
+    channel: m.channel,
     status,
-    removed,
-    changes: changedRows.map((r) => ({ path: r.path, action: r.action, localSha: r.localSha, remoteSha: r.remoteSha })),
-    localManifest: { present: local.present, fileCount: local.files.length },
-    manifest: { source: m.source, kind: m.kind, base: m.base, generatedAt: m.generatedAt, fileCount: Object.keys(m.files).length },
+    changed: add.length + upd.length,
+    added: add.length,
+    updated: upd.length,
+    removed: removed.length,
+    skipped: rows.filter((r) => r.action === 'skip').length,
+    skippedLocalChanges: keep.map((r) => r.path),
+    files: rows.filter((r) => r.action !== 'skip' && r.action !== 'preserved').map((r) => r.path),
+    changes: rows.filter((r) => r.action !== 'skip' && r.action !== 'preserved').map((r) => ({ path: r.path, action: r.action, class: r.class, localSha: r.localSha, remoteSha: r.remoteSha })),
+    preserved: keep.map((r) => ({ path: r.path, action: 'preserved', class: r.class })),
+    blockedFiles: removed,
+    blockers,
+    notes: m.notes,
+    notesUrl: m.notesUrl,
+    manifest: { source: m.source, kind: m.kind, base: m.base, tag: m.tag, generatedAt: m.generatedAt, fileCount: Object.keys(m.files).length },
+    localManifest: { present: installed.present, fileCount: Object.keys(installed.files).length },
     exitCode: code,
+    _rows: rows,
+    _removed: removed,
   }
-  if (opts.json) { emitJson(summary); return finish(code) }
+}
 
-  if (status === 'up-to-date') {
-    process.stdout.write('SHELL 已是最新 (' + (localVer || remoteVer) + ')\n')
-    process.stdout.write('  变更文件：0 个（清单 ' + Object.keys(m.files).length + ' 个文件全部一致）\n')
-  } else if (status === 'local-newer') {
-    process.stdout.write('SHELL ' + localVer + ' -> ' + remoteVer + '（远端更旧，不降级；确需回退用 stage --force）\n')
-    process.stdout.write('  变更文件：' + changed + ' 个\n')
-  } else {
-    process.stdout.write('SHELL ' + localVer + ' -> ' + remoteVer + '（' + changed + ' 个文件变更）\n')
-    process.stdout.write('  变更文件：' + changed + ' 个（新增 ' + added + ' / 更新 ' + updated + '）' + (removed.length ? '；清单已删 ' + removed.length + ' 个' : '') + '\n')
+const runCheck = async (opts) => {
+  // 缓存：只有"取不到远端"或显式 --cached 时才用；有缓存且未过期就直接回放
+  const cache = opts.cached > 0 ? readCache() : null
+  if (cache && cache.at && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
+    const s = cache.summary
+    if (opts.prompt && snoozedFor(s.remote)) return finish(EXIT_UP_TO_DATE)
+    if (opts.json) { emitJson(Object.assign({}, s, { cached: true, exitCode: s.exitCode, _rows: undefined, _removed: undefined })); return finish(s.exitCode) }
+    if (opts.prompt) { printPrompt(s); return finish(s.exitCode) }
+    line('SHELL ' + (s.local || '(未知)') + ' -> ' + s.remote + '（缓存 ' + Math.round((Date.now() - Number(cache.at)) / 60000) + ' 分钟前）')
+    printBlockers(s.blockers || [])
+    printNotes({ notes: s.notes, notesUrl: s.notesUrl }, false)
+    return finish(s.exitCode)
   }
-  process.stdout.write('  清单：' + (m.kind === 'url' ? m.source : m.localPath) + (m.generatedAt ? '（generatedAt ' + m.generatedAt + '）' : '') + '\n')
-  finish(code)
+
+  const m = await loadManifest(opts)
+  if (!m.ok) return fail(opts.json, 'check', m.errorCode, m.error)
+  const installed = readLocalManifest()
+  const rows = computePlan(m, installed)
+  const removed = computeRemoved(m, installed)
+  const blockers = compatBlockers(m, installed, opts)
+  const summary = buildSummary(m, installed, rows, removed, blockers, opts)
+  writeJsonFile(CACHE_FILE, { at: Date.now(), version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
+  const { _rows, _removed, ...clean } = summary
+
+  if (opts.json) { emitJson(clean); return finish(clean.exitCode) }
+  if (opts.prompt) {
+    // "这次不更新"：7 天内不再提醒（preflight 会调 snooze 写入），静默退出 4
+    if (snoozedFor(m.shellVersion)) return finish(EXIT_UP_TO_DATE)
+    printPrompt(clean)
+    return finish(clean.exitCode)
+  }
+  if (snoozedFor(m.shellVersion) && clean.status === 'update-available') {
+    line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '（你已选择暂不更新，7 天内不再提醒；要更新请运行 dsh-portable.cmd shell-update apply -Force）')
+    return finish(clean.exitCode)
+  }
+  if (clean.status === 'up-to-date') {
+    line('SHELL 已是最新 (' + (clean.local || clean.remote) + ')')
+    line('  变更文件：0 个（清单 ' + clean.manifest.fileCount + ' 个文件全部一致）')
+  } else if (clean.status === 'local-newer') {
+    line('SHELL ' + clean.local + ' -> ' + clean.remote + '（远端更旧，不降级；确需回退用 apply --to ' + clean.remote + ' -Force）')
+  } else if (clean.status === 'blocked') {
+    line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '：这次不能自动升级')
+    printBlockers(clean.blockers)
+  } else {
+    line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '（' + clean.changed + ' 个文件变更）')
+    printPlan(m, rows, removed, installed)
+    printNotes(m, false)
+  }
+  finish(clean.exitCode)
+}
+
+const printPrompt = (s) => {
+  if (s.status === 'up-to-date') return
+  if (s.status === 'blocked') { line('  壳更新 ' + (s.local || '?') + ' -> ' + s.remote + ' 被挡下：' + ((s.blockers || [])[0] || {}).message); return }
+  line('  发现壳更新：' + (s.local || '(未知)') + ' -> ' + s.remote + '（' + s.changed + ' 个文件，保留你的改动 ' + (s.skippedLocalChanges || []).length + ' 个）')
+  const n = s.notes || {}
+  const breaking = Array.isArray(n.breaking) ? n.breaking.filter((x) => String(x).trim()) : []
+  if (breaking.length) line('  ⚠ 破坏性变更：' + breaking.map((x) => String(x).trim()).join('；'))
+  for (const [key, label] of NOTES_SECTIONS) {
+    if (key === 'breaking') continue
+    const arr = Array.isArray(n[key]) ? n[key].filter((x) => String(x).trim()) : []
+    if (!arr.length) continue
+    line('  ' + label + '：' + arr.slice(0, 2).map((x) => String(x).trim()).join('；') + (arr.length > 2 ? ' …' : ''))
+  }
+  if (s.notesUrl) line('  详情：' + s.notesUrl)
 }
 
 // ---- stage ------------------------------------------------------------------
@@ -482,7 +778,7 @@ const guardStageDir = (dir) => {
 
 const defaultStageDir = (version) => {
   const safe = String(version).replace(/[^\w.+-]/g, '_')
-  const base = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Hack3rX-Harness', 'build') : join(ROOT, 'tmp')
+  const base = process.env.DSH_STAGE || join(ROOT, 'tmp', 'build')
   return join(base, 'shell-' + safe)
 }
 
@@ -504,138 +800,373 @@ const downloadAll = async (targets, base) => {
   return out
 }
 
-const runStage = async (opts) => {
-  const m = await loadManifest(opts.manifest, opts.base)
-  if (!m.ok) return fail(opts.json, 'stage', m.errorCode, m.error)
-  const local = readLocalManifest()
+const sevenZip = () => join(ROOT, 'tools', '7z', '7z.exe')
 
-  // 降级保护：远端比本地旧说明拿错了源（分支/镜像），默认不做
-  if (local.present && local.shellVersion && !opts.force && isNewer(local.shellVersion, m.shellVersion)) {
-    return fail(opts.json, 'stage', 'downgrade-refused', '远端 ' + m.shellVersion + ' 比本地 ' + local.shellVersion + ' 旧，拒绝降级（确需回退加 --force）')
+/** --full：下载整包 zip → 解到 staging → 逐文件按清单校验（多/少/不符都算失败） */
+const stageFull = async (m, stageDir, log) => {
+  if (!m.zip || !/^[0-9a-f]{64}$/.test(m.zip.sha256 || '')) {
+    return { ok: false, errorCode: 'manifest-invalid', error: '这份清单没有可用的整包 zip 信息（--full 需要 zip{name,sha256}）' }
   }
-
-  let stageDir = ''
-  try { stageDir = guardStageDir(opts.stage || defaultStageDir(m.shellVersion)) }
-  catch (e) { return fail(opts.json, 'stage', 'stage-dir-invalid', e.message) }
-
-  const rows = computePlan(m.files)
-  const targets = opts.force ? rows.slice() : rows.filter((r) => r.action !== 'skip')
-  const removed = computeRemoved(m.files)
-  // 版本号对不上也要落 staging：只有 shell-version.json 需要同步时没有文件要下
-  const versionSync = !local.present || local.shellVersion !== m.shellVersion
-  const willWrite = targets.length > 0 || versionSync
-  const warnings = []
-
-  if (!willWrite) {
-    const idle = { ok: true, action: 'stage', shellVersion: m.shellVersion, stage: stageDir, stageCreated: false, files: [], skipped: rows.length, downloaded: 0, added: 0, updated: 0, bytes: 0, removed, manifestFile: null, warnings, exitCode: 0 }
-    if (opts.json) { emitJson(idle); return finish(0) }
-    process.stdout.write('SHELL 已是最新 (' + m.shellVersion + ')，staging 未创建（0 个文件）\n')
-    process.stdout.write('  跳过 ' + rows.length + ' 个文件（sha256 与清单一致）\n')
-    return finish(0)
-  }
-
-  // 1) 全部下到内存：一个失败就整次失败，staging 一个字节都不写
-  const got = await downloadAll(targets, m.base)
-  const dlFailed = got.filter((g) => !g.ok)
-  if (dlFailed.length) {
-    const detail = dlFailed.slice(0, 5).map((g) => g.path + '：' + g.error).join('；') + (dlFailed.length > 5 ? ' …' : '')
-    return fail(opts.json, 'stage', 'download-failed', dlFailed.length + ' 个文件下载失败 —— ' + detail, { shellVersion: m.shellVersion, stage: stageDir })
-  }
-
-  // 2) 编码校验（按字节）：任何一条不过就整次失败，且一个字节都不落盘
-  const encBad = []
-  for (const g of got) {
-    const v = validateShellBytes(g.path, g.buf)
-    if (!v.ok) encBad.push(v.error)
-    else if (v.warnings) warnings.push.apply(warnings, v.warnings)
-  }
-  if (encBad.length) {
-    return fail(opts.json, 'stage', 'encoding-violation', encBad.length + ' 个文件编码不合规，已中止（staging 未写） —— ' + encBad.slice(0, 5).join('；'), { shellVersion: m.shellVersion, stage: stageDir, violations: encBad })
-  }
-
-  // 3) 先对 sha256，再落盘（下载即写字节，绝不重新编码）
-  const shaBad = got.filter((g) => sha256(g.buf) !== g.remoteSha)
-  if (shaBad.length) {
-    return fail(opts.json, 'stage', 'sha-mismatch', '下载内容与清单 sha256 不符：' + shaBad.slice(0, 5).map((g) => g.path).join('；'), { shellVersion: m.shellVersion, stage: stageDir })
-  }
-
-  // 4) staging 清空重建（guardStageDir 已挡住危险路径）
-  if (existsSync(stageDir)) rmSync(stageDir, { recursive: true, force: true })
+  const url = RELEASES + '/download/' + encodeURIComponent(m.tag) + '/' + encodeURIComponent(m.zip.name)
+  log('整包下载：' + url)
+  const got = await fetchBytes(url)
+  if (!got.ok) return { ok: false, errorCode: 'zip-unreachable', error: '取不到整包 ' + url + '：' + got.error }
+  const sha = sha256(got.buf)
+  if (sha !== m.zip.sha256) return { ok: false, errorCode: 'zip-sha-mismatch', error: '整包 sha256 不符（清单 ' + m.zip.sha256.slice(0, 12) + '… / 实际 ' + sha.slice(0, 12) + '…）' }
+  const z7 = sevenZip()
+  if (!existsSync(z7)) return { ok: false, errorCode: 'no-7z', error: '找不到 tools\\7z\\7z.exe，无法解整包' }
   mkdirSync(stageDir, { recursive: true })
-
-  // 5) 写文件 + 立刻读回校验 sha256（防磁盘层出问题）
-  let totalBytes = 0
-  for (const g of got) {
-    const abs = join(stageDir, g.path)
-    if (!resolve(abs).toLowerCase().startsWith(stageDir.toLowerCase() + '\\')) {
-      return fail(opts.json, 'stage', 'whitelist-violation', '落盘路径逃出 staging：' + g.path)
+  const zipPath = join(stageDir, m.zip.name)
+  writeFileSync(zipPath, got.buf)
+  const r = spawnSync(z7, ['x', zipPath, '-o' + stageDir, '-y'], { stdio: 'ignore' })
+  rmSync(zipPath, { force: true })
+  if (r.status !== 0) return { ok: false, errorCode: 'unzip-failed', error: '7z 解包失败（exit ' + r.status + '）' }
+  // 多/少/不符 → 全有或全无
+  const allowed = new Set(Object.keys(m.files).map(lower))
+  allowed.add(lower(SHELL_MANIFEST))
+  const stray = []
+  const walk = (abs, prefix) => {
+    for (const d of readdirSync(abs, { withFileTypes: true })) {
+      const rel = prefix + d.name
+      if (d.isDirectory()) walk(join(abs, d.name), rel + '/')
+      else if (!allowed.has(lower(rel))) stray.push(rel)
     }
+  }
+  walk(stageDir, '')
+  if (stray.length) return { ok: false, errorCode: 'zip-extra-files', error: '整包里有清单外的文件：' + stray.slice(0, 5).join(', ') + (stray.length > 5 ? ' …' : '') }
+  const bad = []
+  for (const rel of Object.keys(m.files)) {
+    const abs = join(stageDir, rel)
+    let have = null
+    try { have = sha256File(abs) } catch { }
+    if (have === null) bad.push(rel + '（整包缺）')
+    else if (have !== m.files[rel]) bad.push(rel + '（sha 不符）')
+  }
+  if (bad.length) return { ok: false, errorCode: 'zip-content-mismatch', error: '整包内容与清单不符：' + bad.slice(0, 5).join('；') + (bad.length > 5 ? ' …' : '') }
+  writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw)
+  return { ok: true, full: true, files: Object.keys(m.files).map((p) => ({ path: p, action: 'update' })), bytes: got.buf.length, manifestFile: { path: SHELL_MANIFEST, bytes: m.raw.length, sha256: sha256(m.raw) } }
+}
+
+const runStage = async (opts) => {
+  const m = await loadManifest(opts)
+  if (!m.ok) return fail(opts.json, 'stage', m.errorCode, m.error)
+  const blockers = compatBlockers(m, readLocalManifest(), opts)
+  const hard = blockers.filter((b) => !b.ignoredByForce)
+  if (hard.length) return fail(opts.json, 'stage', 'blocked', hard.map((b) => b.message).join('；'), { blockers: hard, exitCode: EXIT_BLOCKED })
+  const installed = readLocalManifest()
+  const rows = computePlan(m, installed)
+  const targets = rows.filter((r) => r.action === 'add' || r.action === 'update')
+  const stageDir = guardStageDir(opts.stage ? opts.stage : defaultStageDir(m.shellVersion))
+  const log = (s) => line(s)
+
+  if (opts.full) {
+    const r = await stageFull(m, stageDir, log)
+    if (!r.ok) return fail(opts.json, 'stage', r.errorCode, r.error)
+    const summary = { ok: true, action: 'stage', full: true, shellVersion: m.shellVersion, tag: m.tag, stage: stageDir, stageCreated: true, files: r.files, skipped: rows.filter((x) => x.action === 'skip').length, downloaded: r.files.length, added: 0, updated: r.files.length, bytes: r.bytes, removed: computeRemoved(m, installed), manifestFile: r.manifestFile, warnings: [], exitCode: EXIT_OK }
+    if (opts.json) { emitJson(summary); return finish(EXIT_OK) }
+    line('整包已解到 ' + stageDir + '（' + r.files.length + ' 个文件全部校验通过）')
+    return finish(EXIT_OK)
+  }
+
+  if (targets.length === 0) {
+    // 没有要下的文件：只把清单落到 staging（换装时用于版本推进）
+    mkdirSync(stageDir, { recursive: true })
+    writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw)
+    const summary = { ok: true, action: 'stage', shellVersion: m.shellVersion, tag: m.tag, stage: stageDir, stageCreated: false, files: [], skipped: rows.length, downloaded: 0, added: 0, updated: 0, bytes: 0, removed: computeRemoved(m, installed), manifestFile: { path: SHELL_MANIFEST, bytes: m.raw.length, sha256: sha256(m.raw) }, warnings: [], exitCode: EXIT_OK }
+    if (opts.json) { emitJson(summary); return finish(EXIT_OK) }
+    line('没有要下载的文件（' + rows.length + ' 个已一致）')
+    return finish(EXIT_OK)
+  }
+
+  const got = await downloadAll(targets, m.base)
+  const bad = []
+  const warnings = []
+  const okFiles = []
+  for (const g of got) {
+    if (!g.ok) { bad.push(g.path + '（下载失败：' + g.error + '）'); continue }
+    const enc = validateShellBytes(g.path, g.buf)
+    if (enc.warnings && enc.warnings.length) warnings.push(...enc.warnings)
+    if (!enc.ok) { bad.push(enc.error); continue }
+    const sha = sha256(g.buf)
+    if (sha !== m.files[g.path]) { bad.push(g.path + '（sha256 不符：清单 ' + m.files[g.path].slice(0, 12) + '… / 实际 ' + sha.slice(0, 12) + '…）'); continue }
+    okFiles.push({ path: g.path, action: g.action, buf: g.buf })
+  }
+  if (bad.length) return fail(opts.json, 'stage', 'verify-failed', '下载/校验没全过，一个字节都没落盘：' + bad.slice(0, 5).join('；') + (bad.length > 5 ? ' …' : ''), { failed: bad.slice(0, 50), warnings })
+
+  // 全有或全无：先清空本次 staging 里清单内的旧文件，再写
+  for (const f of okFiles) {
+    const abs = join(stageDir, f.path)
+    mkdirSync(dirname(abs), { recursive: true })
+    writeFileSync(abs, f.buf)
+  }
+  writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw)
+
+  const summary = {
+    ok: true, action: 'stage', shellVersion: m.shellVersion, tag: m.tag, stage: stageDir, stageCreated: true,
+    files: okFiles.map((f) => ({ path: f.path, action: f.action, bytes: f.buf.length })),
+    skipped: rows.length - okFiles.length,
+    downloaded: okFiles.length,
+    added: okFiles.filter((f) => f.action === 'add').length,
+    updated: okFiles.filter((f) => f.action === 'update').length,
+    preserved: rows.filter((r) => r.action === 'preserved').map((r) => r.path),
+    bytes: okFiles.reduce((a, f) => a + f.buf.length, 0),
+    removed: computeRemoved(m, installed),
+    manifestFile: { path: SHELL_MANIFEST, bytes: m.raw.length, sha256: sha256(m.raw) },
+    warnings, exitCode: EXIT_OK,
+  }
+  if (opts.json) { emitJson(summary); return finish(EXIT_OK) }
+  line('已下载 ' + okFiles.length + ' 个文件到 ' + stageDir + '（' + fmtSize(summary.bytes) + '）')
+  for (const w of warnings.slice(0, 5)) line('  ⚠ ' + w)
+  return finish(EXIT_OK)
+}
+
+// ---- apply / rollback / recover -----------------------------------------------
+const verifyCmd = (opts) => {
+  if (opts.noVerify) return { cmd: null, enabled: false }
+  const vp = join(ROOT, 'tools', 'verify-shell.mjs')
+  return { cmd: [process.execPath, vp, '--update-gate'], enabled: true }
+}
+
+const runApply = async (opts) => {
+  const m = await loadManifest(opts)
+  if (!m.ok) return fail(opts.json, 'apply', m.errorCode, m.error)
+  const installed = readLocalManifest()
+  const blockers = compatBlockers(m, installed, opts)
+  const hard = blockers.filter((b) => !b.ignoredByForce)
+  if (hard.length) return fail(opts.json, 'apply', 'blocked', hard.map((b) => b.message).join('；'), { blockers: hard, exitCode: EXIT_BLOCKED })
+  const rows = computePlan(m, installed)
+  const targets = rows.filter((r) => r.action === 'add' || r.action === 'update')
+
+  if (!opts.force) {
+    // 预演：只报告
+    if (opts.json) {
+      const summary = buildSummary(m, installed, rows, computeRemoved(m, installed), blockers, opts)
+      const { _rows, _removed, ...clean } = summary
+      emitJson(Object.assign(clean, { action: 'apply', dryRun: true, exitCode: EXIT_OK }))
+      return finish(summary.status === 'blocked' ? EXIT_BLOCKED : EXIT_OK)
+    }
+    line('壳更新预演（只报告，不改文件）：')
+    line('SHELL ' + (installed.shellVersion || '(未知)') + ' -> ' + m.shellVersion)
+    printPlan(m, rows, computeRemoved(m, installed), installed)
+    printNotes(m, false)
+    line('')
+    line('这是预演，加 --force 才真的替换（自动备份，失败自动回滚）')
+    return finish(EXIT_OK)
+  }
+
+  if (targets.length === 0 && computeRemoved(m, installed).length === 0) {
+    // 版本号可能前进（比如只改清单 notes），也要把清单写回
+    if (opts.json) { emitJson({ ok: true, action: 'apply', dryRun: false, from: installed.shellVersion, to: m.shellVersion, applied: [], deleted: [], preserved: rows.filter((r) => r.action === 'preserved').map((r) => r.path), skipped: rows.length, verify: { ok: true, code: 0, failed: [] }, migrations: [], rolledBack: false, backup: null, journal: null, errors: [], exitCode: EXIT_OK }); return finish(EXIT_OK) }
+    line('已经是最新（没有要替换的文件）')
+    return finish(EXIT_OK)
+  }
+
+  const stageDir = guardStageDir(opts.stage ? opts.stage : defaultStageDir(m.shellVersion))
+  // 先 stage（无 --json，避免和最终 JSON 混在一起）
+  const stageOpts = Object.assign({}, opts, { json: false })
+  const stageCode = await runStageInner(m, installed, stageOpts, stageDir)
+  if (stageCode !== 0) return fail(opts.json, 'apply', 'stage-failed', '取文件/校验阶段失败，没有改动任何本地文件')
+  if (!existsSync(join(stageDir, SHELL_MANIFEST))) return fail(opts.json, 'apply', 'stage-failed', 'staging 里没有清单文件')
+
+  const res = await applyUpdate({
+    root: ROOT,
+    stage: stageDir,
+    backupRoot: join(ROOT, 'cache'),
+    journalPath: join(ROOT, APPLY_JOURNAL),
+    // 清单自己不在 files 里（loadManifest 会拒绝"清单更新自己"），但换装时必须把它一并落盘，
+    // 否则换装成功而版本号不前进 → 下次 check 又报有更新。这里在传给引擎前补上。
+    manifest: { raw: m.raw, files: Object.assign({}, m.files, { [SHELL_MANIFEST]: sha256(m.raw) }), userOwned: m.userOwned, remove: computeRemoved(m, installed) },
+    installed: { present: installed.present, shellVersion: installed.shellVersion, files: installed.files },
+    isAllowed: isAllowedShellPath,
+    verify: verifyCmd(opts),
+    migrations: m.migrations,
+    dryRun: false,
+    logger: opts.json ? () => { } : (s) => line(s),
+  })
+
+  if (opts.json) {
+    emitJson(Object.assign({ action: 'apply', from: installed.shellVersion, to: m.shellVersion }, res, { exitCode: res.ok ? EXIT_OK : EXIT_FAIL }))
+    return finish(res.ok ? EXIT_OK : EXIT_FAIL)
+  }
+  if (!res.ok) {
+    line('壳更新失败：' + (res.errors && res.errors.length ? res.errors.join('；') : '未知错误'))
+    if (res.rolledBack) line('  已按备份整体回滚到 ' + (installed.shellVersion || '原版本') + '（备份：' + (res.backup || 'cache\\shell-backup-*') + '）')
+    return finish(EXIT_FAIL)
+  }
+  line('壳已更新到 ' + m.shellVersion + '：' + (res.applied ? res.applied.length : 0) + ' 个文件已替换' + ((res.deleted || []).length ? '，' + res.deleted.length + ' 个旧文件已删' : '') + '，重启后生效')
+  if ((res.preserved || []).length) line('  保留了你的改动：' + res.preserved.slice(0, 5).join(', ') + (res.preserved.length > 5 ? ' …' : ''))
+  if ((res.migrations || []).length) for (const mg of res.migrations) line('  迁移 ' + mg.id + '：' + (mg.ok ? 'ok' : '失败（' + mg.message + '）'))
+  line('  备份：' + (res.backup || 'cache\\shell-backup-*'))
+  return finish(EXIT_OK)
+}
+
+/** stage 的实际执行体（供 apply 复用：返回退出码而不是直接 exit） */
+const runStageInner = async (m, installed, opts, stageDir) => {
+  const rows = computePlan(m, installed)
+  const targets = rows.filter((r) => r.action === 'add' || r.action === 'update')
+  if (opts.full) {
+    const r = await stageFull(m, stageDir, (s) => line(s))
+    return r.ok ? 0 : 1
+  }
+  mkdirSync(stageDir, { recursive: true })
+  if (targets.length === 0) { writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw); return 0 }
+  const got = await downloadAll(targets, m.base)
+  const bad = []
+  for (const g of got) {
+    if (!g.ok) { bad.push(g.path + '（下载失败：' + g.error + '）'); continue }
+    const enc = validateShellBytes(g.path, g.buf)
+    if (!enc.ok) { bad.push(enc.error); continue }
+    if (sha256(g.buf) !== m.files[g.path]) { bad.push(g.path + '（sha256 不符）'); continue }
+    const abs = join(stageDir, g.path)
     mkdirSync(dirname(abs), { recursive: true })
     writeFileSync(abs, g.buf)
-    const back = sha256File(abs)
-    if (back !== g.remoteSha) return fail(opts.json, 'stage', 'sha-mismatch', '落盘后校验不一致：' + g.path, { shellVersion: m.shellVersion, stage: stageDir })
-    g.bytes = g.buf.length
-    totalBytes += g.bytes
   }
+  if (bad.length) { process.stderr.write('shell-update: 下载/校验没全过：' + bad.slice(0, 5).join('；') + '\n'); return 1 }
+  writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw)
+  return 0
+}
 
-  // 6) 清单本身也进 staging（原字节）：换装时一并覆盖，版本号才会同步，否则下次 check 还报有更新
-  const manifestAbs = join(stageDir, SHELL_MANIFEST)
-  writeFileSync(manifestAbs, m.raw)
-  const manifestFile = { path: SHELL_MANIFEST, bytes: m.raw.length, sha256: sha256File(manifestAbs) }
+const runRollback = async (opts) => {
+  const res = await rollbackUpdate({
+    root: ROOT,
+    backupRoot: join(ROOT, 'cache'),
+    journalPath: join(ROOT, APPLY_JOURNAL),
+    verify: verifyCmd(opts),
+    isAllowed: isAllowedShellPath,
+    logger: opts.json ? () => { } : (s) => line(s),
+  })
+  if (opts.json) { emitJson(Object.assign({ action: 'rollback' }, res, { exitCode: res.ok ? EXIT_OK : EXIT_FAIL })); return finish(res.ok ? EXIT_OK : EXIT_FAIL) }
+  if (!res.ok) { line('回滚失败：' + (res.errors || []).join('；')); return finish(EXIT_FAIL) }
+  if (res.noop) { line('没有可回滚的备份：' + (res.message || '')); return finish(EXIT_OK) }
+  line('已回滚到 ' + (res.to || res.from || '上一版') + '（备份：' + (res.backup || '') + '）')
+  finish(EXIT_OK)
+}
 
+const runRecover = async (opts) => {
+  const res = await recoverUpdate({
+    root: ROOT,
+    backupRoot: join(ROOT, 'cache'),
+    journalPath: join(ROOT, APPLY_JOURNAL),
+    verify: verifyCmd(opts),
+    isAllowed: isAllowedShellPath,
+    logger: opts.json ? () => { } : (s) => line(s),
+  })
+  if (opts.json) { emitJson(Object.assign({ action: 'recover' }, res, { exitCode: res.ok ? EXIT_OK : EXIT_FAIL })); return finish(res.ok ? EXIT_OK : EXIT_FAIL) }
+  if (!res.ok) { line('恢复失败：' + (res.errors || []).join('；')); return finish(EXIT_FAIL) }
+  if (res.noop) { line('没有中断残留'); return finish(EXIT_OK) }
+  line('上次换装中断，已恢复（备份：' + (res.backup || '') + '）')
+  finish(EXIT_OK)
+}
+
+// ---- snooze -----------------------------------------------------------------
+/** 「这次不更新」：记下远端版本，7 天内 preflight 不再问（菜单 U 随时可用） */
+const runSnooze = async (opts) => {
+  const m = await loadManifest(opts)
+  const remote = m.ok ? m.shellVersion : String((readCache() || {}).version || '')
+  if (!remote) return fail(opts.json, 'snooze', 'manifest-unreachable', '取不到远端版本，无法记录"这次不更新"')
+  writeJsonFile(SNOOZE_FILE, { version: String(remote), at: Date.now(), until: Date.now() + 7 * 24 * 3600 * 1000 })
+  if (opts.json) { emitJson({ ok: true, action: 'snooze', version: String(remote), days: 7, exitCode: EXIT_OK }); return finish(EXIT_OK) }
+  line('已记下：' + remote + ' 这版先不更新（7 天内不再提示；想更新随时运行 dsh-portable.cmd shell-update apply -Force）')
+  finish(EXIT_OK)
+}
+
+// ---- notes / defaults ---------------------------------------------------------
+const runNotes = async (opts) => {
+  const m = await loadManifest(opts)
+  if (!m.ok) return fail(opts.json, 'notes', m.errorCode, m.error)
+  if (opts.json) { emitJson({ ok: true, action: 'notes', version: m.shellVersion, channel: m.channel, notes: m.notes, notesUrl: m.notesUrl, exitCode: EXIT_OK }); return finish(EXIT_OK) }
+  line('SHELL ' + m.shellVersion + '（' + m.channel + '，' + Object.keys(m.files).length + ' 个文件）')
+  printNotes(m, false)
+  finish(EXIT_OK)
+}
+
+const runDefaults = (opts) => {
   const out = {
     ok: true,
-    action: 'stage',
-    shellVersion: m.shellVersion,
-    stage: stageDir,
-    stageCreated: true,
-    files: got.map((g) => ({ path: g.path, action: g.action, bytes: g.bytes })),
-    skipped: rows.length - got.length,
-    downloaded: got.length,
-    added: got.filter((g) => g.action === 'add').length,
-    updated: got.filter((g) => g.action === 'update').length,
-    bytes: totalBytes,
-    removed,
-    manifestFile,
-    warnings,
-    exitCode: 0,
+    repo: REPO,
+    manifest: DEFAULT_MANIFEST,
+    rawBase: RAW_BASE,
+    tagTemplate: RAW_BASE + '/refs/tags/v<version>/',
+    pinnedManifestTemplate: RAW_BASE + '/refs/tags/v<version>/' + SHELL_MANIFEST,
+    releases: RELEASES,
+    allowedHosts: ALLOWED_HOSTS,
+    schemaVersion: MANIFEST_SCHEMA,
+    updaterMin: UPDATER_MIN,
+    userOwned: USER_OWNED,
+    exitCodes: { ok: EXIT_OK, fail: EXIT_FAIL, usage: EXIT_USAGE, blocked: EXIT_BLOCKED, upToDate: EXIT_UP_TO_DATE },
   }
-  if (opts.json) { emitJson(out); return finish(0) }
-
-  process.stdout.write('SHELL ' + (local.shellVersion || '(无本地清单)') + ' -> ' + m.shellVersion + '\n')
-  process.stdout.write('  清单：' + (m.kind === 'url' ? m.source : m.localPath) + '（' + Object.keys(m.files).length + ' 个文件）\n')
-  process.stdout.write('  staging：' + stageDir + '\n')
-  process.stdout.write('  下载 ' + got.length + ' 个（新增 ' + out.added + ' / 更新 ' + out.updated + '），跳过 ' + out.skipped + ' 个，共 ' + fmtSize(totalBytes) + '\n')
-  for (const g of got) process.stdout.write('    ' + (g.action === 'add' ? '+ ' : '~ ') + g.path + '  ' + fmtSize(g.bytes) + '\n')
-  if (removed.length) {
-    process.stdout.write('  清单已删 ' + removed.length + ' 个（本脚本不删，交 PS 侧决定）：\n')
-    for (const r of removed) process.stdout.write('    - ' + r + '\n')
-  }
-  if (warnings.length) process.stdout.write('  警告：' + warnings.slice(0, 5).join('；') + (warnings.length > 5 ? ' …' : '') + '\n')
-  process.stdout.write('  staging 内另附 shell-version.json（换装时请一并覆盖，版本号才会同步）\n')
-  finish(0)
+  if (opts.json) { emitJson(out); return finish(EXIT_OK) }
+  line('repo      : ' + out.repo)
+  line('manifest  : ' + out.manifest)
+  line('raw base  : ' + out.rawBase + '/refs/tags/v<version>/')
+  line('schema    : ' + out.schemaVersion + '（updaterMin ' + out.updaterMin + '）')
+  line('userOwned : ' + out.userOwned.length + ' 个')
+  finish(EXIT_OK)
 }
 
-// ---- 入口 -------------------------------------------------------------------
+// ---- CLI --------------------------------------------------------------------
+const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached' }
+const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--help': 'help', '-h': 'help' }
+
+const parseArgs = (argv) => {
+  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, help: false, bad: '' }
+  for (let i = 0; i < argv.length; i++) {
+    const t = argv[i]
+    if (BOOL_FLAGS[t]) { a[BOOL_FLAGS[t]] = true; continue }
+    const eq = t.indexOf('=')
+    if (t.startsWith('--') && eq > 2 && VALUE_FLAGS[t.slice(0, eq)]) { a[VALUE_FLAGS[t.slice(0, eq)]] = t.slice(eq + 1); continue }
+    if (VALUE_FLAGS[t]) {
+      const v = argv[i + 1]
+      if (v === undefined || (v.startsWith('--') && !VALUE_FLAGS[v])) { a.bad = t + ' 缺少取值'; return a }
+      a[VALUE_FLAGS[t]] = v
+      i += 1
+      continue
+    }
+    if (t.startsWith('-')) { a.bad = '未知参数 ' + t; return a }
+    if (!a.cmd) { a.cmd = t; continue }
+    a.bad = '多余的参数 ' + t
+    return a
+  }
+  a.cached = Number(a.cached) || 0
+  if (a.dryRun) a.force = false
+  return a
+}
+
 const main = async () => {
-  const a = parseArgs(process.argv.slice(2))
-  if (a.help) { process.stdout.write(USAGE + '\n'); return finish(0) }
-  if (a.bad) { process.stderr.write('shell-update: ' + a.bad + '\n\n' + USAGE + '\n'); return finish(2) }
-  if (!a.cmd) { process.stderr.write('shell-update: 缺少子命令\n\n' + USAGE + '\n'); return finish(2) }
-  if (a.cmd === 'check') return runCheck(a)
-  if (a.cmd === 'stage') return runStage(a)
-  process.stderr.write('shell-update: 未知子命令 ' + a.cmd + '\n\n' + USAGE + '\n')
-  return finish(2)
+  const opts = parseArgs(process.argv.slice(2))
+  if (opts.help) { line(USAGE); return finish(EXIT_OK) }
+  if (opts.bad) { process.stderr.write('shell-update: ' + opts.bad + '\n\n' + USAGE + '\n'); return finish(EXIT_USAGE) }
+  try {
+    switch (opts.cmd) {
+      case 'check': return await runCheck(opts)
+      case 'stage': return await runStage(opts)
+      case 'apply': return await runApply(opts)
+      case 'rollback': return await runRollback(opts)
+      case 'recover': return await runRecover(opts)
+      case 'snooze': return await runSnooze(opts)
+      case 'notes': return await runNotes(opts)
+      case 'defaults': return runDefaults(opts)
+      case 'backups': {
+        const list = listBackups(join(ROOT, 'cache'))
+        if (opts.json) { emitJson({ ok: true, action: 'backups', backups: list, exitCode: EXIT_OK }); return finish(EXIT_OK) }
+        for (const b of list) line(b.name + '  ' + (b.from || '?') + ' -> ' + (b.to || '?') + '  ' + (b.startedAt || ''))
+        return finish(EXIT_OK)
+      }
+      default: process.stderr.write('shell-update: 未知子命令 ' + (opts.cmd || '(空)') + '\n\n' + USAGE + '\n'); return finish(EXIT_USAGE)
+    }
+  } catch (e) {
+    return fail(opts.json, opts.cmd || 'unknown', 'exception', String((e && e.stack) || e))
+  }
 }
 
-/** 只有被当脚本直接跑才执行；clean-ship.mjs 会 import 这里的白名单 / sha / 版本读取 */
-const invokedDirectly = (() => {
-  try { return resolve(process.argv[1] || '').toLowerCase() === resolve(fileURLToPath(import.meta.url)).toLowerCase() } catch { return false }
+// 只有"直接跑这个文件"才执行 CLI：被 clean-ship / verify-shell 静态 import 时不能有副作用
+// （否则 import 会立刻打印 usage 并 process.exit(2)）。
+const isMain = (() => {
+  try {
+    const self = fileURLToPath(import.meta.url)
+    const argv1 = process.argv[1] ? resolve(process.argv[1]) : ''
+    return !!argv1 && self.toLowerCase() === argv1.toLowerCase()
+  } catch { return false }
 })()
-if (invokedDirectly) {
-  main().catch((e) => {
-    if (process.argv.includes('--json')) emitJson({ ok: false, action: 'unknown', errorCode: 'internal', error: String((e && e.message) || e), exitCode: 1 })
-    else process.stderr.write('shell-update: 未捕获异常 ' + String((e && e.stack) || e) + '\n')
-    finish(1)
-  })
-}
+
+if (isMain) main()
