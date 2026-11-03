@@ -532,7 +532,9 @@ check('清单覆盖完整', () => {
   for (const rel of Object.keys(filesObj)) {
     if (!exists(join(ROOT, rel))) { bad.push('磁盘缺少 ' + rel); continue }
     if (!localSet.has(rel)) { bad.push('清单里多出（白名单不再收）' + rel); continue }
-    if (UPDATE_GATE && owned.has(String(rel).toLowerCase())) continue
+    // userOwned 的 sha 差异在任何模式下都是**合法状态**（用户装过插件/改过网关/本机 storeDir），
+    // 仓库里发布前它们当然一致；用户实例里不一致是正常的，不该报红。
+    if (owned.has(String(rel).toLowerCase())) continue
     if (sha(join(ROOT, rel)) !== String(filesObj[rel])) bad.push('哈希不符 ' + rel)
   }
   add(label, bad.length === 0, bad.length ? bad.length + ' 处：' + bad.slice(0, 5).join('，') : local.length + ' 个壳文件与清单逐一对齐')
@@ -562,6 +564,9 @@ check('更新源是版本线', () => {
 
 check('RELEASE-NOTES 六小节齐全', () => {
   const label = 'RELEASE-NOTES 六小节齐全'
+  // 开发版（x.y.z-dev / -rc / -beta / -alpha）不要求有发布说明：版本号还没定，写了也得改。
+  const cur = String(manifestJson().shellVersion || '')
+  if (/-dev|-rc|-beta|-alpha/i.test(cur)) { add(label, true, cur + ' 是开发版，发布时再补', true); return }
   const p = join(ROOT, 'RELEASE-NOTES.md')
   if (!exists(p)) { add(label, true, 'RELEASE-NOTES.md 还不存在（只有壳的发布版才带；v0.1.0 起必须有）', true); return }
   const ver = String((exists(MANIFEST_FILE) ? manifestJson().shellVersion : '') || '').trim()
