@@ -519,19 +519,21 @@ check('清单覆盖完整', () => {
   if (!exists(MANIFEST_FILE)) { add(label, false, 'shell-version.json 不存在（先跑 node tools\\clean-ship.mjs refresh）'); return }
   const filesObj = manifestJson().files || {}
   const local = listLocalShellFiles()
-  const localSet = new Set(local)
+  // 大小写不敏感：Windows 上 TOOLS/X.MJS 与 tools/x.mjs 是同一个文件
+  const localSet = new Set(local.map((s) => s.toLowerCase()))
+  const localByLower = new Map(local.map((s) => [s.toLowerCase(), s]))
   const bad = []
   // 正方向：白名单里"当前存在"的每个壳文件都必须进清单。
   // 但**换装闸门**（--update-gate，跑在用户机器上）要豁免这一方向：
   // 用户完全可能自己往 tools\ 里放脚本（我们在文档里承诺"永不删"），那不是"漏收"；
   // 这一方向只适合发布前自检（仓库里必须清单与实物一一对齐）。
-  if (!UPDATE_GATE) for (const rel of local) if (!Object.prototype.hasOwnProperty.call(filesObj, rel)) bad.push('漏收 ' + rel)
+  if (!UPDATE_GATE) for (const rel of local) if (!Object.keys(filesObj).some((k) => k.toLowerCase() === rel.toLowerCase())) bad.push('漏收 ' + rel)
   // 反方向：清单里每条都得在磁盘上、在白名单内、且字节与清单 sha 一致（用户改过代码文件时这里就该红）。
   // 换装闸门下 userOwned 的 sha 差异是**正常状态**（用户装过插件、改过网关），不能因此回滚。
   const owned = new Set((manifestJson().userOwned || []).map((s) => String(s).toLowerCase()))
   for (const rel of Object.keys(filesObj)) {
     if (!exists(join(ROOT, rel))) { bad.push('磁盘缺少 ' + rel); continue }
-    if (!localSet.has(rel)) { bad.push('清单里多出（白名单不再收）' + rel); continue }
+    if (!localSet.has(String(rel).toLowerCase())) { bad.push('清单里多出（白名单不再收）' + rel); continue }
     // userOwned 的 sha 差异在任何模式下都是**合法状态**（用户装过插件/改过网关/本机 storeDir），
     // 仓库里发布前它们当然一致；用户实例里不一致是正常的，不该报红。
     if (owned.has(String(rel).toLowerCase())) continue

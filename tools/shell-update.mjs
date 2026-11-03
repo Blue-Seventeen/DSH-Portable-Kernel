@@ -26,7 +26,7 @@
  */
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APPLY_JOURNAL, applyUpdate, listBackups, recoverUpdate, rollbackUpdate } from './shell-apply.mjs'
@@ -456,7 +456,7 @@ const loadManifest = async (opts) => {
     ? { name: json.zip.name, sha256: String(json.zip.sha256 || '').toLowerCase(), bytes: Number(json.zip.bytes) || 0 }
     : null
 
-  const base = opts.base ? String(opts.base) : (typeof json.base === 'string' && json.base.trim() ? json.base.trim() : deriveBase(kind === 'url' ? finalUrl : localPath, tag))
+  const base = opts.base ? String(opts.base) : (typeof json.base === 'string' && json.base.trim() ? json.base.trim() : deriveBase(kind === 'url' ? source : localPath, tag))
 
   return {
     ok: true,
@@ -522,7 +522,9 @@ const compatBlockers = (m, installed, opts) => {
     const ok = satisfiesRange(have, wantNode)
     if (ok === false) blockers.push({ code: 'requires-node', message: '这份壳要求 node ' + wantNode + '，本机是 ' + have, fix: '先 dsh-portable.cmd bootstrap 更新运行时' })
   }
-  return opts && opts.force ? blockers.map((b) => Object.assign({}, b, { ignoredByForce: true })) : blockers
+  if (!(opts && opts.force)) return blockers
+  // --force 只越过"官方层/运行时版本"这类软要求；schema 太新、更新器太旧、跨版本太大永远硬挡
+  return blockers.map((b) => (/^requires-/.test(b.code) ? Object.assign({}, b, { ignoredByForce: true }) : b))
 }
 
 /** 远端清单 vs 本地实物：code/update、user-owned 保留、add、skip。userOwned 以清单为准（缺省回退到代码常量） */
@@ -540,9 +542,13 @@ export const computePlan = (m, installed) => {
     const remoteSha = m.files[rel]
     const owned = ownedSet.has(lower(rel))
     let action = 'skip'
-    if (have === null) action = 'add'
+    // userOwned 被用户删掉：尊重删除意图，不自动装回来（首次安装由 bootstrap 负责）
+    if (have === null && owned) action = 'skip'
+    else if (have === null) action = 'add'
     else if (have === remoteSha) action = 'skip'
     else if (owned && (installed.files[rel] ? installed.files[rel] !== have : true)) action = 'preserved'
+    // tools\ 是整目录白名单：本地已有、但"上一版清单没装过"的文件，是用户自己放的脚本，永不覆盖
+    else if (!owned && installed.files[rel] === undefined && lower(rel).startsWith('tools/')) action = 'preserved'
     else action = 'update'
     rows.push({ path: rel, action, class: owned ? 'user-owned' : 'code', localSha: have, remoteSha, bytes: size })
   }
@@ -592,8 +598,8 @@ const printNotes = (m, compact) => {
   const rows = []
   for (const [key, label] of NOTES_SECTIONS) {
     const arr = Array.isArray(n[key]) ? n[key].filter((x) => String(x).trim()) : []
-    if (!arr.length) continue
-    rows.push([label, arr])
+    // 六小节固定：没有内容的也打印"无"，别让用户以为漏了一节（尤其"破坏性变更"）
+    rows.push([label, arr.length ? arr : ['无']])
   }
   if (!rows.length) { line('  更新细则：这一版没有提供（见 ' + (m.notesUrl || 'Release 页面') + '）'); return }
   for (const [label, arr] of rows) {
@@ -645,9 +651,10 @@ const finish = (code) => {
 }
 
 const fail = (jsonMode, action, errorCode, error, extra) => {
-  if (jsonMode) emitJson(Object.assign({ ok: false, action, errorCode, error, exitCode: EXIT_FAIL }, extra || {}))
+  const code = extra && Number.isInteger(extra.exitCode) ? extra.exitCode : (errorCode === 'blocked' ? EXIT_BLOCKED : EXIT_FAIL)
+  if (jsonMode) emitJson(Object.assign({ ok: false, action, errorCode, error, exitCode: code }, extra || {}))
   else process.stderr.write('shell-update: ' + error + '\n')
-  finish(EXIT_FAIL)
+  finish(code)
 }
 
 // ---- check ------------------------------------------------------------------
@@ -699,8 +706,10 @@ const buildSummary = (m, installed, rows, removed, blockers, opts) => {
 
 const runCheck = async (opts) => {
   // 缓存：只有"取不到远端"或显式 --cached 时才用；有缓存且未过期就直接回放
+  const sourceKey = opts.manifest || (opts.to ? RAW_BASE + '/refs/tags/' + tagFor(opts.to) + '/' + SHELL_MANIFEST : DEFAULT_MANIFEST)
   const cache = opts.cached > 0 ? readCache() : null
-  if (cache && cache.at && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
+  // 缓存必须绑定"同一份清单来源"，否则 --manifest 切换后会回放别的清单的结论（preflight 也会被污染）
+  if (cache && cache.at && cache.source === sourceKey && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
     const s = cache.summary
     if (opts.prompt && snoozedFor(s.remote)) return finish(EXIT_UP_TO_DATE)
     if (opts.json) { emitJson(Object.assign({}, s, { cached: true, exitCode: s.exitCode, _rows: undefined, _removed: undefined })); return finish(s.exitCode) }
@@ -718,10 +727,14 @@ const runCheck = async (opts) => {
   const removed = computeRemoved(m, installed)
   const blockers = compatBlockers(m, installed, opts)
   const summary = buildSummary(m, installed, rows, removed, blockers, opts)
-  writeJsonFile(CACHE_FILE, { at: Date.now(), version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
+  if (opts.cached > 0 || opts.prompt) writeJsonFile(CACHE_FILE, { at: Date.now(), source: sourceKey, version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
   const { _rows, _removed, ...clean } = summary
 
-  if (opts.json) { emitJson(clean); return finish(clean.exitCode) }
+  if (opts.json) {
+    if (opts.prompt && snoozedFor(m.shellVersion)) return finish(EXIT_UP_TO_DATE)
+    emitJson(clean)
+    return finish(clean.exitCode)
+  }
   if (opts.prompt) {
     // "这次不更新"：7 天内不再提醒（preflight 会调 snooze 写入），静默退出 4
     if (snoozedFor(m.shellVersion)) return finish(EXIT_UP_TO_DATE)
@@ -729,14 +742,14 @@ const runCheck = async (opts) => {
     return finish(clean.exitCode)
   }
   if (snoozedFor(m.shellVersion) && clean.status === 'update-available') {
-    line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '（你已选择暂不更新，7 天内不再提醒；要更新请运行 dsh-portable.cmd shell-update apply -Force）')
+    line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '（你已选择暂不更新，7 天内不再提醒；要更新请运行 dsh-portable.cmd shell-update apply -Force（或 node tools\\shell-update.mjs apply --force））')
     return finish(clean.exitCode)
   }
   if (clean.status === 'up-to-date') {
     line('SHELL 已是最新 (' + (clean.local || clean.remote) + ')')
     line('  变更文件：0 个（清单 ' + clean.manifest.fileCount + ' 个文件全部一致）')
   } else if (clean.status === 'local-newer') {
-    line('SHELL ' + clean.local + ' -> ' + clean.remote + '（远端更旧，不降级；确需回退用 apply --to ' + clean.remote + ' -Force）')
+    line('SHELL ' + clean.local + ' -> ' + clean.remote + '（远端更旧，不降级；确需回退用 apply --to ' + clean.remote + ' --force）')
   } else if (clean.status === 'blocked') {
     line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '：这次不能自动升级')
     printBlockers(clean.blockers)
@@ -900,8 +913,8 @@ const runStage = async (opts) => {
   if (bad.length) {
     // 与 apply 一致：逐文件下载没全过时，退一步走 Release 整包 zip（企业网关偶发挡裸文件）
     if (m.zip && /^[0-9a-f]{64}$/.test(m.zip.sha256 || '')) {
-      line('逐文件下载没全过（' + bad.length + ' 个），改走整包 zip 兜底…')
-      const full = await stageFull(m, stageDir, (s) => line('  ' + s))
+      if (!opts.json) line('逐文件下载没全过（' + bad.length + ' 个），改走整包 zip 兜底…')
+      const full = await stageFull(m, stageDir, (s) => { if (!opts.json) line('  ' + s) })
       if (full.ok) {
         const summary = { ok: true, action: 'stage', full: true, shellVersion: m.shellVersion, tag: m.tag, stage: stageDir, stageCreated: true, files: full.files, skipped: rows.filter((x) => x.action === 'skip').length, downloaded: full.files.length, added: 0, updated: full.files.length, bytes: full.bytes, removed: computeRemoved(m, installed), manifestFile: full.manifestFile, warnings: [], exitCode: EXIT_OK }
         if (opts.json) { emitJson(summary); return finish(EXIT_OK) }
@@ -944,7 +957,7 @@ const runStage = async (opts) => {
 const verifyCmd = (opts) => {
   if (opts.noVerify) return { cmd: null, enabled: false }
   const vp = join(ROOT, 'tools', 'verify-shell.mjs')
-  return { cmd: [process.execPath, vp, '--update-gate'], enabled: true }
+  return { cmd: [process.execPath, vp, '--update-gate'], enabled: true, quiet: !!opts.json }
 }
 
 const runApply = async (opts) => {
@@ -976,8 +989,17 @@ const runApply = async (opts) => {
 
   if (targets.length === 0 && computeRemoved(m, installed).length === 0) {
     // 版本号可能前进（比如只改清单 notes），也要把清单写回
-    if (opts.json) { emitJson({ ok: true, action: 'apply', dryRun: false, from: installed.shellVersion, to: m.shellVersion, applied: [], deleted: [], preserved: rows.filter((r) => r.action === 'preserved').map((r) => r.path), skipped: rows.length, verify: { ok: true, code: 0, failed: [] }, migrations: [], rolledBack: false, backup: null, journal: null, errors: [], exitCode: EXIT_OK }); return finish(EXIT_OK) }
-    line('已经是最新（没有要替换的文件）')
+    // 没有要替换的文件，但清单本身可能变了（版本号 / notes）：把清单原子写回，让版本号前进
+    const mf = join(ROOT, SHELL_MANIFEST)
+    try {
+      writeFileSync(mf + '.new', m.raw)
+      renameSync(mf + '.new', mf)
+    } catch (e) {
+      return fail(opts.json, 'apply', 'manifest-write-failed', '清单写回失败：' + e.message)
+    }
+    const appliedRows = [{ path: SHELL_MANIFEST, action: 'update' }]
+    if (opts.json) { emitJson({ ok: true, action: 'apply', dryRun: false, from: installed.shellVersion, to: m.shellVersion, applied: appliedRows, deleted: [], preserved: rows.filter((r) => r.action === 'preserved').map((r) => r.path), skipped: rows.length, verify: { ok: null, code: null, failed: [], ran: false }, migrations: [], rolledBack: false, backup: null, journal: null, errors: [], exitCode: EXIT_OK }); return finish(EXIT_OK) }
+    line('没有要替换的文件；清单已从 ' + (installed.shellVersion || '?') + ' 推进到 ' + m.shellVersion)
     return finish(EXIT_OK)
   }
 
@@ -1004,6 +1026,8 @@ const runApply = async (opts) => {
     logger: opts.json ? () => { } : (s) => line(s),
   })
 
+  // 成功换装后 staging 没用了：留着只会让 tmp\build 越堆越大（失败时保留，便于排查）
+  if (res.ok) { try { rmSync(stageDir, { recursive: true, force: true }) } catch { } }
   if (opts.json) {
     emitJson(Object.assign({ action: 'apply', from: installed.shellVersion, to: m.shellVersion }, res, { exitCode: res.ok ? EXIT_OK : EXIT_FAIL }))
     return finish(res.ok ? EXIT_OK : EXIT_FAIL)
@@ -1097,7 +1121,7 @@ const runSnooze = async (opts) => {
   if (!remote) return fail(opts.json, 'snooze', 'manifest-unreachable', '取不到远端版本，无法记录"这次不更新"')
   writeJsonFile(SNOOZE_FILE, { version: String(remote), at: Date.now(), until: Date.now() + 7 * 24 * 3600 * 1000 })
   if (opts.json) { emitJson({ ok: true, action: 'snooze', version: String(remote), days: 7, exitCode: EXIT_OK }); return finish(EXIT_OK) }
-  line('已记下：' + remote + ' 这版先不更新（7 天内不再提示；想更新随时运行 dsh-portable.cmd shell-update apply -Force）')
+  line('已记下：' + remote + ' 这版先不更新（7 天内不再提示；想更新随时运行 dsh-portable.cmd shell-update apply -Force（或 node tools\\shell-update.mjs apply --force））')
   finish(EXIT_OK)
 }
 

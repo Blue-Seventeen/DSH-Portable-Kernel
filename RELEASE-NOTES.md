@@ -64,8 +64,8 @@
 
 - 换装刚结束发现不对：`dsh-portable.cmd shell-update rollback` —— 用最新一份备份整体还原（包含被删掉的文件），还原后同样跑一次 verify。
 - 半途断电/被杀进程（壳看起来"少了一半"）：`dsh-portable.cmd shell-update recover` —— 发现残留 journal 就按备份还原并清 journal；没有 journal 则什么都不做。
-- 想退回某个更早的版本：`dsh-portable.cmd shell-update check --to v<旧版本>`，确认后 `stage --force` + `apply`（降级必须显式 `--force`，默认拒绝降级）。
-- 备份目录可以手工清理（`tmp\` 下 `shell-backup-*`），删之前建议先复制一份到盘外。
+- 想退回某个更早的版本：`node tools\shell-update.mjs apply --to <旧版本> --force`（走 `dsh-portable.cmd` 时写成 `shell-update apply -Force`；降级必须显式 `--force`，默认拒绝降级）。
+- 备份目录可以手工清理（`cache\` 下 `shell-backup-*`），删之前建议先复制一份到盘外。
 - 网页兜底：打开 GitHub Release 页面下载 `harness-shell-<版本>.zip` 整包手工覆盖；只想修清单就单独下 `shell-version.json`。
 
 ## v0.1.1 — 2026-11-04
@@ -103,5 +103,50 @@
 ### 如何回退
 
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
-- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.0 -Force`（降级必须显式 -Force）。
+- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.0 --force`（降级必须显式 `--force`；走 `dsh-portable.cmd` 时参数写成 `-Force`，脚本会翻成 `--force`）。
 - 网页兜底：从 Release 页下载 `harness-shell-0.1.1.zip` 整包覆盖壳文件；只想修清单就单独下 `shell-version.json`。
+
+## v0.1.2 — 2026-11-04
+
+全量测试（4 组独立 QA：发布完整性 / 更新器路径 / 数据安全 / 运行时与 pnpm）之后的一版**纯修复**，没有破坏性变更。
+
+### 新增
+
+- 无新功能。这一版只修 QA 揪出来的问题。
+
+### 修复
+
+- **默认更新源基址算错**：清单地址 302 跳到 `release-assets.githubusercontent.com` 后，代码把跳转后的主机当成了文件基址，逐文件下载全部失败，只能靠 1.73 MB 整包兜底（一次 24 秒）。现在固定用 `raw.githubusercontent.com/<repo>/refs/tags/<tag>/`。
+- **`--cached` 会串味**：缓存不校验来源，先查过一份假清单后再带 `--cached` 查真清单，会回放假清单的结论（preflight 也会被污染）。现在缓存绑定清单来源。
+- **`--force` 越权**：原来它会连 `schemaVersion` 太新、`updaterMin` 太高、跨版本太大一起忽略。现在只放开 `requires-dsh` / `requires-node` 这类软要求，硬闸永远挡。
+- **纯版本推进不生效**：清单只改了版本号 / 更新说明、没有文件变化时，`apply` 报成功却没写回清单，版本号永远不前进。现在会原子写回 `shell-version.json`。
+- **退出码与 JSON 不一致**：被兼容性挡下时进程退出 1、JSON 里写 3。现在统一为 3。
+- **`--json` 不是一行**：换装自检的 PASS 行会混进 stdout。现在自检输出收进 JSON 的 `verify.failed`，stdout 只有一行。
+- **`check` 无条件写缓存**：连只读检查都落盘（`tmp\shell-check.json`）。现在只有 `--cached` / `--prompt` 才写。
+- **更新说明少一节**：某节为空时（尤其「破坏性变更」）会被整节省略，看着像漏了。现在六节固定，空的打印「无」。
+- **用户自建脚本被覆盖**：`tools\` 是整目录白名单，用户自己放在里面的脚本一旦和官方文件同名就会被覆盖。现在「本地有、上一版清单没装过」的 `tools\*` 一律保留（会在输出里列为「保留」）。
+- **删掉的用户配置被装回来**：`home\` 下属于用户自己的文件（package.json / pnpm-workspace.yaml / cordis.patch.yml 等）被用户删掉后，升级会把它加回来。现在尊重删除意图，不再补装。
+- **大小写导致的误报**：`verify` 的「清单覆盖完整」按大小写敏感比较，`TOOLS/X.MJS` 这类会误判。现在按小写比较。
+- **doctor 的假阳性**：「pnpm aligned」只比 store 大版本，profile 里记的 storeDir 指向一个已经不存在的路径时照样报 aligned（仓库里实测复现）。现在会核对记录的 storeDir 是否存在、盘内 store 是否有内容。
+
+### 优化
+
+- `verify-published` 对网络抖动（代理偶发 618）重试 3 次，不再把「网络不好」判成「版本不能升级」。
+- 成功换装后清掉 `tmp\build` 里的 staging；失败时保留，便于排查。
+- 文档纠正：降级命令的正确写法是 `--force`（直接调 node CLI；走 `dsh-portable.cmd` 时写 `-Force`，脚本会翻），备份目录在 `cache\shell-backup-*`；顺带刷新了一批过期数字。
+
+### 破坏性变更
+
+- 无。行为变得更保守（该挡的一定挡、该保留的一定保留），不影响正常升级。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（54 个）；`home\` 下你的插件清单 / 网关配置 / 会话 / 凭证一律不碰；你自己放进 `tools\` 的脚本也会保留。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。
+- 升级后如需让 pnpm 补丁生效（compat 档），跑一次 `dsh-portable.cmd repair`。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.1 --force`（降级必须显式 `--force`）。
+- 网页兜底：从 Release 页下载 `harness-shell-0.1.2.zip` 整包覆盖壳文件。

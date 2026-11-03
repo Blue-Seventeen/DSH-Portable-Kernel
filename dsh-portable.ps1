@@ -1358,9 +1358,28 @@ function Get-PnpmStateText {
   try { $ver = (Json (Join-Path $Root 'runtime\pnpm\package.json')).version } catch { }
   $shim = Test-Path -LiteralPath (Join-Path $Root 'runtime\pnpm\bin\pnpm.cmd')
   $have = Get-ProfileStoreMajor
-  if ($have -eq $want) { $state = 'aligned' }
+  # 光比大版本会给出假阳性：profile 里记的 storeDir 可能指向一个已经不存在的路径（比如把 store 搬进盘内之后）。
+  # 所以再核对"记录的 storeDir 是否存在"和"盘内 store 是否有内容"两件事。
+  $recDir = ''
+  try {
+    $mj = Join-Path $Root 'home\profiles\node_modules\.modules.yaml'
+    if (Test-Path -LiteralPath $mj) {
+      $raw = Get-Content -LiteralPath $mj -Raw -ErrorAction Stop
+      if ($raw -match '"storeDir"\s*:\s*"([^"]+)"') { $recDir = $Matches[1] -replace '\\\\', '\' }
+    }
+  } catch { }
+  $recExists = $false
+  if ($recDir) { $recExists = Test-Path -LiteralPath $recDir }
+  $storeRootNow = Join-Path $Root 'cache\pnpm-store'
+  $storeHasContent = $false
+  foreach ($cand in @((Join-Path $storeRootNow 'v11\index.db'), (Join-Path $storeRootNow 'index.db'))) {
+    if (Test-Path -LiteralPath $cand) { $storeHasContent = $true }
+  }
+  if ($have -eq $want -and $recExists) { $state = 'aligned' }
+  elseif ($have -eq $want -and -not $recExists) { $state = ('STORE-GONE（记录里是 ' + $recDir + '，已不存在；跑 dsh-portable.cmd fix-state 或 migrate-store）') }
   elseif (-not $have) { $state = 'no node_modules' }
   else { $state = ('MISMATCH ' + $have + ' -> ' + $want + '  << 运行 dsh-portable.cmd plugin-repair -Force') }
+  if (-not $storeHasContent) { $state = $state + ' / 盘内 store 还是空的' }
   return ($ver + ' / shim=' + $(if ($shim) { 'ok' } else { 'MISSING' }) + ' / store=' + $(if ($have) { $have } else { '-' }) + ' / ' + $state)
 }
 

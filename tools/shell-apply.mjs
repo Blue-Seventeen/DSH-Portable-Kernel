@@ -209,7 +209,7 @@ const baseContext = (input) => {
       shellVersion: String(installedRaw.shellVersion || ''),
       files,
     },
-    verify: { cmd, enabled: !!cmd && v.enabled !== false },
+    verify: { cmd, enabled: !!cmd && v.enabled !== false, quiet: v.quiet === true },
   }
 }
 
@@ -456,7 +456,7 @@ const restoreBackup = (ctx, backupDir, meta) => {
  * 边跑边把子进程输出原样打到自己的 stdout/stderr（等于 stdio 继承），
  * 同时留一份用来从里面挑 FAIL 行 → result.verify.failed。
  */
-const runCommand = (cmd, cwd) => new Promise((done) => {
+const runCommand = (cmd, cwd, quiet) => new Promise((done) => {
   let child = null
   try {
     child = spawn(String(cmd[0]), cmd.slice(1).map(String), {
@@ -474,7 +474,7 @@ const runCommand = (cmd, cwd) => new Promise((done) => {
   const tee = (stream) => (chunk) => {
     output += chunk.toString('utf8')
     if (output.length > CAPTURE_LIMIT) output = output.slice(-CAPTURE_LIMIT)
-    try { stream.write(chunk) } catch {}
+    if (!quiet) { try { stream.write(chunk) } catch {} }
   }
   child.stdout.on('data', tee(process.stdout))
   child.stderr.on('data', tee(process.stderr))
@@ -711,7 +711,7 @@ export const applyUpdate = async (opts) => {
       journal.updatedAt = nowIso()
       try { writeJsonAtomic(journalPath, journal) } catch (e) { result.warnings.push('更新 journal 失败：' + errText(e)) }
       logger('换装完成，跑自检：' + ctx.verify.cmd.join(' '))
-      const v = await runCommand(ctx.verify.cmd, root)
+      const v = await runCommand(ctx.verify.cmd, root, ctx.verify.quiet === true)
       result.verify = { ok: v.ok, code: v.code, failed: extractFailures(v.output, v.code), ran: true }
       if (!v.ok) {
         result.ok = false
@@ -824,7 +824,7 @@ export const rollbackUpdate = async (opts) => {
     }
     if (ctx.verify.enabled) {
       ctx.logger('还原后自检：' + ctx.verify.cmd.join(' '))
-      const v = await runCommand(ctx.verify.cmd, ctx.root)
+      const v = await runCommand(ctx.verify.cmd, ctx.root, ctx.verify.quiet === true)
       result.verify = { ok: v.ok, code: v.code, failed: extractFailures(v.output, v.code), ran: true }
       if (!v.ok) {
         result.ok = false
