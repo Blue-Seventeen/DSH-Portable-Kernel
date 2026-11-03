@@ -1591,6 +1591,8 @@ switch ($Action) {
     if ($env:DSH_FS_PROFILE -eq 'compat') {
       $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --apply --quiet 2>&1
       if ($LASTEXITCODE -notin @(0, 2)) { Warn2 '硬链接回退补丁未打上（锚点不匹配或桌面正在运行），详情：node tools\patch-fs.mjs --check' }
+      # pnpm 11 在 exFAT 上会因 registerProject 的符号链接而装不上（EISDIR）：补一条容错
+      $null = & $Node (Join-Path $Root 'tools\patch-pnpm.mjs') --apply --quiet 2>&1
       $null = & $Node (Join-Path $Root 'tools\probe-fs.mjs') --quiet 2>&1
       $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --check --quiet 2>&1
       if ($LASTEXITCODE -ne 0) { Warn2 '补丁仍不完整（asar 可能被占用）：退出桌面后再运行 dsh-portable.cmd repair' }
