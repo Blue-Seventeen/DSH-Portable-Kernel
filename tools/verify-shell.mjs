@@ -221,6 +221,16 @@ check('7z 链完整（真跑一次 7z i）', () => {
   try { out = execFileSync(SEVEN, ['i'], { encoding: 'utf8', timeout: 20000 }) } catch (e) { out = String((e && e.stdout) || '') }
   add('7z 链完整（真跑一次 7z i）', /7-Zip/i.test(out), (out.split('\n')[1] || '').trim())
 })
+check('解包不硬依赖系统 tar（1703 这类老机器能自举）', () => {
+  // 事故背景：Win10 1703 不自带 tar.exe（1803 才有），旧实现里 Bootstrap-Pnpm 直接 throw，
+  // 于是 node 装完就卡死、app 与插件全装不上。这里锁住"探测 + 回退"这条链不再被改回去。
+  const text = read(join(ROOT, 'dsh-portable.ps1'))
+  const need = ['Invoke-Native', 'Resolve-Tar', 'Resolve-SevenZip', 'Get-UnpackerChain', 'Expand-WithSevenZip', 'Expand-ArchiveLike']
+  const missing = need.filter((n) => !text.includes('function ' + n))
+  const hardTar = /缺少系统 tar\.exe/.test(text)
+  const detail = missing.length ? '缺少 ' + missing.join(', ') : (hardTar ? '仍写着"缺少系统 tar.exe"硬断言' : '系统 tar → 随包 7z → Expand-Archive 三级回退就位')
+  add('解包不硬依赖系统 tar（1703 这类老机器能自举）', missing.length === 0 && !hardTar, detail)
+})
 
 // 6) tools 语法与启动器接线 ---------------------------------------------------
 check('tools/*.mjs 语法全过', () => {

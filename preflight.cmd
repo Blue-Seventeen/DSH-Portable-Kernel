@@ -3,6 +3,17 @@ chcp 65001 >nul 2>nul
 setlocal
 set "ROOT=%~dp0"
 call "%ROOT%env.cmd"
+rem Everything else (tar / 7z / robocopy / curl) is detected at run time and has a fallback;
+rem PowerShell is the only thing that cannot be substituted, so check it first and say so plainly.
+if not exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" (
+  echo.
+  echo   [X] Windows PowerShell is missing on this machine, so this portable shell cannot run.
+  echo       Expected at %%SystemRoot%%\System32\WindowsPowerShell\v1.0\powershell.exe
+  echo       Any Windows 7 SP1 or later ships it by default; re-enable the Windows PowerShell feature.
+  echo.
+  pause
+  exit /b 1
+)
 rem NOTE: keep this file pure ASCII; Chinese text is printed by tools\say.ps1
 rem A fresh git clone only has the shell. If any official layer is missing, bootstrap it first
 rem (node runtime + pnpm + app + desktop + plugin deps), each step with a progress bar.

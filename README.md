@@ -17,13 +17,15 @@
 
 ## 一、快速开始
 
-前提：Windows 10 1803+（要系统自带 `tar.exe`）、能上网。
+前提：Windows 10（1703 这类老版本也行）/ Server 2016 以上，能上网。**唯一的硬要求是 PowerShell 5.1**（Win7 SP1 起自带）；`tar` / `robocopy` / `curl` 都是"有就用系统自带的、没有就用随包 7z 兜底"，不需要另装任何东西。
 
 1. `git clone https://github.com/Blue-Seventeen/hack3rx-harness` 到任意目录（**路径别太深**，见"已知坑"）。
 2. 双击 `preflight.cmd`。
 3. 第一次运行会发现"官方那层不在"，自动补齐（可断点重跑），补完直接选自检 / 浏览器模式 / 桌面模式。
 
 `preflight.cmd` 判断"缺官方层"的依据是四样东西：`runtime\node\bin\node.exe`、`runtime\pnpm\dist\pnpm.mjs`、`app\node_modules\@deepseek-ai\dsh\lib\bin.js`、`desktop\resources\app.asar`。
+
+已经装好的整包搬到**不能联网**的机器上时，不需要 `bootstrap`：双击 `preflight.cmd` 会直接自检并启动。自举只在"壳"状态下才需要联网，设 `DSH_PORTABLE_OFFLINE=1` 可以强制它绝不下载、只给提示。
 
 等价命令行：
 
@@ -83,7 +85,7 @@ dsh-portable.cmd bootstrap
 | --- | --- |
 | `bootstrap` | 只有壳时补齐官方那层（可反复跑） |
 | `doctor` | 只读体检：残留、7z、Office 补丁、市场补丁、版本豁免 |
-| `verify` | 交付门禁，31 项断言，全过 exit 0 |
+| `verify` | 交付门禁，32 项断言，全过 exit 0 |
 | `tidy` | 清临时残留（桌面程序在跑会拒绝，`-Force` 强来） |
 | `update-all` / `update-app` / `update-desktop` | 更新官方那层。**默认只预演**，加 `-Force` 才真更新（`xxx.next` → 校验 → 换名） |
 | `repair` | 修启动失败：`check-update.cmd` 会自动调用它 |
@@ -149,7 +151,7 @@ dsh-portable.cmd bootstrap
 
 | 项目 | 结果 |
 | --- | --- |
-| `verify`（交付门禁） | **31 项全过**，连跑多次指纹不变 |
+| `verify`（交付门禁） | **32 项全过**，连跑多次指纹不变 |
 | `doctor`（只读体检） | 6–8 s，残留 0、7z 24.08、Office 已打 14 个 DLL、市场补丁 55 处字面、版本豁免一致 |
 | `clean-ship verify` | 11 项全过，0 文件 / 0 MB 残留 |
 | 桌面冷启动 | 4.3–5.3 s 返 `exit 0`，13 s 出现窗口 |
@@ -160,9 +162,11 @@ dsh-portable.cmd bootstrap
 
 | 场景 | 结果 |
 | --- | --- |
-| 全新空壳（40 个文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 31 项全过 |
+| 全新空壳（40 个文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 32 项全过 |
 | 已有官方层再跑 `bootstrap` | 2.8 s 全部跳过，`exit 0`（幂等） |
 | 删掉 `runtime\node`、`runtime\pnpm`、`app` 后重跑 | 418 s 全部重建，五个产物齐全，`exit 0` |
+| **没有任何系统 tar**（`DSH_PORTABLE_NO_SYSTEM_TAR=1`，模拟 Win10 1703） | node 35.9 MB 与 pnpm 5.5 MB 全部由随包 7z 解出，`node -v` 冒烟通过，pnpm 的 tgz 走两趟（gz→tar） |
+| 空壳 + 离线（`DSH_PORTABLE_OFFLINE=1`） | 立刻说"自举必须联网 / 请整包复制"，`exit 1`，一个字节都不下载 |
 
 ---
 

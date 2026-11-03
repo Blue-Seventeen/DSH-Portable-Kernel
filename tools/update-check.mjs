@@ -73,7 +73,8 @@ function desktopVersion() {
   return marker
 }
 
-const withTimeout = (ms) => { const c = new AbortController(); setTimeout(() => c.abort(), ms); return c.signal }
+// 定时器必须 unref：否则 fetch 早早结束也要空等 4 秒才退出（启动器里白等）
+const withTimeout = (ms) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms); t.unref?.(); return c.signal }
 
 async function remote() {
   const out = { app: '', desktop: '' }
@@ -93,7 +94,10 @@ const TTL = 6 * 60 * 60 * 1000
 if (!force) {
   try {
     const s = JSON.parse(read(stamp))
-    if (s && s.ts && Date.now() - s.ts < TTL) {
+    // 只答了一半的缓存按 15 分钟算（别让一次网络抽风把某项更新压 6 小时，也别每次启动都重查）
+    const complete = s && s.done && s.done.app && s.done.desktop
+    const ttl = complete ? TTL : Math.min(TTL, 15 * 60 * 1000)
+    if (s && s.ts && Date.now() - s.ts < ttl) {
       if (process.argv.includes('--verbose')) console.log(`cached ${Math.round((Date.now() - s.ts) / 60000)} min ago`)
       if (s.out) console.log(s.out)
       process.exit(0)
@@ -111,9 +115,14 @@ if (process.argv.includes('--verbose')) {
   console.log(`latest:    app=${latest.app || '?'} desktop=${latest.desktop || '?'}`)
 }
 const line = parts.length ? 'UPD ' + parts.join(' | ') : ''
-try {
-  const { mkdirSync, writeFileSync } = await import('node:fs')
-  mkdirSync(join(root, 'tmp'), { recursive: true })
-  writeFileSync(stamp, JSON.stringify({ ts: Date.now(), out: line }), 'utf8')
-} catch {}
+// 记下"哪些远端真的答了"：一个都没答就别写缓存（否则接下来 6 小时都在骗自己已是最新），
+// 只答一半也只算半份，下次照样重查。
+const done = { app: Boolean(latest.app), desktop: Boolean(latest.desktop) }
+if (done.app || done.desktop) {
+  try {
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    mkdirSync(join(root, 'tmp'), { recursive: true })
+    writeFileSync(stamp, JSON.stringify({ ts: Date.now(), out: line, done }), 'utf8')
+  } catch {}
+}
 if (line) console.log(line)

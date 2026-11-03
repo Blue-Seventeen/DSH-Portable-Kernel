@@ -155,5 +155,20 @@ if (mismatched.length) {
   ok('插件目录的 pnpm 记录尚未在本机校验（首次启动会自动探测并写入）')
 }
 
+console.log('\n[10] 工具链（缺系统工具不算问题）')
+// 10.1 解包：系统 tar 有就用、没有就用随包 7z。两者都没有才是真问题（复制没拷全）
+const sysRoot = process.env.SystemRoot || 'C:\\Windows'
+const hasSysTar = existsSync(join(sysRoot, 'System32', 'tar.exe'))
+const has7z = existsSync(join(root, 'tools', '7z', '7z.exe')) && existsSync(join(root, 'tools', '7z', '7z.dll'))
+if (has7z && hasSysTar) ok('解包工具齐全（系统 tar + 随包 7z 都在，按 tar → 7z 顺序用）')
+else if (has7z) ok('系统没有 tar.exe（Win10 1703 及更早就是这样），改用随包 7z 解包，不影响使用')
+else fail('随包 7z 不完整（tools\\7z\\7z.exe 或 7z.dll）—— 复制时可能没拷全')
+// 10.2 搬运工具：只在升级/暂存时用，缺了会退化成慢速复制
+if (existsSync(join(sysRoot, 'System32', 'robocopy.exe'))) ok('系统 robocopy 就位（大目录搬运用）')
+else warn('没有 robocopy.exe：升级时的大目录搬运会失败（Windows 组件被裁剪？）')
+// 10.3 下载兜底：主用 .NET 下载；连不上时若有系统 curl 会自动改用它
+if (existsSync(join(sysRoot, 'System32', 'curl.exe'))) ok('系统 curl 就位（主下载失败时自动兜底）')
+else ok('没有系统 curl：主下载失败时不会兜底（不影响正常运行）')
+
 console.log('\n=== ' + (problems === 0 ? '自检通过，可以开始使用' : `发现 ${problems} 个需要处理的问题`) + ' ===\n')
 process.exit(problems === 0 ? 0 : 1)

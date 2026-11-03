@@ -30,7 +30,9 @@ function FreeMB([string]$p) {
 function Robo([string]$src, [string]$dst, [string[]]$extra = @()) {
   if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Force -Path $dst | Out-Null }
   $rcArgs = @($src, $dst, '/E', '/NFL', '/NDL', '/NJH', '/NJS', '/NP', '/R:1', '/W:1') + $extra
-  & robocopy @rcArgs | Out-Null
+  $rcExe = Resolve-Robocopy
+  if (-not $rcExe) { throw '找不到 robocopy.exe（Windows 自带组件被裁剪？）' }
+  & $rcExe @rcArgs | Out-Null
   if ($LASTEXITCODE -ge 16) { throw "robocopy fatal ($LASTEXITCODE): $src -> $dst" }
   return $LASTEXITCODE
 }
@@ -801,6 +803,266 @@ function Install-App {
   Remove-Item -LiteralPath (Join-Path $Root 'tmp\update-check.json') -Force -ErrorAction SilentlyContinue
 }
 
+# ---- 依赖探测：外部工具优先用系统自带的，缺失或不可用就退回随包 7z -------------------
+# 真实事故：Windows 10 1703 不自带 tar.exe（1803 才随系统提供）。旧实现里 Bootstrap-Pnpm
+# 硬断言"必须有系统 tar"，新机器上 node 装完就卡死在 pnpm，连带 app / 插件全失败，
+# 最后只报一句"缺少 pnpm，无法下载插件"。
+# 现在的规则（02-invariants 第 13 条）：任何外部工具都只做"探测 + 回退"，绝不硬依赖。
+$script:DepCache = @{}
+
+function Invoke-Native {
+  # 直接起进程，**不经过 cmd**：cmd 会重新解析引号和重定向，实测 "cmd /c ""7z.exe" i" 会
+  # 返回 exit 7（命令行错误），把"工具可用"误判成"不可用"。
+  # 返回 code / out / err（stdout 与 stderr 分开收，绝不 2>&1 —— 见 02-invariants 第 9 条）。
+  param([string]$Exe, [string[]]$ToolArgs = @(), [int]$TimeoutMs = 60000)
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $Exe
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+  $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+  $quoted = @()
+  foreach ($a in $ToolArgs) {
+    $s = [string]$a
+    # .NET Framework 只有 Arguments（整串），带空格的参数要自己加引号
+    if ($s -match '[\s"]') { $quoted += ('"' + ($s -replace '"', '\"') + '"') } else { $quoted += $s }
+  }
+  $psi.Arguments = ($quoted -join ' ')
+  $p = New-Object System.Diagnostics.Process
+  $p.StartInfo = $psi
+  try {
+    if (-not $p.Start()) { return [pscustomobject]@{ code = -1; out = ''; err = 'start failed' } }
+    $outTask = $p.StandardOutput.ReadToEndAsync()
+    $errTask = $p.StandardError.ReadToEndAsync()
+    if (-not $p.WaitForExit($TimeoutMs)) {
+      try { $p.Kill() } catch { }
+      return [pscustomobject]@{ code = -1; out = ''; err = ('超时 ' + $TimeoutMs + ' ms') }
+    }
+    $out = ''
+    $err = ''
+    try { $out = $outTask.Result } catch { }
+    try { $err = $errTask.Result } catch { }
+    return [pscustomobject]@{ code = $p.ExitCode; out = $out; err = $err }
+  }
+  catch { return [pscustomobject]@{ code = -1; out = ''; err = $_.Exception.Message } }
+  finally { try { $p.Dispose() } catch { } }
+}
+function Test-NativeTool {
+  # 探测一个外部工具是否真的能用：能起来、退出码为 0、输出还能匹配期望特征才算 ok。
+  param([string]$Exe, [string[]]$ToolArgs = @(), [string]$Expect = '', [int]$TimeoutMs = 20000)
+  if (-not (Test-Path -LiteralPath $Exe)) { return [pscustomobject]@{ ok = $false; out = ''; code = -1 } }
+  $r = Invoke-Native -Exe $Exe -ToolArgs $ToolArgs -TimeoutMs $TimeoutMs
+  $text = ([string]$r.out + [string]$r.err)
+  $ok = ($r.code -eq 0)
+  if ($Expect -and $text -notmatch $Expect) { $ok = $false }
+  return [pscustomobject]@{ ok = $ok; out = $text; code = $r.code }
+}
+
+function Resolve-Tar {
+  # 只认系统自带那一个：PATH 上可能有 git-bash / WSL 的 GNU tar，行为不同，不能混用。
+  # DSH_PORTABLE_NO_SYSTEM_TAR=1 只是测试开关（模拟 1703 这种没有 tar 的机器）。
+  if ($script:DepCache.ContainsKey('tar')) { return $script:DepCache['tar'] }
+  $path = $null
+  $sys = Join-Path $env:SystemRoot 'System32\tar.exe'
+  if ($env:DSH_PORTABLE_NO_SYSTEM_TAR -ne '1' -and (Test-Path -LiteralPath $sys)) {
+    if ((Test-NativeTool $sys @('--version') 'tar').ok) { $path = $sys }
+  }
+  $script:DepCache['tar'] = $path
+  return $path
+}
+
+function Resolve-SevenZip {
+  # 随包 7z：exe 与 7z.dll 缺一不可，而且要真跑一次（杀软拦截 exe 时这里就会暴露）。
+  if ($script:DepCache.ContainsKey('7z')) { return $script:DepCache['7z'] }
+  $path = $null
+  if ((Test-Path -LiteralPath $SevenZip) -and (Test-Path -LiteralPath (Join-Path $Root 'tools\7z\7z.dll'))) {
+    if ((Test-NativeTool $SevenZip @('i') '7-Zip').ok) { $path = $SevenZip }
+  }
+  $script:DepCache['7z'] = $path
+  return $path
+}
+
+function Resolve-Robocopy {
+  if ($script:DepCache.ContainsKey('robocopy')) { return $script:DepCache['robocopy'] }
+  $path = $null
+  $sys = Join-Path $env:SystemRoot 'System32\robocopy.exe'
+  if (Test-Path -LiteralPath $sys) { $path = $sys }
+  else {
+    $found = @(Get-Command 'robocopy.exe' -ErrorAction SilentlyContinue)
+    if ($found.Count -gt 0) { $path = $found[0].Source }
+  }
+  $script:DepCache['robocopy'] = $path
+  return $path
+}
+
+function Resolve-Curl {
+  # 系统自带 curl（Win10 1803+）可以当"下载兜底"：本机有就用，没有也不去下载安装。
+  if ($script:DepCache.ContainsKey('curl')) { return $script:DepCache['curl'] }
+  $path = $null
+  $sys = Join-Path $env:SystemRoot 'System32\curl.exe'
+  if (Test-Path -LiteralPath $sys) { $path = $sys }
+  else {
+    $found = @(Get-Command 'curl.exe' -ErrorAction SilentlyContinue)
+    if ($found.Count -gt 0) { $path = $found[0].Source }
+  }
+  $script:DepCache['curl'] = $path
+  return $path
+}
+
+function Set-TlsPolicy {
+  # 老系统的 .NET 默认可能不协商 TLS 1.2，CDN 会直接断连；显式抬一档，失败就算了。
+  try {
+    $proto = [System.Net.SecurityProtocolType]::Tls12
+    if ([enum]::GetNames([System.Net.SecurityProtocolType]) -contains 'Tls13') {
+      $proto = $proto -bor [System.Net.SecurityProtocolType]'Tls13'
+    }
+    [System.Net.ServicePointManager]::SecurityProtocol = $proto
+  }
+  catch { }
+}
+
+function Test-Network {
+  # 只用来决定"给不给友好提示"，绝不阻断流程；连不上就当离线。
+  param([int]$TimeoutMs = 3000)
+  foreach ($target in @('registry.npmjs.org', 'nodejs.org')) {
+    try {
+      $client = New-Object System.Net.Sockets.TcpClient
+      try {
+        $task = $client.ConnectAsync($target, 443)
+        if ($task.Wait($TimeoutMs) -and $client.Connected) { return $true }
+      }
+      finally { try { $client.Close() } catch { } }
+    }
+    catch { }
+  }
+  return $false
+}
+
+function Get-UnpackerChain {
+  # 解包候选顺序：系统 tar（有就用）→ 随包 7z（始终在）→ Expand-Archive（仅 zip，最后手段）
+  param([switch]$TarGz)
+  $chain = @()
+  if (Resolve-Tar) { $chain += 'tar' }
+  if (Resolve-SevenZip) { $chain += '7z' }
+  if (-not $TarGz) { $chain += 'ps' }
+  return $chain
+}
+
+function Expand-WithTar {
+  # exFAT 上 bsdtar 还原不了时间戳：每个文件一行 "Can't restore time"，退出码 1，文件其实是好的。
+  # 所以按行过滤这两类噪声，只看真正的错误；目录为空也算失败（换下一个解包档）。
+  param([string]$Archive, [string]$Dest, [switch]$TarGz)
+  $tar = Resolve-Tar
+  if (-not $tar) { throw '系统 tar 不可用' }
+  $flags = if ($TarGz) { '-xzf' } else { '-xf' }
+  $r = Invoke-Native -Exe $tar -ToolArgs @($flags, $Archive, '-C', $Dest) -TimeoutMs 900000
+  $all = @((([string]$r.out) + "`n" + ([string]$r.err)) -split "`r?`n" | Where-Object { $_ })
+  $noise = @($all | Where-Object { ($_ -notmatch 'restore time') -and ($_ -notmatch 'Error exit delayed') })
+  if ($noise.Count -gt 0) { throw ('tar 报错：' + (@($noise | Select-Object -First 3) -join '; ')) }
+  if (-not (Get-ChildItem -LiteralPath $Dest -Force -ErrorAction SilentlyContinue)) { throw 'tar 解包后目录为空' }
+  if ($all.Count -gt 0) { Say ('  已解包（忽略 ' + $all.Count + ' 条 exFAT 时间戳警告）') }
+}
+
+function Expand-WithSevenZip {
+  # 7z 自带 gzip 解码：tar.gz 要走两趟（gz -> tar -> 文件）。7z 不产生时间戳噪声。
+  param([string]$Archive, [string]$Dest, [switch]$TarGz)
+  $seven = Resolve-SevenZip
+  if (-not $seven) { throw '随包 7z 不可用（tools\7z 缺失或被拦截）' }
+  if (-not (Test-Path -LiteralPath $UpdateCache)) { New-Item -ItemType Directory -Force -Path $UpdateCache | Out-Null }
+  if ($TarGz) {
+    $mid = Join-Path $UpdateCache ('7z-mid-' + [guid]::NewGuid().ToString('N'))
+    try {
+      New-Item -ItemType Directory -Path $mid -Force | Out-Null
+      $r1 = Invoke-Native -Exe $seven -ToolArgs @('x', $Archive, ('-o' + $mid), '-y', '-bso0', '-bsp0') -TimeoutMs 900000
+      if ($r1.code -ge 2) { throw ('7z 解 gzip 失败（exit ' + $r1.code + '）：' + ([string]$r1.err).Trim()) }
+      $inner = @(Get-ChildItem -LiteralPath $mid -File -Filter '*.tar' -ErrorAction SilentlyContinue)
+      if ($inner.Count -eq 0) { throw '7z 解 gzip 后没有 .tar 文件' }
+      $r2 = Invoke-Native -Exe $seven -ToolArgs @('x', $inner[0].FullName, ('-o' + $Dest), '-y', '-bso0', '-bsp0') -TimeoutMs 900000
+      if ($r2.code -ge 2) { throw ('7z 解 tar 失败（exit ' + $r2.code + '）：' + ([string]$r2.err).Trim()) }
+    }
+    finally { RemoveTree $mid }
+    return
+  }
+  $r = Invoke-Native -Exe $seven -ToolArgs @('x', $Archive, ('-o' + $Dest), '-y', '-bso0', '-bsp0') -TimeoutMs 900000
+  if ($r.code -ge 2) { throw ('7z 解包失败（exit ' + $r.code + '）：' + ([string]$r.err).Trim()) }
+}
+
+function Expand-ArchiveLike {
+  # 统一解包入口：按候选链逐档尝试，每档解完都做结构校验，全失败才抛错。
+  # -Expect 传"解出来必须存在的相对路径"，用来识别"工具说成功但产物不对"。
+  param(
+    [string]$Archive,
+    [string]$Dest,
+    [string[]]$Expect = @(),
+    [switch]$TarGz
+  )
+  if (-not (Test-Path -LiteralPath $Archive)) { throw ('找不到压缩包：' + $Archive) }
+  $chain = @(Get-UnpackerChain -TarGz:$TarGz)
+  if ($chain.Count -eq 0) { throw '没有可用的解包工具（系统 tar 与随包 7z 都不可用）' }
+  $failed = @()
+  foreach ($kind in $chain) {
+    if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force -ErrorAction SilentlyContinue }
+    New-Item -ItemType Directory -Path $Dest -Force | Out-Null
+    $err = $null
+    try {
+      if ($kind -eq 'tar') { Expand-WithTar $Archive $Dest -TarGz:$TarGz }
+      elseif ($kind -eq '7z') { Expand-WithSevenZip $Archive $Dest -TarGz:$TarGz }
+      else { Expand-Archive -LiteralPath $Archive -DestinationPath $Dest -Force }
+      if ($Expect.Count -gt 0) {
+        $missing = @($Expect | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Dest $_)) })
+        if ($missing.Count -gt 0) { $err = ('解出来缺少 ' + ($missing -join ', ')) }
+      }
+    }
+    catch { $err = $_.Exception.Message }
+    if (-not $err) {
+      if ($failed.Count -gt 0) {
+        $names = (@($failed) | ForEach-Object { ($_ -split ':')[0] }) -join '/'
+        Say ('  解包工具：' + $kind + '（' + $names + ' 不可用，已自动换用）')
+      }
+      return $kind
+    }
+    $failed += ($kind + ': ' + $err)
+  }
+  throw ('解包失败，候选都试过了 → ' + ($failed -join '；') + '。运行 dsh-portable.cmd doctor 可查看依赖状态。')
+}
+
+function Get-DepsText {
+  # doctor 与 bootstrap 共用的一行"这台机器上到底有哪些工具"。
+  $bits = if ([Environment]::Is64BitOperatingSystem) { 'x64' } else { 'x86' }
+  $tarTxt = if (Resolve-Tar) { 'ok' } else { 'missing(用随包7z)' }
+  $sevenTxt = if (Resolve-SevenZip) { 'ok' } else { 'MISSING' }
+  $roboTxt = if (Resolve-Robocopy) { 'ok' } else { 'MISSING' }
+  $curlTxt = if (Resolve-Curl) { 'ok' } else { 'none' }
+  return ('tar=' + $tarTxt + ' 7z=' + $sevenTxt + ' robocopy=' + $roboTxt + ' curl=' + $curlTxt +
+          ' ps=' + $PSVersionTable.PSVersion + ' os=' + [Environment]::OSVersion.Version.ToString() + ' ' + $bits)
+}
+
+function Say-Deps {
+  # bootstrap 开头把依赖状态亮出来：哪一步会因为缺工具而失败，一眼就能看到。
+  Say ('  依赖：' + (Get-DepsText))
+}
+
+function Assert-HostReady {
+  # 自举前的硬门槛：不满足就说清楚并退出，别先下 700 MB 才失败。
+  $errs = @()
+  if ($PSVersionTable.PSVersion.Major -lt 5) {
+    $errs += ('PowerShell 版本过低（' + $PSVersionTable.PSVersion + '）：本壳需要 5.0+，Windows 10 自带 5.1')
+  }
+  if (-not [Environment]::Is64BitOperatingSystem) {
+    $errs += '这台机器是 32 位 Windows：官方 dsh 与随包 7z 都只有 x64 版本'
+  }
+  if (@(Get-UnpackerChain).Count -eq 0) {
+    $errs += '没有可用的解包工具：系统 tar 与 tools\7z 都不可用（系统被裁剪？杀软拦截？）'
+  }
+  foreach ($e in $errs) { Warn2 ('  x ' + $e) }
+  if ($errs.Count -gt 0) {
+    Say '自举没有开始（避免白下 700 MB）。先解决上面的问题，或用"整包复制"把已装好的目录搬过来。'
+    return $false
+  }
+  return $true
+}
 # ---- 自举：只拿到"壳"的新机器，把官方那层补齐 ---------------------------------
 # 场景：git 仓库里只有便携壳（根目录脚本 + tools\ + home\profiles\*.json）。
 # 目标：跑一次 preflight.cmd（或 dsh-portable.cmd bootstrap）就自动下载官方 dsh
@@ -813,6 +1075,17 @@ function Have-RuntimeNode { return (Test-Path -LiteralPath $Node) }
 function Have-Pnpm { return (Test-Path -LiteralPath (Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs')) }
 function Have-App { return (Test-Path -LiteralPath (Join-Path $Root 'app\node_modules\@deepseek-ai\dsh\lib\bin.js')) }
 function Have-Desktop { return (Test-Path -LiteralPath (Join-Path $Root 'desktop\resources\app.asar')) }
+
+function Get-MissingParts {
+  # 自举还缺哪几块：只用来决定"要不要联网"、给用户看进度，不参与安装逻辑本身。
+  $need = @()
+  if (-not (Have-RuntimeNode)) { $need += 'node' }
+  if (-not (Have-Pnpm)) { $need += 'pnpm' }
+  if (-not (Have-App)) { $need += 'app' }
+  if (-not (Have-Desktop)) { $need += 'desktop' }
+  if (-not (Test-Path -LiteralPath (Join-Path $Root 'home\profiles\node_modules'))) { $need += 'plugins' }
+  return $need
+}
 
 function Download-File([string]$Url, [string]$Dest, [string]$Label, [switch]$Reuse) {
   # 自己读流 + Write-Progress：比 Invoke-WebRequest 快得多，也比 WebClient 事件好控。
@@ -832,38 +1105,65 @@ function Download-File([string]$Url, [string]$Dest, [string]$Label, [switch]$Reu
     RemoveTree $Dest
     Remove-Item -LiteralPath $sidecar -Force -ErrorAction SilentlyContinue
   }
+  if ($env:DSH_PORTABLE_OFFLINE -eq '1') {
+    throw ('已设 DSH_PORTABLE_OFFLINE=1（离线模式），不会下载：' + (Split-Path -Leaf $Dest))
+  }
   $dir = Split-Path -Parent $Dest
   if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
   $part = "$Dest.part"
   Say ("  下载：" + $Url)
-  $req = [System.Net.HttpWebRequest]::Create($Url)
-  $req.Timeout = 60000
-  $req.ReadWriteTimeout = 300000
-  $req.UserAgent = 'Hack3rX-Harness-bootstrap'
-  $resp = $req.GetResponse()
-  $total = [int64]$resp.ContentLength
-  $in = $resp.GetResponseStream()
-  $out = [System.IO.File]::Create($part)
-  $buf = New-Object byte[] 262144
+  $total = [int64]0
   $got = [int64]0
-  $sw = [System.Diagnostics.Stopwatch]::StartNew()
-  $lastMs = 0
+  $done = $false
+  Set-TlsPolicy
   try {
-    while (($read = $in.Read($buf, 0, $buf.Length)) -gt 0) {
-      $out.Write($buf, 0, $read)
-      $got += $read
-      if (($sw.ElapsedMilliseconds - $lastMs) -ge 400) {
-        $lastMs = $sw.ElapsedMilliseconds
-        $pct = 0
-        if ($total -gt 0) { $pct = [int][math]::Min(100, [math]::Round(100 * $got / $total)) }
-        $speed = $got / [math]::Max($sw.Elapsed.TotalSeconds, 0.001) / 1MB
-        Write-Progress -Activity $Label -Status ("{0:N1} / {1:N1} MB   {2:N1} MB/s" -f ($got / 1MB), ($total / 1MB), $speed) -PercentComplete $pct
+    $req = [System.Net.HttpWebRequest]::Create($Url)
+    $req.Timeout = 60000
+    $req.ReadWriteTimeout = 300000
+    $req.UserAgent = 'Hack3rX-Harness-bootstrap'
+    $resp = $req.GetResponse()
+    $total = [int64]$resp.ContentLength
+    $in = $resp.GetResponseStream()
+    $out = [System.IO.File]::Create($part)
+    $buf = New-Object byte[] 262144
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastMs = 0
+    try {
+      while (($read = $in.Read($buf, 0, $buf.Length)) -gt 0) {
+        $out.Write($buf, 0, $read)
+        $got += $read
+        if (($sw.ElapsedMilliseconds - $lastMs) -ge 400) {
+          $lastMs = $sw.ElapsedMilliseconds
+          $pct = 0
+          if ($total -gt 0) { $pct = [int][math]::Min(100, [math]::Round(100 * $got / $total)) }
+          $speed = $got / [math]::Max($sw.Elapsed.TotalSeconds, 0.001) / 1MB
+          Write-Progress -Activity $Label -Status ("{0:N1} / {1:N1} MB   {2:N1} MB/s" -f ($got / 1MB), ($total / 1MB), $speed) -PercentComplete $pct
+        }
       }
     }
+    finally {
+      $out.Close(); $in.Close(); $resp.Close()
+      Write-Progress -Activity $Label -Completed
+    }
+    $done = $true
   }
-  finally {
-    $out.Close(); $in.Close(); $resp.Close()
-    Write-Progress -Activity $Label -Completed
+  catch {
+    Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+    Warn2 ('  .NET 下载失败：' + $_.Exception.Message)
+  }
+  if (-not $done) {
+    # 兜底：系统自带 curl（Win10 1803+ 有；没有就直接报错，绝不临时下载任何工具）
+    $curl = Resolve-Curl
+    if (-not $curl) { throw ('下载失败，且这台机器没有 curl 可兜底（多为网络/代理问题）：' + $Url) }
+    Say '  改用系统 curl 重试'
+    $curlLine = '/c ""' + $curl + '" -L --fail --retry 2 --retry-delay 1 -o "' + $part + '" "' + $Url + '" >nul 2>&1"'
+    & $env:ComSpec $curlLine | Out-Null
+    $curlCode = $LASTEXITCODE
+    if ($curlCode -ne 0 -or -not (Test-Path -LiteralPath $part)) {
+      Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+      throw ('下载失败（curl exit ' + $curlCode + '）：' + $Url)
+    }
+    $got = (Get-Item -LiteralPath $part).Length
   }
   if ($total -gt 0 -and $got -ne $total) {
     Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
@@ -876,30 +1176,8 @@ function Download-File([string]$Url, [string]$Dest, [string]$Label, [switch]$Reu
 }
 
 function Expand-ZipFile([string]$Zip, [string]$Dest) {
-  # 优先用系统自带的 tar（bsdtar 能解 zip，比 Expand-Archive 快得多）；没有就退回 PowerShell。
-  if (Test-Path -LiteralPath $Dest) { Remove-Item -LiteralPath $Dest -Recurse -Force -ErrorAction SilentlyContinue }
-  New-Item -ItemType Directory -Path $Dest -Force | Out-Null
-  $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
-  if (Test-Path -LiteralPath $tar) {
-    # exFAT 上 bsdtar 无法还原时间戳：每个文件一行 "Can't restore time"，最后 exit 1，文件其实是好的。
-    # 而且本脚本 $ErrorActionPreference='Stop'，直接 2>&1 会把 stderr 变成终止错误，
-    # 所以这里把 stderr 落到文件、临时放宽错误策略，只把"真正的错误行"当失败。
-    # 用 cmd 重定向：PowerShell 的 2> 会把原生 stderr 变成"格式化过的错误记录"写进文件，
-    # 于是真正的警告文本反而被包上一层 "At ... char:" 噪声；走 cmd 才能拿到原始 stderr。
-    $log = Join-Path $UpdateCache 'tar.log'
-    $cmdLine = '/c ""' + $tar + '" -xf "' + $Zip + '" -C "' + $Dest + '" 2> "' + $log + '""'
-    & $env:ComSpec $cmdLine | Out-Null
-    $code = $LASTEXITCODE
-    $raw = @(if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Encoding UTF8 })
-    $noise = @($raw | Where-Object { $_ -and ($_ -notmatch "restore time") -and ($_ -notmatch "Error exit delayed") })
-    if ($noise.Count -gt 0) { throw ('解包失败：' + (@($noise | Select-Object -First 3) -join '; ')) }
-    if (-not (Get-ChildItem -LiteralPath $Dest -Force -ErrorAction SilentlyContinue)) {
-      throw ('解包后目录是空的（tar exit ' + $code + '）')
-    }
-    if (@($raw).Count -gt 0) { Say ('  已解包（忽略 ' + @($raw).Count + ' 条 exFAT 时间戳警告）') }
-    return
-  }
-  Expand-Archive -LiteralPath $Zip -DestinationPath $Dest -Force
+  # 兼容旧调用点：统一走"探测 + 回退"的解包链（系统 tar → 随包 7z → Expand-Archive）。
+  $null = Expand-ArchiveLike -Archive $Zip -Dest $Dest
 }
 
 function Bootstrap-Node {
@@ -907,8 +1185,9 @@ function Bootstrap-Node {
   Say ("node：没有便携运行时，下载官方 " + $NodeWanted + "（约 33 MB）")
   $zip = Join-Path $UpdateCache ("node-" + $NodeWanted + "-win-x64.zip")
   Download-File ("https://nodejs.org/dist/" + $NodeWanted + "/node-" + $NodeWanted + "-win-x64.zip") $zip ('node ' + $NodeWanted) -Reuse
+  $nodeExeRel = 'node-' + $NodeWanted + '-win-x64\node.exe'
   $stage = Join-Path $UpdateCache 'node-stage'
-  Expand-ZipFile $zip $stage
+  $null = Expand-ArchiveLike -Archive $zip -Dest $stage -Expect @($nodeExeRel)
   $inner = Join-Path $stage ("node-" + $NodeWanted + "-win-x64")
   if (-not (Test-Path -LiteralPath (Join-Path $inner 'node.exe'))) {
     # 缓存的 zip 坏了（下载被截断、或磁盘写入出错）：删掉重新下一次，不让人手工去清 cache\update
@@ -917,7 +1196,7 @@ function Bootstrap-Node {
     RemoveTree $zip
     Remove-Item -LiteralPath "$zip.size" -Force -ErrorAction SilentlyContinue
     Download-File ("https://nodejs.org/dist/" + $NodeWanted + "/node-" + $NodeWanted + "-win-x64.zip") $zip ('node ' + $NodeWanted)
-    Expand-ZipFile $zip $stage
+    $null = Expand-ArchiveLike -Archive $zip -Dest $stage -Expect @($nodeExeRel)
     $inner = Join-Path $stage ("node-" + $NodeWanted + "-win-x64")
   }
   if (-not (Test-Path -LiteralPath (Join-Path $inner 'node.exe'))) { throw 'node 压缩包结构异常（找不到 node.exe）' }
@@ -935,27 +1214,35 @@ function Bootstrap-Node {
   if (-not (Test-Path -LiteralPath $nm)) { New-Item -ItemType Directory -Path $nm -Force | Out-Null }
   Set-Content -LiteralPath (Join-Path $nm 'README.txt') -Encoding ASCII -Value 'reserved for the bundled node runtime; npm/corepack intentionally removed (plugins are installed with pnpm)'
   Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
-  Say ('  node：' + (& $Node -v) + ' 就绪')
+  # 解包成功不等于能跑（老系统缺运行库 / 被杀软拦都会在这里暴露），装完立刻冒烟一次
+  $probe = Test-NativeTool $Node @('-v') '^v\d+\.'
+  if (-not $probe.ok) {
+    $hint = (@($probe.out -split "`r?`n") | Where-Object { $_ }) -join ' '
+    throw ('node 解包成功但无法在这台机器上运行（系统版本过低 / 缺运行库 / 被杀软拦截？）：' + $hint)
+  }
+  Say ('  node：' + $probe.out.Trim() + ' 就绪')
 }
 
 function Bootstrap-Pnpm {
   if (Have-Pnpm) { Say '  pnpm：已存在，跳过'; return }
   if (-not (Have-RuntimeNode)) { throw '还没有 node，无法解出 pnpm' }
-  $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
-  if (-not (Test-Path -LiteralPath $tar)) { throw '缺少系统 tar.exe（Windows 10 1803+ 自带）' }
   Say ("pnpm：下载 npm 包 " + $PnpmWanted + "（约 4 MB）")
   $tgz = Join-Path $UpdateCache ("pnpm-" + $PnpmWanted + ".tgz")
   Download-File ("https://registry.npmjs.org/pnpm/-/pnpm-" + $PnpmWanted + ".tgz") $tgz 'pnpm' -Reuse
   $stage = Join-Path $UpdateCache 'pnpm-stage'
   RemoveTree $stage
-  New-Item -ItemType Directory -Path $stage -Force | Out-Null
-  $log = Join-Path $UpdateCache 'tar.log'
-  $cmdLine = '/c ""' + $tar + '" -xzf "' + $tgz + '" -C "' + $stage + '" 2> "' + $log + '""'
-  & $env:ComSpec $cmdLine | Out-Null
-  $code = $LASTEXITCODE
-  $raw = @(if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Encoding UTF8 })
-  $noise = @($raw | Where-Object { $_ -and ($_ -notmatch "restore time") -and ($_ -notmatch "Error exit delayed") })
-  if ($noise.Count -gt 0) { throw ('pnpm 解包失败：' + (@($noise | Select-Object -First 3) -join '; ')) }
+  # 不再硬依赖系统 tar（Win10 1703 没有它）：系统 tar → 随包 7z；都失败就删缓存重下一次
+  try {
+    $null = Expand-ArchiveLike -Archive $tgz -Dest $stage -TarGz -Expect @('package\dist\pnpm.mjs')
+  }
+  catch {
+    Say ('  解包 pnpm 失败（' + $_.Exception.Message + '），删掉缓存重新下载一次')
+    RemoveTree $stage
+    RemoveTree $tgz
+    Remove-Item -LiteralPath "$tgz.size" -Force -ErrorAction SilentlyContinue
+    Download-File ("https://registry.npmjs.org/pnpm/-/pnpm-" + $PnpmWanted + ".tgz") $tgz 'pnpm'
+    $null = Expand-ArchiveLike -Archive $tgz -Dest $stage -TarGz -Expect @('package\dist\pnpm.mjs')
+  }
   $pkg = Join-Path $stage 'package'
   if (-not (Test-Path -LiteralPath (Join-Path $pkg 'dist\pnpm.mjs'))) { throw 'pnpm 包结构异常（缺少 dist\pnpm.mjs）' }
   $target = Join-Path $Root 'runtime\pnpm'
@@ -990,7 +1277,8 @@ function RoboCopyTree([string]$src, [string]$dst, [string]$label) {
   # 日志父目录必须先建：cmd 重定向在目录不存在时静默失败，会让"复制没做"看起来像成功
   if (-not (Test-Path -LiteralPath $UpdateCache)) { New-Item -ItemType Directory -Force -Path $UpdateCache | Out-Null }
   $log = Join-Path $UpdateCache 'robocopy.log'
-  $rc = Join-Path $env:SystemRoot 'System32\robocopy.exe'
+  $rc = Resolve-Robocopy
+  if (-not $rc) { throw ($label + ' 复制失败：系统没有 robocopy.exe（Windows 组件被裁剪？）') }
   $cmdLine = '/c ""' + $rc + '" "' + $src + '" "' + $dst + '" /E /R:2 /W:2 /NP /NFL /NDL /NJH > "' + $log + '" 2>&1"'
   & $env:ComSpec $cmdLine | Out-Null
   $code = $LASTEXITCODE
@@ -1023,7 +1311,7 @@ function SwapNext([string]$name) {
 function Bootstrap-App {
   if (Have-App) { Say ('  app：已有 ' + (AppVersion) + '，跳过'); return }
   $pnpm = Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'
-  if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 pnpm，无法安装 app' }
+  if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 pnpm，无法安装 app（先看上面 pnpm 那一步的失败原因）' }
   # 离线时 node 只往 stderr 写、stdout 是空的；先收集原始输出再判空，
   # 否则 $null.Trim() 会先抛"不能对 Null 值表达式调用方法"，"可能没联网"这条提示永远走不到。
   $rawVersion = & $Node -e "fetch('https://registry.npmjs.org/@deepseek-ai%2Fdsh/latest').then(r=>r.json()).then(j=>console.log(j.version)).catch(e=>{console.error(e.message);process.exit(1)})" 2>&1
@@ -1103,7 +1391,7 @@ function Bootstrap-Profiles {
     return
   }
   $pnpm = Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'
-  if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 pnpm，无法安装插件依赖' }
+  if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 pnpm，无法安装插件依赖（先看上面 pnpm 那一步的失败原因）' }
   Say '  插件：按 home\profiles\package.json 安装商城与主题（约 20 MB）'
   $store = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store'
   & $Node $pnpm --dir $prof install --store-dir $store --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
@@ -1154,6 +1442,19 @@ switch ($Action) {
     # 只有壳、没有官方那层时用（git 仓库 clone 下来就是这种状态）：
     # 一条命令补齐 node / pnpm / app / desktop / 插件依赖，每步都带进度条，已存在的跳过。
     Say '=== 便携壳自举：补齐官方那层（需要联网）==='
+    Say-Deps
+    if (-not (Assert-HostReady)) { exit 1 }
+    $missingParts = @(Get-MissingParts)
+    if ($missingParts.Count -eq 0) {
+      Say '  官方那层已经齐了（node / pnpm / app / desktop / 插件都在），不用自举：离线也能直接启动。'
+      break
+    }
+    Say ('  这次要补：' + ($missingParts -join ' / '))
+    if ($env:DSH_PORTABLE_OFFLINE -eq '1' -or -not (Test-Network)) {
+      Warn2 '  连不上网（registry.npmjs.org / nodejs.org 都不可达），或已设 DSH_PORTABLE_OFFLINE=1'
+      Say '  自举必须联网。离线机器请用"整包复制"：把 app\ desktop\ runtime\ home\profiles\node_modules 一起拷过来，不用自举。'
+      exit 1
+    }
     if ($Root.Length -gt 92) {
       # 官方 app 解包后最长相对路径约 150 字符，Windows 单条路径上限 260；
       # 目录太深会在 pnpm / 解包阶段失败，与其装一半炸掉，不如先说清楚。
@@ -1275,6 +1576,7 @@ switch ($Action) {
     Say ("volume    : " + $vol + " (" + $fmt + "), 剩余 " + (FreeMB $Root) + " MB")
     Say ("store     : exists=" + (Test-Path (Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store')))
     Say ("7z        : " + (Get-SevenZipState))
+    Say ("deps      : " + (Get-DepsText))
     Say ("office    : " + (Get-OfficePatchState))
     Say ("login-bak : " + (Get-LoginBackupCount))
     Say ("leftovers : " + (Get-LeftoverCount))
