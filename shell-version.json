@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.1.1",
-  "tag": "v0.1.1",
-  "releasedAt": "2026-11-03T16:30:00.000Z",
+  "shellVersion": "0.1.2-dev",
+  "tag": "v0.1.2",
+  "releasedAt": "2026-11-03T16:34:49.602Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-03T16:27:17.072Z",
+  "generatedAt": "2026-11-03T16:34:49.472Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -62,8 +62,8 @@
     "tools/say.ps1": "986c7194a2731d5dcb0aa32f199625f9526f585327c6228cb7d66f5aba977207",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
     "tools/shell-apply.mjs": "b7ba2577e5c8dc49b2ccdf7f4eee9e44992839bbb6738c006f0da1782a5b5cb9",
-    "tools/shell-release.mjs": "2d1e8271d6fc1107732954b993ef94fa64b105613461696f56c0fe00e92583f7",
-    "tools/shell-update.mjs": "b32affd97faae21c1b7858b07921bc3eae2effde430f3a020c7e753e63fffb22",
+    "tools/shell-release.mjs": "49bf0f17ec6e10944d62716cd035bd702866be84eeaf7b5997c4cac0437ef42f",
+    "tools/shell-update.mjs": "6e34aff7ec290c6a868a5a142631c4d6b5cce1441b562d5995ec81ef46a64210",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "5ab8e3846d0ae50622ebeb4f9659322ca1c3c2b3865ac26c5ace5e6c5606e835"
   },

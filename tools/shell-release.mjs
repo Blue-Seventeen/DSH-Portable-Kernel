@@ -1564,9 +1564,20 @@ const verifyPublished = async (opts) => {
       detail: 'remote=' + preview(parsed && parsed.remote),
     })
 
-    const stg = spawnSync(process.execPath, [cloneUpdate, 'stage', '--manifest', manifestUrl, '--stage', stageDir, '--json'], {
-      cwd: cloneDir, encoding: 'utf8', timeout: 300000, maxBuffer: 32 * 1024 * 1024,
-    })
+    // 老客户端的 stage 只有 1 次重试；公司网关偶发 618/jwt 时这里补两次重试，
+    // 免得把"网络抖动"判成"这个版本不能升级"。
+    let stg = null
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      stg = spawnSync(process.execPath, [cloneUpdate, 'stage', '--manifest', manifestUrl, '--stage', stageDir, '--json'], {
+        cwd: cloneDir, encoding: 'utf8', timeout: 300000, maxBuffer: 32 * 1024 * 1024,
+      })
+      if (stg.status === 0) break
+      if (attempt < 3) {
+        log('  stage 第 ' + attempt + ' 次失败（退出码 ' + stg.status + '），3 秒后重试…')
+        if (existsSync(stageDir)) rmSync(stageDir, { recursive: true, force: true })
+        spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 3000)'])
+      }
+    }
     const staged = existsSync(stageDir) ? hashPath(stageDir, '.') : new Map()
     const stagedNorm = new Map()
     for (const [k, v] of staged) stagedNorm.set(k.replace(/^\.\//, ''), v)

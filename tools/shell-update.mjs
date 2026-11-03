@@ -897,7 +897,21 @@ const runStage = async (opts) => {
     if (sha !== m.files[g.path]) { bad.push(g.path + '（sha256 不符：清单 ' + m.files[g.path].slice(0, 12) + '… / 实际 ' + sha.slice(0, 12) + '…）'); continue }
     okFiles.push({ path: g.path, action: g.action, buf: g.buf })
   }
-  if (bad.length) return fail(opts.json, 'stage', 'verify-failed', '下载/校验没全过，一个字节都没落盘：' + bad.slice(0, 5).join('；') + (bad.length > 5 ? ' …' : ''), { failed: bad.slice(0, 50), warnings })
+  if (bad.length) {
+    // 与 apply 一致：逐文件下载没全过时，退一步走 Release 整包 zip（企业网关偶发挡裸文件）
+    if (m.zip && /^[0-9a-f]{64}$/.test(m.zip.sha256 || '')) {
+      line('逐文件下载没全过（' + bad.length + ' 个），改走整包 zip 兜底…')
+      const full = await stageFull(m, stageDir, (s) => line('  ' + s))
+      if (full.ok) {
+        const summary = { ok: true, action: 'stage', full: true, shellVersion: m.shellVersion, tag: m.tag, stage: stageDir, stageCreated: true, files: full.files, skipped: rows.filter((x) => x.action === 'skip').length, downloaded: full.files.length, added: 0, updated: full.files.length, bytes: full.bytes, removed: computeRemoved(m, installed), manifestFile: full.manifestFile, warnings: [], exitCode: EXIT_OK }
+        if (opts.json) { emitJson(summary); return finish(EXIT_OK) }
+        line('整包已解到 ' + stageDir + '（' + full.files.length + ' 个文件全部校验通过）')
+        return finish(EXIT_OK)
+      }
+      bad.push('整包兜底也失败：' + full.error)
+    }
+    return fail(opts.json, 'stage', 'verify-failed', '下载/校验没全过，一个字节都没落盘：' + bad.slice(0, 5).join('；') + (bad.length > 5 ? ' …' : ''), { failed: bad.slice(0, 50), warnings })
+  }
 
   // 全有或全无：先清空本次 staging 里清单内的旧文件，再写
   for (const f of okFiles) {
