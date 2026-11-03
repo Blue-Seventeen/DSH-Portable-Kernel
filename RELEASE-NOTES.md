@@ -67,3 +67,41 @@
 - 想退回某个更早的版本：`dsh-portable.cmd shell-update check --to v<旧版本>`，确认后 `stage --force` + `apply`（降级必须显式 `--force`，默认拒绝降级）。
 - 备份目录可以手工清理（`tmp\` 下 `shell-backup-*`），删之前建议先复制一份到盘外。
 - 网页兜底：打开 GitHub Release 页面下载 `harness-shell-<版本>.zip` 整包手工覆盖；只想修清单就单独下 `shell-version.json`。
+
+## v0.1.1 — 2026-11-04
+
+第二个公开版本（产品名：**DSH-Protable-Kernel**）。这一版只做修复与硬化，没有破坏性变更。
+
+### 新增
+
+- `tools\patch-pnpm.mjs`：给便携盘里的 pnpm 打“store 项目注册容错”补丁——exFAT 不支持符号链接，pnpm 每次安装前都会去建 `store\projects\<hash>` 链接，失败就会让商城“装不上也卸不掉”。补丁只影响 prune 的项目簿记。
+- 该补丁已接进 `dsh-portable.cmd repair`：compat 档（exFAT/FAT32/UNC）每次 repair 都会自动重打，`update-app` / `bootstrap` 换掉 pnpm 后也能自愈。
+- `shell-update` 的下载更耐抖动：重试 3 次 + 退避、并发降到 2；逐文件下载没全过时自动改走 Release 的整包 zip 兜底（企业网关偶发 618/jwt 错误也能升级）。
+
+### 修复
+
+- **exFAT 上 store 迁进便携盘后，pnpm 的写操作全部失败**（`EISDIR ... symlink ... projects\<hash>` / 重试链里的 `ENOENT ... unlink`）：根因是 pnpm 的 `registerProject`，已用 `patch-pnpm.mjs` 整段容错。
+- `verify-shell` 不再把“用户自己改过的 `home\profiles\*`”当成错误（userOwned 差异永久豁免），用户实例跑 verify 不会再红一片。
+- `verify-shell` 的 `packageImportMethod` 检查现在接受带引号的 YAML 值（`'copy'`），与 `fix-pnpm-state` 实际写入一致。
+- 开发版（`x.y.z-dev` / `-rc` / `-beta`）不再强制要求 `RELEASE-NOTES` 里有对应小节。
+
+### 优化
+
+- 发布流程增加了“行尾归一”门禁（`tools\normalize-eol.mjs`）：`.cmd` 纯 ASCII+CRLF、`.ps1` 单 BOM+LF、其余无 BOM+LF，避免“清单哈希 ≠ tag 字节”。
+- `dsh-portable.cmd` 把“已是最新（exit 4）”当成功处理，不再打印“命令失败”。
+
+### 破坏性变更
+
+- 无。
+
+### 升级会做什么
+
+- 只替换清单里列出的壳文件（54 个，含新增的 `tools\patch-pnpm.mjs`）；`home\` 下你自己的插件清单 / 网关配置 / 会话 / 凭证一律不碰。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。
+- **升级后建议手动跑一次 `dsh-portable.cmd repair`**：它会把 pnpm 补丁打到 `runtime\pnpm`（compat 档），之后商城才能正常装/卸插件。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.0 -Force`（降级必须显式 -Force）。
+- 网页兜底：从 Release 页下载 `harness-shell-0.1.1.zip` 整包覆盖壳文件；只想修清单就单独下 `shell-version.json`。

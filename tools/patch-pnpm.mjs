@@ -1,18 +1,17 @@
 /**
- * pnpm store 在 exFAT 上的补丁（项目注册改成"不支持符号链接就跳过"）。
+ * pnpm store 在 exFAT 上的补丁（项目注册整段容错）。
  *
  * 背景：pnpm 11 在每次**写操作**（install / add / remove）前会跑 prepareStoreDir → registerProject，
- * 它在 `<storeDir>/projects/<hash>` 建一个**符号链接**指回项目目录（prune 用的项目簿记）。
- * exFAT / FAT32 / 部分网络盘不支持符号链接，于是任何安装都会以
- *   EISDIR: illegal operation on a directory, symlink '..\..\proj' -> '<store>\projects\<hash>'
- * 失败——store 搬进便携盘（migrate-store）之后，商城就会"装不上也卸不掉"。
+ * 它在 `<storeDir>/projects/<hash>` 建一个符号链接指回项目目录（prune 用的项目簿记）。
+ * exFAT / FAT32 / 部分网络盘不支持符号链接，而且 pnpm 的兜底链在"EEXIST → 改名 → 重试 → unlink"
+ * 里会抛 ENOENT（那个路径根本没被创建），于是 store 搬进便携盘后，商城就会"装不上也卸不掉"。
  *
- * 修法：把 registerProject 里那一行 `await symlinkDir(...)` 包进 try/catch，
- * 只吞掉"文件系统不支持符号链接"类的错误码；其它错误照旧抛出。
- * 影响面：仅"prune 的项目簿记"缺失，不影响安装 / 解析 / 内容寻址。
+ * 修法：把 registerProject 里的 `await symlinkDir(...)` 整段包进 try/catch **吞掉所有错误**。
+ * 理由：项目注册只是 prune 的簿记，失败不影响安装 / 解析 / 内容寻址；而按错误码列白名单
+ * 挡不住 pnpm 兜底链里冒出来的 ENOENT（v0.1.0 实测）。
  *
  *   node tools\patch-pnpm.mjs --check     # 0=已打 4=未打 2=版本或锚点不匹配 1=失败
- *   node tools\patch-pnpm.mjs --apply     # 幂等（已打过就直接返回）
+ *   node tools\patch-pnpm.mjs --apply     # 幂等
  *   node tools\patch-pnpm.mjs --revert    # 用 cache\pnpm-pristine-<ver>\pnpm.mjs 还原
  *
  * 为什么要单独一个工具：`runtime\` 是官方层、不进 git，`update-app` / `bootstrap` 换 pnpm 会把它冲掉，
@@ -51,8 +50,9 @@ const PATCHED = [
   '    await symlinkDir(projectDir, linkPath);',
   '  } catch (err) {',
   '    ' + MARK,
-  '    // 不吞掉这个错误的话，store 在 exFAT 上会让任何 install/add/remove 都 EISDIR',
-  '    if (!["EISDIR", "EPERM", "ENOSYS", "EINVAL", "ENOTSUP"].includes(err && err.code)) throw err;',
+  '    // 整段吞掉：项目注册只是 prune 的簿记，失败不影响安装；',
+  '    // 在 exFAT 上 pnpm 会在"EEXIST→改名→重试→unlink"的兜底链里抛 ENOENT（路径根本没被创建），',
+  '    // 按错误码列白名单挡不住它。',
   '  }',
   '',
 ].join('\n')
@@ -73,8 +73,8 @@ const main = () => {
   const applied = text.includes(MARK)
 
   if (CHECK) {
-    if (applied) { say('pnpm ' + version + '：已打（registerProject 已容错）'); return EXIT_OK }
-    say('pnpm ' + version + '：未打（store 在 exFAT 上会装不上：EISDIR symlink）')
+    if (applied) { say('pnpm ' + version + '：已打（registerProject 已整段容错）'); return EXIT_OK }
+    say('pnpm ' + version + '：未打（store 在 exFAT 上会装不上：EISDIR / ENOENT symlink）')
     return EXIT_NOT_APPLIED
   }
 
@@ -82,14 +82,23 @@ const main = () => {
     const bak = backupPath(version)
     if (!existsSync(bak)) { say('没有备份可回退：' + bak); return EXIT_FAIL }
     writeFileSync(PNPM_DIST, readFileSync(bak))
-    say(text.includes(MARK) ? '已回退 pnpm ' + version + ' 的 registerProject 补丁' : '当前没有补丁，已用备份覆盖回去（幂等）')
+    say('已回退 pnpm ' + version + ' 的 registerProject 补丁')
     return EXIT_OK
   }
 
-  if (applied) { say('pnpm ' + version + '：已经是打过补丁的状态，无需重复'); return EXIT_OK }
+  if (applied) {
+    // 旧版补丁只吞了部分错误码：提示先 revert 再 apply 升级（不自动改写，避免半新半旧）
+    if (/includes\(err && err\.code\)/.test(text)) {
+      say('检测到旧版补丁（只吞部分错误码），先 --revert 再 --apply 升级')
+      return EXIT_FAIL
+    }
+    say('pnpm ' + version + '：已经是打过补丁的状态，无需重复')
+    return EXIT_OK
+  }
 
-  const at = text.indexOf(ANCHOR, text.indexOf(BLOCK_START))
-  if (text.indexOf(BLOCK_START) < 0 || at < 0) {
+  const blockAt = text.indexOf(BLOCK_START)
+  const at = blockAt < 0 ? -1 : text.indexOf(ANCHOR, blockAt)
+  if (blockAt < 0 || at < 0) {
     say('找不到 registerProject 锚点（pnpm ' + version + ' 的结构变了）：不改动')
     return EXIT_VERSION
   }
