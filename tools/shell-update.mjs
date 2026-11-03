@@ -49,8 +49,8 @@ export const EXIT_USAGE = 2
 export const EXIT_BLOCKED = 3
 export const EXIT_UP_TO_DATE = 4
 const FETCH_TIMEOUT_MS = 8000
-const RETRIES = 1
-const CONCURRENCY = 4
+const RETRIES = 3
+const CONCURRENCY = 2
 const CACHE_FILE = 'tmp/shell-check.json'
 const SNOOZE_FILE = 'tmp/shell-snooze.json'
 
@@ -324,6 +324,7 @@ const fetchBytes = async (url) => {
     } catch (e) {
       last = e && e.name === 'AbortError' ? '超时（' + FETCH_TIMEOUT_MS + 'ms）' : String((e && e.message) || e)
     }
+    if (attempt < RETRIES) await new Promise((r) => setTimeout(r, 250 * (attempt + 1)))
   }
   return { ok: false, error: last }
 }
@@ -1026,7 +1027,18 @@ const runStageInner = async (m, installed, opts, stageDir) => {
     mkdirSync(dirname(abs), { recursive: true })
     writeFileSync(abs, g.buf)
   }
-  if (bad.length) { process.stderr.write('shell-update: 下载/校验没全过：' + bad.slice(0, 5).join('；') + '\n'); return 1 }
+  if (bad.length) {
+    // 企业网关/代理偶发挡裸文件（实测 618 jwt 错）时，退一步走 Release 里的整包 zip：
+    // 一次请求、sha256 校验、解包后逐文件核对，语义与逐文件下载完全一致。
+    if (m.zip && /^[0-9a-f]{64}$/.test(m.zip.sha256 || '')) {
+      process.stderr.write('shell-update: 逐文件下载没全过（' + bad.length + ' 个），改走整包 zip 兜底…\n')
+      const full = await stageFull(m, stageDir, (s) => process.stderr.write('  ' + s + '\n'))
+      if (full.ok) return 0
+      process.stderr.write('shell-update: 整包兜底也失败：' + full.error + '\n')
+    }
+    process.stderr.write('shell-update: 下载/校验没全过：' + bad.slice(0, 5).join('；') + '\n')
+    return 1
+  }
   writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw)
   return 0
 }

@@ -87,6 +87,7 @@ check('所有 .cmd 用 CRLF 行尾', () => {
 })
 for (const f of ['README.md', 'version.json']) {
   check('无 BOM 且无乱码: ' + f, () => {
+    if (!exists(join(ROOT, f))) { add('无 BOM 且无乱码: ' + f, true, '文件不存在（空壳/夹具），跳过', true); return }
     const b = readFileSync(join(ROOT, f))
     const text = b.toString('utf8')
     // 真 UTF-8：解码再编码必须字节相同；再加一道"连续拉丁补充字符"启发式抓典型 GBK 乱码
@@ -520,12 +521,18 @@ check('清单覆盖完整', () => {
   const local = listLocalShellFiles()
   const localSet = new Set(local)
   const bad = []
-  // 正方向：白名单里"当前存在"的每个壳文件都必须进清单
-  for (const rel of local) if (!Object.prototype.hasOwnProperty.call(filesObj, rel)) bad.push('漏收 ' + rel)
-  // 反方向：清单里每条都得在磁盘上、在白名单内、且字节与清单 sha 一致（用户改过代码文件时这里就该红）
+  // 正方向：白名单里"当前存在"的每个壳文件都必须进清单。
+  // 但**换装闸门**（--update-gate，跑在用户机器上）要豁免这一方向：
+  // 用户完全可能自己往 tools\ 里放脚本（我们在文档里承诺"永不删"），那不是"漏收"；
+  // 这一方向只适合发布前自检（仓库里必须清单与实物一一对齐）。
+  if (!UPDATE_GATE) for (const rel of local) if (!Object.prototype.hasOwnProperty.call(filesObj, rel)) bad.push('漏收 ' + rel)
+  // 反方向：清单里每条都得在磁盘上、在白名单内、且字节与清单 sha 一致（用户改过代码文件时这里就该红）。
+  // 换装闸门下 userOwned 的 sha 差异是**正常状态**（用户装过插件、改过网关），不能因此回滚。
+  const owned = new Set((manifestJson().userOwned || []).map((s) => String(s).toLowerCase()))
   for (const rel of Object.keys(filesObj)) {
     if (!exists(join(ROOT, rel))) { bad.push('磁盘缺少 ' + rel); continue }
     if (!localSet.has(rel)) { bad.push('清单里多出（白名单不再收）' + rel); continue }
+    if (UPDATE_GATE && owned.has(String(rel).toLowerCase())) continue
     if (sha(join(ROOT, rel)) !== String(filesObj[rel])) bad.push('哈希不符 ' + rel)
   }
   add(label, bad.length === 0, bad.length ? bad.length + ' 处：' + bad.slice(0, 5).join('，') : local.length + ' 个壳文件与清单逐一对齐')
