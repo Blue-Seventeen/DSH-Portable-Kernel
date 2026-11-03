@@ -658,7 +658,12 @@ const buildSummary = (m, installed, rows, removed, blockers, opts) => {
   const remoteVer = m.shellVersion
   let status = 'up-to-date'
   let code = EXIT_UP_TO_DATE
-  if (blockers.some((b) => !b.ignoredByForce)) { status = 'blocked'; code = EXIT_BLOCKED }
+  // 只有"远端确实更新"时，minShellVersion / requires 才值得拦人；
+  // 同版本或远端更旧时把它们当噪音（否则 v0.1.0 首发那种 minShellVersion 写高了会永远误报）。
+  const hardBlockers = blockers.filter((b) => !b.ignoredByForce)
+  const remoteIsNewer = !installed.present || isNewer(remoteVer, localVer)
+  const relevantBlockers = hardBlockers.filter((b) => b.code === 'schema-too-new' || b.code === 'updater-too-old' || remoteIsNewer)
+  if (relevantBlockers.length) { status = 'blocked'; code = EXIT_BLOCKED }
   else if (!installed.present) { status = 'update-available'; code = EXIT_OK }
   else if (localVer && isNewer(localVer, remoteVer) && !opts.force) { status = 'local-newer'; code = EXIT_UP_TO_DATE }
   else if (isNewer(remoteVer, localVer) || add.length + upd.length > 0) { status = 'update-available'; code = EXIT_OK }

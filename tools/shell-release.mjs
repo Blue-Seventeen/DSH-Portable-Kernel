@@ -618,7 +618,10 @@ const prepare = (opts) => {
     ? (Number.isInteger(curJson.updaterMin) ? curJson.updaterMin : DEFAULT_UPDATER_MIN)
     : Number(opts.updaterMin)
   if (!Number.isInteger(updaterMin) || updaterMin < 1) throw new ReleaseError('--updater-min 必须是正整数：' + opts.updaterMin, '')
-  const minShellVersion = String(opts.minShellVersion || curJson.minShellVersion || version).trim()
+  const rawMin = String(opts.minShellVersion || curJson.minShellVersion || '').trim()
+  // 语义：minShellVersion = "还能增量升到这一版的最老壳"。它**永远不能比本次发布的版本更新**，
+  // 否则一发版，所有同版本实例都会被判成"跨版本太大，请跑 --full"（v0.1.0 首版踩过这个坑）。
+  const minShellVersion = (!rawMin || cmpSemver(rawMin, version) > 0) ? version : rawMin
   if (!validSemver(minShellVersion)) throw new ReleaseError('minShellVersion 不是合法 semver：' + minShellVersion, '')
 
   const requires = {

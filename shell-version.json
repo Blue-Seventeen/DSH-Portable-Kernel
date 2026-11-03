@@ -5,8 +5,8 @@
   "shellVersion": "0.1.0",
   "tag": "v0.1.0",
   "releasedAt": "2026-11-03T15:30:00.000Z",
-  "minShellVersion": "0.5.0",
-  "generatedAt": "2026-11-03T15:21:01.808Z",
+  "minShellVersion": "0.1.0",
+  "generatedAt": "2026-11-03T15:26:54.054Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -61,8 +61,8 @@
     "tools/say.ps1": "986c7194a2731d5dcb0aa32f199625f9526f585327c6228cb7d66f5aba977207",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
     "tools/shell-apply.mjs": "b7ba2577e5c8dc49b2ccdf7f4eee9e44992839bbb6738c006f0da1782a5b5cb9",
-    "tools/shell-release.mjs": "9dc3d45f287b45270202f79e78310d87fa9c9ebe96fe9a61951cab97ac3f0846",
-    "tools/shell-update.mjs": "2e866e23f2c1de07ffbda548cfc399bb2138114951bd9b372ad242288aae611c",
+    "tools/shell-release.mjs": "2d1e8271d6fc1107732954b993ef94fa64b105613461696f56c0fe00e92583f7",
+    "tools/shell-update.mjs": "a7af1b47b5e31e47ee74752ca0332a6a50ec3a40e25a061c09f6e4d216508f75",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "b6b7ba7051c49aa1271d3e65ad74fbc237dcecf6cd6247daf5ecd9e573b936bc"
   },
@@ -129,7 +129,7 @@
   "notesUrl": "https://github.com/Blue-Seventeen/hack3rx-harness/releases/tag/v0.1.0",
   "zip": {
     "name": "harness-shell-0.1.0.zip",
-    "sha256": "99a869ccd806b8851d41b6ad72e61ff1800a0d2e79b78c452176b75a8b157fd9",
-    "bytes": 1810392
+    "sha256": "e24f9a7c30abde490957d0ab1bcb76adb7dacb1c49e27eb279fa0fa1ee88d6b5",
+    "bytes": 1810738
   }
 }
