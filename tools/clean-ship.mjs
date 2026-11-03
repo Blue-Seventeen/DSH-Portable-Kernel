@@ -8,7 +8,7 @@
  *   dsh-portable.cmd clean-ship            # dry-run：只列清单，不删任何东西
  *   dsh-portable.cmd clean-ship --apply    # 真删，并把 version.json 刷成出厂快照
  *   dsh-portable.cmd clean-ship verify     # 只断言：还没干净就 exit 1（打包门禁）
- *   dsh-portable.cmd clean-ship refresh    # 只刷 version.json 计数，不删任何文件
+ *   dsh-portable.cmd clean-ship refresh    # 只刷 version.json 计数 + 重新生成 shell-version.json，不删任何文件
  *
  * 提示：桌面程序运行中，tmp\dsh-* 属正常运行时目录，verify 会把该项降级为信息项。
  *
@@ -18,6 +18,8 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+// 壳自更新清单的口径只有一份（白名单 + sha256），这里直接复用，免得两边各写一套后漂移
+import { SHELL_MANIFEST, listLocalShellFiles, readShellVersion, sha256File } from './shell-update.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 // 参数既接受 --apply/--verify，也接受裸词 apply/verify：
@@ -178,9 +180,40 @@ const refreshVersion = () => {
   } catch (e) { say('version.json 更新失败：' + e.message); return false }
 }
 
+/**
+ * 生成/更新仓库根的 shell-version.json（壳自更新清单）。
+ * 内容 = 白名单里"当前存在"的文件 + 各自 sha256；shell-version.json 自己不进 files 列表。
+ * shellVersion 从旧文件继承、由人手动 bump（脚本绝不自己加版本号）；没有旧文件才写 0.1.0 并提示。
+ */
+const refreshShellManifest = () => {
+  try {
+    const f = join(ROOT, SHELL_MANIFEST)
+    const had = existsSync(f)
+    let shellVersion = had ? readShellVersion() : ''
+    if (!shellVersion) {
+      shellVersion = '0.1.0'
+      say('提示：' + SHELL_MANIFEST + (had ? ' 里的 shellVersion 读不动，' : ' 不存在，') + '先写 ' + shellVersion + '；发包前请手动改成正式版本号（脚本不会自动 bump）')
+    }
+    const files = {}
+    for (const rel of listLocalShellFiles()) files[rel] = sha256File(join(ROOT, rel))
+    const sorted = {}
+    for (const k of Object.keys(files).sort()) sorted[k] = files[k]
+    const out = { shellVersion, generatedAt: new Date().toISOString(), files: sorted }
+    const text = JSON.stringify(out, null, 2) + '\n'
+    // 明确按 UTF-8 写、无 BOM：tools/shell-update.mjs 会拒绝带 BOM 的清单
+    writeFileSync(f, Buffer.from(text, 'utf8'))
+    const back = readFileSync(f, 'utf8')
+    if (back !== text) { say('⚠ ' + SHELL_MANIFEST + ' 写入后读回不一致（编码问题）'); return false }
+    say(SHELL_MANIFEST + ' 已刷新：shellVersion ' + shellVersion + '，' + Object.keys(sorted).length + ' 个文件（清单自己不计入）')
+    return true
+  } catch (e) { say(SHELL_MANIFEST + ' 生成失败：' + e.message); return false }
+}
+
 if (refreshOnly) {
-  say('=== clean-ship refresh（只刷 version.json，不删任何文件）===')
-  process.exit(refreshVersion() ? 0 : 1)
+  say('=== clean-ship refresh（只刷 version.json + shell-version.json，不删任何文件）===')
+  const versionOk = refreshVersion()
+  const shellOk = refreshShellManifest()
+  process.exit(versionOk && shellOk ? 0 : 1)
 }
 
 // ---- 执行 -------------------------------------------------------------------

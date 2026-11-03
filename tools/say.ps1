@@ -9,7 +9,12 @@
 
 $texts = @{
   'preflight-menu'      = '  选择启动方式：'
-  'preflight-hint'      = '  [W=浏览器模式 / D=桌面窗口 / N=只看自检，30 秒后默认 N]'
+  'preflight-hint'      = '  [W=浏览器模式 / D=桌面窗口 / U=更新壳 / N=只看自检，30 秒后默认 N]'
+  'store-mismatch'      = "  插件依赖环境和当前 pnpm 大版本不一致：市场里会装不上也卸不掉（pnpm 报 UNEXPECTED_STORE）。`n  先彻底退出 DeepSeek Harness，再运行：dsh-portable.cmd plugin-repair -Force"
+  'shell-found'         = '  发现壳更新：{0}'
+  'shell-updating'      = '  正在更新壳（只换壳，不动 app / desktop / 运行时和你的数据）……'
+  'shell-updated'       = '  壳已更新到 {0}，重新启动后生效'
+  'shell-update-failed' = '  壳更新没完成，已回滚到原来能用的版本；详见 logs\shell-update.err'
   'update-interrupted'  = '  检测到上次更新中断，正在自动修复……'
   'update-prompt'       = '  现在更新吗？'
   'update-hint'         = '  [Y=更新 / N=直接启动，15 秒后默认 N]'

@@ -7,7 +7,8 @@
  * 现在判据尽量对齐官方规则和真实行为：
  *   编码不变式 / 三份依赖一致 / bundles 数量 / 豁免必须是精确版本（无 '*'）/
  *   compat-heal 已收敛 / 市场补丁 55 字面 / sync --check 只读且已一致 /
- *   结构下限 + asar 精确字节 / 7z 真跑一次 / tools 语法 / 启动器接线 / 共享插件清单
+ *   结构下限 + asar 精确字节 / 7z 真跑一次 / tools 语法 / 启动器接线 / 共享插件清单 /
+ *   pnpm 垫片在不在 + 记录里的 store 大版本与 runtime\pnpm 一致
  *
  * 只读：所有"同步/规整"类检查都走各自工具的 --check（不落盘），本脚本自己不写任何文件。
  * 任何一项 FAIL → exit 1；读文件抛异常也算 FAIL（不再整个脚本崩掉）。
@@ -22,7 +23,8 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const NODE = join(ROOT, 'runtime/node/bin/node.exe')
 const SEVEN = join(ROOT, 'tools/7z/7z.exe')
 const rows = []
-const add = (label, ok, detail) => rows.push({ label, ok: !!ok, detail: detail || '' })
+/** skip=true 记 SKIP：这一项在当前这份目录里不适用（比如只有壳的发布版没有 runtime\pnpm），不算失败 */
+const add = (label, ok, detail, skip) => rows.push({ label, ok: !!ok, detail: detail || '', skip: !!skip })
 /** 单项检查：任何异常都记成 FAIL 行，而不是让整个脚本抛栈退出（审计 F.6） */
 const check = (label, fn) => {
   try { fn() } catch (e) { add(label, false, '异常: ' + (e && e.message ? e.message : String(e))) }
@@ -257,13 +259,56 @@ check('插件只有一份共享副本（web/desktop 下都没有第二份 dshmar
   add('插件只有一份共享副本（web/desktop 下都没有第二份 dshmarket）', dup.length === 0, dup.join(', '))
 })
 
+// 8) pnpm 垫片与 store 大版本 --------------------------------------------------
+// 事故背景：runtime\pnpm\bin 里没有 pnpm.cmd（Windows 只认 .cmd/.exe），于是 env.cmd 把
+// runtime\pnpm\bin 置顶到 PATH 是空转；`dsh plugin …` 拿到的是机器上的全局 pnpm（实测
+// 10.33.0），.modules.yaml 就按 v10 记录；而 runtime\pnpm 是 11.28.5，之后任何写操作都
+// 报 ERR_PNPM_UNEXPECTED_STORE，插件装/卸全废。这两项把"垫片在不在"和"记录对不对"钉住。
+const PNPM_DIR = join(ROOT, 'runtime/pnpm')
+const PNPM_SHIM = join(PNPM_DIR, 'bin/pnpm.cmd')
+const MODULES_YAML = join(ROOT, 'home/profiles/node_modules/.modules.yaml')
+const runtimeMajor = () => {
+  try { return String(JSON.parse(read(join(PNPM_DIR, 'package.json'))).version || '').split('.')[0] } catch { return '' }
+}
+const storeMajor = (p) => {
+  const m = String(p || '').replace(/[\\/]+$/, '').match(/[\\/]v(\d+)$/)
+  return m ? m[1] : ''
+}
+check('pnpm 垫片就位（runtime\\pnpm\\bin\\pnpm.cmd → pnpm.mjs，纯 ASCII + CRLF）', () => {
+  const label = 'pnpm 垫片就位（runtime\\pnpm\\bin\\pnpm.cmd → pnpm.mjs，纯 ASCII + CRLF）'
+  if (!exists(PNPM_DIR)) { add(label, true, '没有 runtime/pnpm（只有壳的发布版）', true); return }
+  if (!exists(PNPM_SHIM)) { add(label, false, '文件不存在：dsh 会用 PATH 上的全局 pnpm'); return }
+  const buf = readFileSync(PNPM_SHIM)
+  const text = buf.toString('ascii')
+  const ascii = !buf.some((x) => x > 127) // BOM / 中文会让 cmd.exe 解析失败
+  const crlf = !/(^|[^\r])\n/.test(text) // LF-only 行尾会让 cmd 报找不到标签
+  const points = text.includes('pnpm.mjs')
+  const bad = [points ? '' : '未指向 pnpm.mjs', ascii ? '' : '非纯 ASCII', crlf ? '' : '不是 CRLF 行尾'].filter(Boolean)
+  add(label, bad.length === 0, bad.length ? bad.join(', ') : buf.length + ' B')
+})
+check('pnpm 记录的 store 大版本与 runtime\\pnpm 一致', () => {
+  const label = 'pnpm 记录的 store 大版本与 runtime\\pnpm 一致'
+  const want = runtimeMajor()
+  if (!want) { add(label, true, '没有 runtime/pnpm（只有壳的发布版）', true); return }
+  if (!exists(MODULES_YAML)) { add(label, true, '还没装插件（无 .modules.yaml）', true); return }
+  const j = JSON.parse(read(MODULES_YAML))
+  const got = storeMajor(j.storeDir) || String(j.packageManager || '').replace(/^pnpm@/, '').split('.')[0]
+  if (!got) { add(label, false, '.modules.yaml 里没有 storeDir / packageManager'); return }
+  add(label, got === want, got === want ? 'v' + want : 'v' + got + ' -> v' + want + '（需 dsh-portable.cmd plugin-repair）')
+})
+
 // ---- 输出 -------------------------------------------------------------------
 console.log('')
 let fails = 0
+let skips = 0
 for (const r of rows) {
-  if (!r.ok) fails += 1
-  console.log('  ' + (r.ok ? 'PASS' : 'FAIL') + '  ' + r.label + (r.ok ? (r.detail ? '  (' + r.detail + ')' : '') : '  ← ' + r.detail))
+  if (r.skip) skips += 1
+  else if (!r.ok) fails += 1
+  const tag = r.skip ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL')
+  console.log('  ' + tag + '  ' + r.label + (r.ok || r.skip ? (r.detail ? '  (' + r.detail + ')' : '') : '  ← ' + r.detail))
 }
 console.log('')
-console.log(fails === 0 ? '结论：' + rows.length + ' 项全过' : '结论：' + fails + ' / ' + rows.length + ' 项失败')
+console.log(fails === 0
+  ? '结论：' + rows.length + ' 项全过' + (skips ? '（其中 ' + skips + ' 项不适用，记 SKIP）' : '')
+  : '结论：' + fails + ' / ' + rows.length + ' 项失败')
 process.exit(fails === 0 ? 0 : 1)

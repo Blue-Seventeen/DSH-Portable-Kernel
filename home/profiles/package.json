@@ -4,6 +4,7 @@
   "dependencies": {
     "@smalltailqwq/dsh-client-ui-skin-deep-whale-manager": "0.1.8",
     "@smalltailqwq/dsh-client-ui-skin-orca-link": "^0.1.9",
+    "dsh-session-clean-delete": "1.0.2",
     "dshmarket": "1.73.6"
   },
   "dsh": {

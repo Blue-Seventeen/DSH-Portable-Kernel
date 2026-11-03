@@ -85,7 +85,7 @@ dsh-portable.cmd bootstrap
 | --- | --- |
 | `bootstrap` | 只有壳时补齐官方那层（可反复跑） |
 | `doctor` | 只读体检：残留、7z、Office 补丁、市场补丁、版本豁免 |
-| `verify` | 交付门禁，32 项断言，全过 exit 0 |
+| `verify` | 交付门禁，34 项断言，全过 exit 0 |
 | `tidy` | 清临时残留（桌面程序在跑会拒绝，`-Force` 强来） |
 | `update-all` / `update-app` / `update-desktop` | 更新官方那层。**默认只预演**，加 `-Force` 才真更新（`xxx.next` → 校验 → 换名） |
 | `repair` | 修启动失败：`check-update.cmd` 会自动调用它 |
@@ -94,6 +94,8 @@ dsh-portable.cmd bootstrap
 | `clean-ship [apply\|verify\|refresh] [keep-creds]` | 出货前清个人数据；`refresh` 重算 `version.json` 的文件数/体积 |
 | `plugin-list` / `plugin-add` / `plugin-remove` / `plugin-sync` / `plugin-allow` | 插件管理（写的是共享目录） |
 | `plugin-adopt` / `plugin-revoke` | 把插件收进共享目录 / 撤销 |
+| `plugin-repair` | 修"市场装不上也卸不掉"：pnpm 大版本变了就重建插件依赖（**默认预演**，`-Force` 才真重建） |
+| `shell-update [check\|apply]` | **更新壳自己**（只换壳，不动官方层与你的数据；`apply` 默认预演，`-Force` 才真换；失败自动回滚） |
 | `sync-home` / `reset-shell` / `launch-desktop` / `check-updates` | 对齐 DSH_HOME / 重置壳状态 / 直接起桌面模式 / 只查更新 |
 
 `show-desktop` 的退出码：`0` 窗口可见、`1` 原来在托盘/隐藏态、这次被唤出来了、`2` 进程都没有、`3` 进程在但还没建出窗口。`close-desktop` 只要**确认没有可见窗口**就 `exit 0`——此时进程可能还在托盘里，想彻底退出用任务管理器或先 `focus-desktop` 再关窗。
@@ -102,13 +104,14 @@ dsh-portable.cmd bootstrap
 
 ---
 
-## 四、三条必须守住的不变式
+## 四、四条必须守住的不变式
 
-改壳的时候这三条最容易踩，`tools\verify-shell.mjs` 会逐条查：
+改壳的时候这四条最容易踩，`tools\verify-shell.mjs` 会逐条查：
 
 1. **`.cmd` 只能是纯 ASCII + CRLF**。cmd.exe 按字节解析 UTF-8 中文会错位（曾把一行注释当命令执行），中文一律走 `tools\say.ps1`；只写 LF 会报 `The system cannot find the batch label specified - dsh_done`。`.gitattributes` 里这三类文件是 `-text`（按字节存，任何机器 clone 都不会被转成 LF）。
 2. **`dsh-portable.ps1` 与 `tools\say.ps1` 必须 UTF-8 BOM，而且只能有一个**。PS 5.1 不带 BOM 会按 ANSI 读中文，字符串全变乱码；写脚本时用 `.NET` 读回再写会把 BOM 当字符保留、于是变成两个 BOM，PowerShell 直接报 `An expression was expected after '('`。`README.md` / `version.json` 反过来：**不要 BOM**。
 3. **插件只有一份共享副本**。`home\profiles\node_modules` 是共享目录，两个 profile 的 `pnpm-workspace.yaml` 都写 `modulesDir: ../node_modules`，三份 `package.json` 的 `dependencies` 必须逐字符一致；`home\profiles\{web,desktop}\node_modules\dshmarket` 不允许存在（否则同一个插件会有两份，升级后一份新一份旧）。
+4. **只允许一个 pnpm 大版本**。`runtime\pnpm\bin\pnpm.cmd` 这个 62 字节垫片必须存在——dsh 的插件操作是**从 PATH 上找 pnpm** 的，没有垫片时 `env.cmd` 的 PATH 置顶等于没写，dsh 会抓到机器上装的另一代 pnpm。两代 pnpm 的 store 布局目录不同（`…\pnpm-store\v10` vs `v11`），pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`，**市场里连卸载都做不了**。`runtime\` 不进 git，所以垫片由 `tools\fix-pnpm-state.mjs` 每次启动自动补；真的错配了用 `dsh-portable.cmd plugin-repair -Force` 重建。
 
 另外三条官方规则，改不了只能顺着：
 
@@ -142,6 +145,8 @@ dsh-portable.cmd bootstrap
 | pnpm 的包仓库在 `%LOCALAPPDATA%\Hack3rX-Harness\pnpm-store`（GB 级，不随便携目录走） | 有意为之：store 放在 U 盘上装插件会慢一个数量级；真要整盘带走，把这个目录一起拷过去 |
 | `fix-office` 在 Win10 1809+ 默认**跳过** vcredist 拷贝 | 系统自带运行库就够了；确实要重装用 `fix-office -Force` 或 `DSH_PORTABLE_OFFICE_ALWAYS=1` |
 | 市场补丁显示"另有 17 处未覆盖的 `node_modules` 引用" | 已知且可接受：这 17 处不是 `join(a, 'node_modules', b)` 的三参形状，不影响商城装/列插件（补丁本身 55 处字面 = 1 定义 + 54 调用点，`verify` 会逐文件核对） |
+| 市场里装/卸插件报 `ERR_PNPM_UNEXPECTED_STORE` | 两代 pnpm 抢同一个 profile（机器上装了别的 pnpm）。先彻底退出 DeepSeek Harness，再 `dsh-portable.cmd plugin-repair -Force` 重建；`doctor` 的 `pnpm` 行会提前告诉你是否已经错配 |
+| 壳更新报"取不到清单 HTTP 404" | 远端还没有发布 `shell-version.json`（或用的是旧仓库地址）。这是"暂不可用"，不影响启动；`shell-update check` 会返回 1 |
 
 ---
 
@@ -151,7 +156,7 @@ dsh-portable.cmd bootstrap
 
 | 项目 | 结果 |
 | --- | --- |
-| `verify`（交付门禁） | **32 项全过**，连跑多次指纹不变 |
+| `verify`（交付门禁） | **34 项全过**，连跑多次指纹不变 |
 | `doctor`（只读体检） | 6–8 s，残留 0、7z 24.08、Office 已打 14 个 DLL、市场补丁 55 处字面、版本豁免一致 |
 | `clean-ship verify` | 11 项全过，0 文件 / 0 MB 残留 |
 | 桌面冷启动 | 4.3–5.3 s 返 `exit 0`，13 s 出现窗口 |
@@ -162,7 +167,7 @@ dsh-portable.cmd bootstrap
 
 | 场景 | 结果 |
 | --- | --- |
-| 全新空壳（40 个文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 32 项全过 |
+| 全新空壳（40 个文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 34 项全过 |
 | 已有官方层再跑 `bootstrap` | 2.8 s 全部跳过，`exit 0`（幂等） |
 | 删掉 `runtime\node`、`runtime\pnpm`、`app` 后重跑 | 418 s 全部重建，五个产物齐全，`exit 0` |
 | **没有任何系统 tar**（`DSH_PORTABLE_NO_SYSTEM_TAR=1`，模拟 Win10 1703） | node 35.9 MB 与 pnpm 5.5 MB 全部由随包 7z 解出，`node -v` 冒烟通过，pnpm 的 tgz 走两趟（gz→tar） |

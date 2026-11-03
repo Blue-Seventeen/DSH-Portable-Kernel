@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'bootstrap')]
+  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'bootstrap', 'shell-update')]
   [string]$Action = 'doctor',
   [Parameter(Position = 1)]
   [string]$From,
@@ -14,6 +14,7 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Node = Join-Path $Root 'runtime\node\bin\node.exe'
 $SevenZip = Join-Path $Root 'tools\7z\7z.exe'
 $Journal = Join-Path $Root 'tmp\update-journal.json'
+$Journal2 = Join-Path $Root 'tmp\shell-update-journal.json'
 $UpdateCache = Join-Path $Root 'cache\update'
 function Say([string]$m) { Write-Host $m }
 function Warn2([string]$m) { Write-Host $m -ForegroundColor Yellow }
@@ -1250,7 +1251,133 @@ function Bootstrap-Pnpm {
   Move-Item -LiteralPath $pkg -Destination $target
   if (-not (Test-Path -LiteralPath (Join-Path $target 'bin'))) { New-Item -ItemType Directory -Path (Join-Path $target 'bin') -Force | Out-Null }
   RemoveTree $stage
+  Set-PnpmShim
   Say '  pnpm：就绪'
+}
+
+function Set-PnpmShim {
+  # runtime\pnpm\bin 里只有 pnpm.cjs / pnpm.mjs，没有 cmd.exe 能按名字找到的 pnpm.cmd。
+  # 于是 env.cmd 的 "PATH 置顶" 完全不生效：dsh 的 `dsh plugin …` 会命中机器上任意一代 pnpm
+  # （实测同一台机器上同时存在全局 10.33.0 与便携 11.28.5，store 布局 v10 / v11 因此混用，
+  #  pnpm 报 ERR_PNPM_UNEXPECTED_STORE，插件市场连卸载都做不了）。
+  # runtime\ 不进 git，所以这份垫片只能由脚本生成——不能靠提交，也不能假设它一直在。
+  if (-not (Test-Path -LiteralPath (Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'))) { return }
+  $bin = Join-Path $Root 'runtime\pnpm\bin'
+  if (-not (Test-Path -LiteralPath $bin)) { New-Item -ItemType Directory -Path $bin -Force | Out-Null }
+  foreach ($pair in @(@('pnpm.cmd', 'pnpm.mjs'), @('pnpx.cmd', 'pnpx.mjs'))) {
+    $file = Join-Path $bin $pair[0]
+    $body = "@echo off`r`n`"%~dp0..\..\node\bin\node.exe`" `"%~dp0" + $pair[1] + "`" %*`r`n"
+    $same = $false
+    if (Test-Path -LiteralPath $file) {
+      try { $same = ([System.IO.File]::ReadAllText($file) -eq $body) } catch { $same = $false }
+    }
+    if (-not $same) {
+      # 纯 ASCII + CRLF：cmd.exe 按字节解析，中文或 LF 都会出事（见 02-invariants.md 第 1 条）
+      [System.IO.File]::WriteAllText($file, $body, (New-Object System.Text.ASCIIEncoding))
+    }
+  }
+}
+
+function Get-PnpmMajorRuntime {
+  # 壳自带 pnpm 的大版本（v11）。store 布局目录名就是这个版本段，换一代就等于换一个 store。
+  $pkg = Join-Path $Root 'runtime\pnpm\package.json'
+  if (-not (Test-Path -LiteralPath $pkg)) { return $null }
+  try {
+    $v = (Json $pkg).version
+    if (-not $v) { return $null }
+    return ('v' + ($v -split '\.')[0])
+  } catch { return $null }
+}
+
+function Get-ProfileStoreMajor {
+  # home\profiles\node_modules\.modules.yaml 里记录的 store 大版本——它说的就是"这些包实际在哪个 store"。
+  # 优先用 storeDir 的版本段；pnpm 也写 packageManager，两者一致，兜底用它。
+  $f = Join-Path $Root 'home\profiles\node_modules\.modules.yaml'
+  if (-not (Test-Path -LiteralPath $f)) { return $null }
+  try {
+    $j = Json $f
+    if ($j -and $j.storeDir -and ($j.storeDir -match '\\v(\d+)$')) { return ('v' + $Matches[1]) }
+    if ($j -and $j.packageManager -and ($j.packageManager -match '^pnpm@(\d+)\.')) { return ('v' + $Matches[1]) }
+  } catch { return $null }
+  return $null
+}
+
+function Get-PnpmStateText {
+  # doctor 的一行：版本 / 垫片 / profile 记录 / 是否对齐。只读，不改任何东西。
+  $want = Get-PnpmMajorRuntime
+  if (-not $want) { return 'MISSING（没有 runtime\pnpm，先 bootstrap）' }
+  $ver = ''
+  try { $ver = (Json (Join-Path $Root 'runtime\pnpm\package.json')).version } catch { }
+  $shim = Test-Path -LiteralPath (Join-Path $Root 'runtime\pnpm\bin\pnpm.cmd')
+  $have = Get-ProfileStoreMajor
+  if ($have -eq $want) { $state = 'aligned' }
+  elseif (-not $have) { $state = 'no node_modules' }
+  else { $state = ('MISMATCH ' + $have + ' -> ' + $want + '  << 运行 dsh-portable.cmd plugin-repair -Force') }
+  return ($ver + ' / shim=' + $(if ($shim) { 'ok' } else { 'MISSING' }) + ' / store=' + $(if ($have) { $have } else { '-' }) + ' / ' + $state)
+}
+
+function Repair-PluginEnv {
+  # 插件依赖环境重建：把 home\profiles\node_modules 换成"壳自带那一代 pnpm"的布局。
+  # 为什么必须重建而不是改配置：pnpm 总会把 store 根追加成 <root>\vN，配置里写什么都不可能
+  # 让 11 去用 10 的 store（实测 --store-dir X\v10 -> X\v10\v11）。而官方报错里那句
+  # "把记录里的 store 写进 pnpm-workspace.yaml" 只适用于"路径变了、大版本没变"。
+  # 重建不动 node_modules 以外的任何东西；失败会把三份清单原样放回，可反复重跑。
+  $prof = Join-Path $Root 'home\profiles'
+  $want = Get-PnpmMajorRuntime
+  if (-not $want) { throw '没有 runtime\pnpm，无法确定目标 pnpm 大版本（先 dsh-portable.cmd bootstrap）' }
+  $have = Get-ProfileStoreMajor
+  if ($have -eq $want) {
+    Say ('  插件环境已经对齐（' + $want + '），只做清单与市场补丁同步')
+    $null = Plugin-Tool @('sync', '--quiet')
+    try { Fix-MarketPatch -Quiet } catch { }
+    return
+  }
+  Say ('  需要重建：node_modules 记录 ' + $(if ($have) { $have } else { '(无)' }) + '，壳自带 pnpm 是 ' + $want)
+  # 桌面端/浏览器端在跑时 node_modules 会被占用：删一半再失败比不删更糟，直接拒绝
+  if (DesktopRunning) { throw '桌面窗口正在运行：先 close-desktop（或彻底退出 DeepSeek Harness）再重建插件依赖' }
+  $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+  $bak = Join-Path $Root ('cache\plugin-repair-' + $stamp)
+  if (-not (Test-Path -LiteralPath $bak)) { New-Item -ItemType Directory -Path $bak -Force | Out-Null }
+  foreach ($rel in @('', 'web', 'desktop')) {
+    $src = if ($rel) { Join-Path $prof $rel } else { $prof }
+    $dst = if ($rel) { Join-Path $bak $rel } else { $bak }
+    if (-not (Test-Path -LiteralPath $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
+    foreach ($f in @('package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml')) {
+      $s = Join-Path $src $f
+      if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s -Destination (Join-Path $dst $f) -Force }
+    }
+  }
+  Say ('  三份清单已备份到 ' + $bak)
+  foreach ($t in @((Join-Path $prof 'node_modules'), (Join-Path $prof 'web\node_modules'), (Join-Path $prof 'desktop\node_modules'))) {
+    if (Test-Path -LiteralPath $t) { RemoveTree $t }
+  }
+  try {
+    $pnpm = Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'
+    if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 runtime\pnpm\dist\pnpm.mjs' }
+    $store = Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store'
+    Say '  正在用壳自带的 pnpm 重装插件依赖（包大多已在本地 store 里，通常很快）……'
+    & $Node $pnpm --dir $prof install --store-dir $store --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
+    if ($LASTEXITCODE -ne 0) { throw ('插件依赖安装失败（exit ' + $LASTEXITCODE + '）。清单已备份在 ' + $bak + '，处理完网络/权限后重跑本命令即可') }
+    $null = Plugin-Tool @('sync', '--quiet')
+    Fix-MarketPatch -Quiet
+    Fix-PnpmState -Quiet
+    $now = Get-ProfileStoreMajor
+    Say ('  重建完成：node_modules 现在记录 ' + $(if ($now) { $now } else { '(未知)' }) + '，目标 ' + $want)
+    if ($now -ne $want) { throw '重建后记录仍不对齐，请把这条输出一起回报（logs\ 里有细节）' }
+  }
+  catch {
+    Say '  重建失败，正在把三份清单放回原位（node_modules 留空，下次重跑即可）'
+    foreach ($rel in @('', 'web', 'desktop')) {
+      $src = if ($rel) { Join-Path $bak $rel } else { $bak }
+      $dst = if ($rel) { Join-Path $prof $rel } else { $prof }
+      if (-not (Test-Path -LiteralPath $src)) { continue }
+      foreach ($f in @('package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml')) {
+        $s = Join-Path $src $f
+        if (Test-Path -LiteralPath $s) { Copy-Item -LiteralPath $s -Destination (Join-Path $dst $f) -Force }
+      }
+    }
+    throw
+  }
 }
 
 function RemoveTree([string]$path) {
@@ -1556,6 +1683,113 @@ switch ($Action) {
     exit (Plugin-Tool @('adopt', $From))
   }
   'plugin-sync' { exit (Plugin-Tool @('sync')) }
+  'shell-update' {
+    # 壳自更新：只替换"壳"（根脚本 + tools\ + home 的清单/主题 + README/LICENSE）。
+    # 官方层（app\ desktop\ runtime\node|pnpm）与 home\ 下的会话、凭证、私有网关配置永不触碰。
+    # 默认只预演；-Force 才真的换。换之前全部备份，换完跑 verify，不通过就整体回滚。
+    $tool = Join-Path $Root 'tools\shell-update.mjs'
+    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\shell-update.mjs'; exit 2 }
+    $mode = if ($From -in @('check', 'apply')) { $From } else { 'check' }
+    # 第二个位置参数可给清单来源（本地文件或 URL）：镜像/离线/自测时用得上
+    $mArgs = @()
+    if ($Arg2) { $mArgs += @('--manifest', (PathOf $Arg2)) }
+    if ($mode -eq 'check') {
+      & $Node $tool check @mArgs
+      exit $LASTEXITCODE
+    }
+    if (-not $Force) {
+      Say '壳更新预演（只报告，不改文件）：'
+      & $Node $tool check @mArgs
+      Say ''
+      Say '这是预演，加 -Force 才真的替换（自动备份，失败自动回滚）'
+      break
+    }
+    if (DesktopRunning) { throw '桌面窗口正在运行：先退出 DeepSeek Harness 再更新壳（文件会被占用）' }
+    $raw = (@(& $Node $tool stage @mArgs --json) -join '')
+    $info = $null
+    try { $info = (@($raw -split "`n") | Where-Object { $_.Trim() } | Select-Object -Last 1) | ConvertFrom-Json } catch { }
+    if (-not $info -or -not $info.ok) {
+      Warn2 ('壳更新：取文件失败' + $(if ($raw) { '：' + $raw } else { '（没有任何输出）' }))
+      exit 1
+    }
+    $files = @($info.files)
+    if ($files.Count -eq 0) { Say ('壳已经是最新（' + $info.shellVersion + '），没有要换的文件'); break }
+    # 清单文件也要一并换回仓库根：stage 会把远端清单原字节写到 staging。
+    # 漏了它，本地版本号永远不前进 —— 下次 check 还报有更新，stage 又下 0 个文件，变成"永远提醒升级"。
+    $mfInStage = Join-Path ([string]$info.stage) 'shell-version.json'
+    if ((Test-Path -LiteralPath $mfInStage) -and -not ($files | Where-Object { [string]$_.path -eq 'shell-version.json' })) {
+      $files += [pscustomobject]@{ path = 'shell-version.json'; action = 'update'; bytes = 0 }
+    }
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $bak = Join-Path $Root ('cache\shell-backup-' + $stamp)
+    if (-not (Test-Path -LiteralPath $bak)) { New-Item -ItemType Directory -Path $bak -Force | Out-Null }
+    $plan = @()
+    foreach ($f in $files) {
+      $rel = [string]$f.path
+      $relWin = $rel -replace '/', '\'
+      $abs = Join-Path $Root $relWin
+      $existed = Test-Path -LiteralPath $abs
+      if ($existed) {
+        $dst = Join-Path $bak $relWin
+        $dd = Split-Path -Parent $dst
+        if (-not (Test-Path -LiteralPath $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
+        Copy-Item -LiteralPath $abs -Destination $dst -Force
+      }
+      $plan += [pscustomobject]@{ rel = $rel; abs = $abs; existed = $existed }
+    }
+    # journal 先落盘：换到一半断电/被杀时，下一次运行能看出备份在哪
+    $j = [pscustomobject]@{ version = [string]$info.shellVersion; backup = $bak; stage = [string]$info.stage; files = @($plan | ForEach-Object { $_.rel }) }
+    $j | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $Journal2 -Encoding UTF8
+    try {
+      foreach ($p in $plan) {
+        $src = Join-Path ([string]$info.stage) ($p.rel -replace '/', '\')
+        if (-not (Test-Path -LiteralPath $src)) { throw ('staging 里缺文件：' + $p.rel) }
+        $dd = Split-Path -Parent $p.abs
+        if (-not (Test-Path -LiteralPath $dd)) { New-Item -ItemType Directory -Path $dd -Force | Out-Null }
+        Copy-Item -LiteralPath $src -Destination ($p.abs + '.new') -Force
+        Move-Item -LiteralPath ($p.abs + '.new') -Destination $p.abs -Force
+      }
+      # 换完立刻自检：宁可回到旧壳，也不要留一个半坏的壳
+      & $Node (Join-Path $Root 'tools\verify-shell.mjs')
+      if ($LASTEXITCODE -ne 0) { throw '换装后 verify 不通过' }
+    }
+    catch {
+      $err = $_.Exception.Message
+      Say '  换装失败，正在按备份回滚……'
+      foreach ($p in $plan) {
+        $bakFile = Join-Path $bak ($p.rel -replace '/', '\')
+        if ($p.existed -and (Test-Path -LiteralPath $bakFile)) {
+          Copy-Item -LiteralPath $bakFile -Destination $p.abs -Force
+        }
+        elseif (-not $p.existed -and (Test-Path -LiteralPath $p.abs)) {
+          Remove-Item -LiteralPath $p.abs -Force -ErrorAction SilentlyContinue
+        }
+      }
+      Remove-Item -LiteralPath $Journal2 -Force -ErrorAction SilentlyContinue
+      throw ($err + '（已按备份回滚到更新前的壳，备份在 ' + $bak + '）')
+    }
+    Remove-Item -LiteralPath $Journal2 -Force -ErrorAction SilentlyContinue
+    Say ('壳已更新到 ' + $info.shellVersion + '：' + $plan.Count + ' 个文件已替换，重启后生效')
+    Say ('旧文件备份在 ' + $bak)
+    break
+  }
+  'plugin-repair' {
+    # 插件依赖环境重建。触发场景：换机器/换启动方式后，dsh 的插件操作从 PATH 上拿到的是
+    # 另一代 pnpm -> store 布局目录不同（v10 vs v11）-> pnpm 报 ERR_PNPM_UNEXPECTED_STORE，
+    # 市场里装不上也卸不掉。只对齐到壳自带的那一代，不删除 store 里的包。
+    # 默认预演（与 update-* 一致）：报两端版本，什么都不改；加 -Force 才真重建。
+    $want = Get-PnpmMajorRuntime
+    $have = Get-ProfileStoreMajor
+    if (-not $want) { Warn2 '没有 runtime\pnpm（先 dsh-portable.cmd bootstrap）'; exit 2 }
+    Say ('壳自带 pnpm : ' + $want)
+    Say ('profile 记录 : ' + $(if ($have) { $have } else { '(没有 node_modules)' }))
+    Say ("垫片         : " + $(if (Test-Path -LiteralPath (Join-Path $Root 'runtime\pnpm\bin\pnpm.cmd')) { 'runtime\pnpm\bin\pnpm.cmd 就绪' } else { '缺失（-Force 重建时会自动补写）' }))
+    if ($have -eq $want) { Say '两端一致：不需要重建（-Force 也只跑清单同步与市场补丁）' }
+    if (-not $Force) { Say '这是预演，加 -Force 才真重建（会删除并重装 home\profiles\node_modules）'; break }
+    Repair-PluginEnv
+    Say '插件环境已对齐：现在可以在市场里正常安装/卸载了'
+    break
+  }
   'plugin-allow' {
     if (-not $From) { Say '用法：dsh-portable.cmd plugin-allow <包名>'; exit 1 }
     exit (Plugin-Tool @('allow', $From))
@@ -1577,6 +1811,7 @@ switch ($Action) {
     Say ("store     : exists=" + (Test-Path (Join-Path $env:LOCALAPPDATA 'Hack3rX-Harness\pnpm-store')))
     Say ("7z        : " + (Get-SevenZipState))
     Say ("deps      : " + (Get-DepsText))
+    Say ("pnpm      : " + (Get-PnpmStateText))
     Say ("office    : " + (Get-OfficePatchState))
     Say ("login-bak : " + (Get-LoginBackupCount))
     Say ("leftovers : " + (Get-LeftoverCount))

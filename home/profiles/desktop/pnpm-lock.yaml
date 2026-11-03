@@ -14,6 +14,9 @@ importers:
       '@smalltailqwq/dsh-client-ui-skin-orca-link':
         specifier: ^0.1.9
         version: 0.1.9
+      dsh-session-clean-delete:
+        specifier: 1.0.2
+        version: 1.0.2
       dshmarket:
         specifier: 1.73.6
         version: 1.73.6
@@ -42,6 +45,9 @@ packages:
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
+  dsh-session-clean-delete@1.0.2:
+    resolution: {integrity: sha512-LQzpT9GExPvgPSb303JsL27oZcT3wOyiMtlCa8WGHHgI6qCs7Ydsb34V7PiEkBisfLaoj3XS3kDiNkZ50CDPvw==}
+
   dshmarket@1.73.6:
     resolution: {integrity: sha512-dfE0kGbF/rVQAbUTLV8m2HTXOpeMjRBB4us0tNDKDGX9IDtNJStSHxT5TuIJaN+RG/PVzF8v1Z2zUyZJpM4RDg==}
     peerDependencies:
@@ -69,6 +75,8 @@ snapshots:
   '@smalltailqwq/dsh-client-ui-skin-orca-link@0.1.9': {}
 
   argparse@2.0.1: {}
+
+  dsh-session-clean-delete@1.0.2: {}
 
   dshmarket@1.73.6:
     dependencies:

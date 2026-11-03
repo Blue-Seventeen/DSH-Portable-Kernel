@@ -40,10 +40,16 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1
 echo.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key preflight-menu -NoNewline
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key preflight-hint
-choice /C WDN /T 30 /D N /N /M " > "
+rem choice returns 1..4 in the order of the letter list: W=1 D=2 N=3 U=4
+choice /C WDNU /T 30 /D N /N /M " > "
+if errorlevel 4 goto :shellupd
 if errorlevel 3 goto :end
 if errorlevel 2 goto :desk
 if errorlevel 1 goto :web
+:shellupd
+rem shell self-update: only the shell files are replaced; app/desktop/runtime and user data never are
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" shell-update apply -Force
+goto :end
 :web
 call "%ROOT%start-web.cmd"
 goto :end
