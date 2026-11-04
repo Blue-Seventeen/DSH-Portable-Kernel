@@ -337,3 +337,38 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.2.1 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.3.0.zip` 整包覆盖壳文件。
+
+---
+
+## v0.3.1 — 2026-11-04
+
+修 0.3.0 的回归：升级会把三份 `pnpm-workspace.yaml` 当"清单已删文件"删掉，导致 pnpm store 漂移、装不上插件。
+
+### 新增
+
+- 无（补丁版只修问题）。
+
+### 修复
+
+- **0.3.0 升级会删掉 `home\profiles\{,\web,\desktop}\pnpm-workspace.yaml`**：升到 0.3.0 后 pnpm 回落到 `$PNPM_HOME\store`，与 `node_modules\.modules.yaml` 记录不一致，该 profile 的装/卸全部被拒绝；市场还会把插件装进 profile 自己的 `node_modules` 形成第二份副本。现在 `computeRemoved()` 的保护集包含"新清单 userOwned + 已安装清单 userOwned + 机器配置文件"，**绝不再删这三份 yaml**。
+- **yaml 被删后不会自愈**：`fix-pnpm-state` 以前遇到缺失文件直接跳过；现在会**重建**（packages / nodeLinker / autoInstallPeers / modulesDir + storeDir + packageImportMethod 一次写全），启动器与升级迁移都会跑它。
+
+### 优化
+
+- 无。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`home\` 下的数据一律不碰。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；**不会再删**三份 `pnpm-workspace.yaml`（0.3.0 删掉的会在升级后由 `fix-pnpm-state` 自动重建）。
+- 换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`），把 store 配置对齐回当前机器。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.0 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.3.1.zip` 整包覆盖壳文件。

@@ -6,7 +6,7 @@
   "tag": "v0.3.0",
   "releasedAt": "2026-11-04T13:56:12.322Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T13:56:49.773Z",
+  "generatedAt": "2026-11-04T14:26:09.454Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "0459176762534a4d210f4fbb9d1468121ee392437b6c5628c744703038d1a599",
-    "RELEASE-NOTES.md": "0f2f91e902c9446d9b4a3d3229f1fba617ed87b7b31bf28816cb310efdf7e635",
+    "RELEASE-NOTES.md": "873be5812a8321070ac99050024826dda28b3491e2220e1cb38c4109df6b2835",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -46,7 +46,7 @@
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
     "tools/clean-ship.mjs": "5c045ea9182deddc9d0c88c71c69ea0afd4c0d1332fea3f821f8c3742b62853e",
     "tools/download.mjs": "b24e406b496acfe167f638ee04c9f02dfcf859dacd836ce2f00884a488257c78",
-    "tools/fix-pnpm-state.mjs": "6b83baf851d4357c0058303a868812f20c2c9c265c6c6a8a8c28b64e74b4b31d",
+    "tools/fix-pnpm-state.mjs": "2b7f951070d8cfbb8a2341bdf60e32a29938c3834fd3f25e20ea8745f9c6a335",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",
     "tools/mask-log.mjs": "e4b43a4d79ce0dc624b828fe281df364f601c3e0990b27cffaca6369cb722778",
@@ -66,7 +66,7 @@
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "f24ccf7a6ccd5e2740f428df8bfef369010456d6ea83d6189ee91dd0e25682f1",
-    "tools/shell-update.mjs": "f4325a0e84803ff8b60cc64713190e02987881816444c3dae8a6b18df9ff24ce",
+    "tools/shell-update.mjs": "772b3c47ada76844b28e1e532ccf0849b8ec3f1ef01afc1e2aa0dc640642d779",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "24639c0029cc1a21b2aa980737177ab341d6c86b8026834bf8c933d1dc4fb3a7"

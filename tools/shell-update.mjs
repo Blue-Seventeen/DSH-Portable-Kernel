@@ -559,14 +559,30 @@ export const computePlan = (m, installed) => {
 }
 
 /** removed = 本地上一版清单里有、远端这版没有的文件（只认自己装过的，且不动用户可变/用户自建） */
+/**
+ * 机器配置：由 fix-pnpm-state 生成，绝不随壳发布，也绝不能被"清单里删掉了"当成待删文件删除。
+ * 2026-11-04 事故：0.3.0 把三份 pnpm-workspace.yaml 移出清单后，升级把它们当成"清单已删文件"删掉，
+ * pnpm 随即漂到 $PNPM_HOME/store，与 node_modules 记录不一致 → 装不上插件。
+ */
+export const isMachineConfigPath = (rel) => {
+  const low = lower(rel)
+  return low === 'home/profiles/pnpm-workspace.yaml'
+    || /^home\/profiles\/[^/]+\/pnpm-workspace\.yaml$/.test(low)
+}
+
 export const computeRemoved = (m, installed) => {
   if (!installed.present) return []
-  const ownedSet = new Set((Array.isArray(m.userOwned) ? m.userOwned : USER_OWNED).map(lower))
+  // 保护集：新清单的 userOwned + **已安装清单的 userOwned**（从清单里移除的旧用户文件也不删）
+  const ownedSet = new Set([
+    ...(Array.isArray(m.userOwned) ? m.userOwned : USER_OWNED),
+    ...(Array.isArray(installed.userOwned) ? installed.userOwned : []),
+  ].map(lower))
   const remote = new Set(Object.keys(m.files).map(lower))
   const out = []
   for (const rel of Object.keys(installed.files)) {
     if (lower(rel) === lower(SHELL_MANIFEST)) continue
     if (!isAllowedShellPath(rel)) continue
+    if (isMachineConfigPath(rel)) continue          // 机器配置永不删
     if (ownedSet.has(lower(rel))) continue
     if (!remote.has(lower(rel))) out.push(rel)
   }

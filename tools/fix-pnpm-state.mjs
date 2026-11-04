@@ -300,7 +300,17 @@ const safeWrite = (file, text) => {
 
 const fixWorkspaceYaml = (profDir, name, storePath) => {
   const file = join(profDir, 'pnpm-workspace.yaml')
-  if (!existsSync(file)) return false
+  // 文件缺失（被误删、或新装实例还没生成）时**重建**：结构键 + 机器配置一次写全。
+  // 以前这里直接 return false，于是"yaml 被删"只能靠人跑 plugin-shared sync 补结构、
+  // 再跑一次 fix-state 补 storeDir —— 中间那段窗口 pnpm 会漂 store（2026-11-04 事故）。
+  if (!existsSync(file)) {
+    const base = ['packages:', "  - '.'", '', 'nodeLinker: hoisted', 'autoInstallPeers: false']
+    if (profDir !== profilesDir) base.push('', 'modulesDir: ../node_modules')
+    base.push('', "storeDir: '" + storePath.replace(/'/g, "''") + "'", "packageImportMethod: '" + importMethod.replace(/'/g, "''") + "'", '')
+    safeWrite(file, base.join('\n'))
+    say('[' + name + '] pnpm-workspace.yaml 缺失，已重建（storeDir / modulesDir / nodeLinker）')
+    return true
+  }
   const raw = readFileSync(file, 'utf8')
   const eol = raw.includes('\r\n') ? '\r\n' : '\n'
   const lines = raw.split(/\r?\n/)
