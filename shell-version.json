@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.2.1",
-  "tag": "v0.2.1",
-  "releasedAt": "2026-11-04T13:12:03.000Z",
+  "shellVersion": "0.3.0",
+  "tag": "v0.3.0",
+  "releasedAt": "2026-11-04T13:56:12.322Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T13:43:17.769Z",
+  "generatedAt": "2026-11-04T13:56:49.773Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "0459176762534a4d210f4fbb9d1468121ee392437b6c5628c744703038d1a599",
-    "RELEASE-NOTES.md": "ccf23c9ebb140cd5f0447e38ef0639fc13b78209eec2312be5396ea7df3d1797",
+    "RELEASE-NOTES.md": "0f2f91e902c9446d9b4a3d3229f1fba617ed87b7b31bf28816cb310efdf7e635",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -83,32 +83,35 @@
   ],
   "notes": {
     "added": [
-      "无（补丁版只修问题）。"
+      "`dsh-portable.cmd market-history`：清空商城的操作历史（安装/卸载记录）。支持 `check`（只统计）、`-Force`（连 `log.ndjson` 一起清）、`node tools\\market-history.mjs --root <别的实例>`；每个被改的文件先备份成 `.bak-<时间戳>`。",
+      "`preflight` 头部信息块：产品名 / 壳版本 / 安装位置一屏可见，有更新时同一行提示；结尾新增 `结果：OK N · 注意 M · 问题 K` 计数。"
     ],
     "fixed": [
-      "**升级后商城装/卸插件报\"store 不一致\"**：`storeDir` / `packageImportMethod` 是机器配置，却写在随壳发布的 `home\\profiles\\*\\pnpm-workspace.yaml` 里；升级把这些文件换回\"干净版\"后 pnpm 回落到 `$PNPM_HOME\\store`，与 `node_modules\\.modules.yaml` 记录的盘内 store 不一致，于是该 profile 的所有装/卸都被拒绝。现在这三份 yaml **不再随壳发布**，机器配置由 `tools\\fix-pnpm-state.mjs` 每次启动生成。",
-      "**升级后立刻对齐**：清单新增 `migrations`，换装成功后由已安装的升级器直接跑一次 `fix-pnpm-state`，**不用先重启**就能装插件。",
-      "同一原因丢失的 `packageImportMethod: copy` 一并恢复（exFAT 上没有它，pnpm 会去试硬链接）。"
+      "**升级完成后 preflight 仍提示\"0.2.0 -> 0.2.1\"**：24 小时检查缓存没有绑定本地版本，升级后旧结论继续回放。现在缓存必须匹配当前安装版本才复用。",
+      "**点 Y 后打印\"清单已从 0.2.1 推进到 0.2.1\"**：`apply` 在已是最新时仍走换装分支。现在直接输出\"已是最新（版本），没有需要更新的文件\"。",
+      "**商城的\"关闭此提示\"关不掉历史**：界面只关当次显示，服务端没有删除入口，记录留在 `<profile>\\.dsh-market\\drain.ndjson`，重启又出现。现在用 `market-history` 清理（保留进行中的操作）。",
+      "`preflight.cmd` 的退出码会被菜单选择（1..4）污染；现在只有真正启动 dsh 的分支带回退出码。",
+      "`market-history --profile <非法值>` 以前静默什么都不做，现在明确报错并退出 2。"
     ],
     "optimized": [
-      "`verify` 新增「pnpm store 与 node_modules 记录一致」「store 一致性自测」（54 → 56 项）；新增 `tools\\selftest-store.mjs`（10 个夹具：缺 storeDir、指向不同 store、记录带 `v11`、坏 `.modules.yaml` 等）。",
-      "`doctor` 与门禁能从\"记录 vs 解析\"的角度发现这类问题，而不是等用户点安装才报错。"
+      "更新提示改成要点式：每节最多 2 条 `·`，超出显示\"… 还有 N 条（`shell-update notes` 看全部）\"，不再用分号把一整节拼成一行。",
+      "`preflight` 分区号统一成 `[01] … [11]`，去掉与头部重复的\"位置\"行；`[11]` 只留清单 tag 与 24 小时检查结论。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变；`home\\` 下的插件清单、网关配置、会话、凭证一律不碰。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变，`home\\` 下的数据一律不碰。"
     ],
     "upgrade": [
-      "替换清单里的壳文件；**不再覆盖**三份 `pnpm-workspace.yaml`（它们从此不随壳走）。",
-      "换装成功后自动跑一次 `fix-pnpm-state`（幂等、几十毫秒），把 store 配置对齐回当前机器。",
-      "换装前整份备份到 `cache\\shell-backup-<时间戳>`；换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。"
+      "替换清单里的壳文件；三份 `pnpm-workspace.yaml` 仍不随壳发布。",
+      "换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`），把 store 配置对齐回当前机器。",
+      "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.2.0 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.2.1.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.2.1 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.3.0.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.2.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.0",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -119,8 +122,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.2.1.zip",
-    "sha256": "d86c81cd23d1aff43f0125c7866537585ae103db3c305b2a72f6233d2e9d0c49",
-    "bytes": 1850990
+    "name": "harness-shell-0.3.0.zip",
+    "sha256": "74e63bb725153a1cabe77fb0b5b8516ec092dda3c9c53bf22fe6e47076abfffa",
+    "bytes": 1855690
   }
 }

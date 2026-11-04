@@ -298,3 +298,42 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.2.0 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.2.1.zip` 整包覆盖壳文件。
+---
+
+## v0.3.0 — 2026-11-04
+
+修好"升级后还提示有更新"，并给商城历史一个能真正清干净的入口。
+
+### 新增
+
+- `dsh-portable.cmd market-history`：清空商城的操作历史（安装/卸载记录）。支持 `check`（只统计）、`-Force`（连 `log.ndjson` 一起清）、`node tools\market-history.mjs --root <别的实例>`；每个被改的文件先备份成 `.bak-<时间戳>`。
+- `preflight` 头部信息块：产品名 / 壳版本 / 安装位置一屏可见，有更新时同一行提示；结尾新增 `结果：OK N · 注意 M · 问题 K` 计数。
+
+### 修复
+
+- **升级完成后 preflight 仍提示"0.2.0 -> 0.2.1"**：24 小时检查缓存没有绑定本地版本，升级后旧结论继续回放。现在缓存必须匹配当前安装版本才复用。
+- **点 Y 后打印"清单已从 0.2.1 推进到 0.2.1"**：`apply` 在已是最新时仍走换装分支。现在直接输出"已是最新（版本），没有需要更新的文件"。
+- **商城的"关闭此提示"关不掉历史**：界面只关当次显示，服务端没有删除入口，记录留在 `<profile>\.dsh-market\drain.ndjson`，重启又出现。现在用 `market-history` 清理（保留进行中的操作）。
+- `preflight.cmd` 的退出码会被菜单选择（1..4）污染；现在只有真正启动 dsh 的分支带回退出码。
+- `market-history --profile <非法值>` 以前静默什么都不做，现在明确报错并退出 2。
+
+### 优化
+
+- 更新提示改成要点式：每节最多 2 条 `·`，超出显示"… 还有 N 条（`shell-update notes` 看全部）"，不再用分号把一整节拼成一行。
+- `preflight` 分区号统一成 `[01] … [11]`，去掉与头部重复的"位置"行；`[11]` 只留清单 tag 与 24 小时检查结论。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变，`home\` 下的数据一律不碰。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；三份 `pnpm-workspace.yaml` 仍不随壳发布。
+- 换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`），把 store 配置对齐回当前机器。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.2.1 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.3.0.zip` 整包覆盖壳文件。
