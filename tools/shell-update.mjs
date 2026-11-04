@@ -727,7 +727,8 @@ const runCheck = async (opts) => {
   const removed = computeRemoved(m, installed)
   const blockers = compatBlockers(m, installed, opts)
   const summary = buildSummary(m, installed, rows, removed, blockers, opts)
-  if (opts.cached > 0 || opts.prompt) writeJsonFile(CACHE_FILE, { at: Date.now(), source: sourceKey, version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
+  // 只有"从网络真查到"的结果才写缓存（本地清单测试不落盘）；这样 doctor/preflight 读到的永远是最近一次真实结论
+  if (m.kind === 'url') writeJsonFile(CACHE_FILE, { at: Date.now(), source: sourceKey, version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
   const { _rows, _removed, ...clean } = summary
 
   if (opts.json) {

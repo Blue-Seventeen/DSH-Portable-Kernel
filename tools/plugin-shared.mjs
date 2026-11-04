@@ -93,9 +93,30 @@ const writeJson = (file, value) => {
   if (old === text) return
   try { copyFileSync(file, file + '.bak') } catch { /* 忽略 */ }
   writeFileSync(file, text, 'utf8')
+  // 改了 profile 清单（bundles/dependencies）就把 version.json 的计数一起刷新
+  if (/(^|[\\/])profiles[\\/][^\\/]+[\\/]package\.json$/.test(file)) { try { syncBundleCounts() } catch { } }
 }
 const profileDir = (name) => join(profilesDir, name)
 const profileManifestFile = (name) => join(profileDir(name), 'package.json')
+// version.json 里的 bundlesWeb/bundlesDesktop 是"发布时刻"的快照，但插件增删会改两份 profile 的 bundles。
+// 不跟着刷新的话，用户在商城装/卸插件之后 verify 会报"bundles 数量与 version.json 声明不一致"（v0.1.2 实测）。
+const syncBundleCounts = () => {
+  const vf = join(root, 'version.json')
+  if (!existsSync(vf)) return
+  try {
+    const v = JSON.parse(readFileSync(vf, 'utf8'))
+    const cnt = (name) => {
+      const m = readProfile(name)
+      return Array.isArray(m?.dsh?.profile?.bundles) ? m.dsh.profile.bundles.length : 0
+    }
+    const w = cnt('web'), d = cnt('desktop')
+    if (w === v.bundlesWeb && d === v.bundlesDesktop) return
+    v.bundlesWeb = w
+    v.bundlesDesktop = d
+    writeFileSync(vf, JSON.stringify(v, null, 2) + '\n')
+  } catch { }
+}
+
 
 /** 读 profile 清单；不存在返回 null（未初始化过的模式） */
 const readProfile = (name) => {

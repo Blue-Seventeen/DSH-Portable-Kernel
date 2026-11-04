@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.1.2",
-  "tag": "v0.1.2",
-  "releasedAt": "2026-11-03T17:10:00.000Z",
+  "shellVersion": "0.1.3",
+  "tag": "v0.1.3",
+  "releasedAt": "2026-11-04T01:30:00.000Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-03T17:01:32.886Z",
+  "generatedAt": "2026-11-04T01:24:23.020Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "c386cd599e6dad17214a3714ca0c57b383c2c1eed7b1d38f534aed139507926b",
-    "RELEASE-NOTES.md": "ad48deb38e9d8e175f2ac207a35393f8ffd1cb600cf249e210351678ce57ece2",
+    "RELEASE-NOTES.md": "abcfccdd351c485b374da9fc71f2bf3a8843b84deb3dfd426d79082fa65f280b",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -56,14 +56,14 @@
     "tools/patch-fs.mjs": "700850cc5c6405862a116b93a06f7df416b263b9efb6d1d76d0070ecb8ebb338",
     "tools/patch-market.mjs": "2e13e59fafe4d734473d8eaba8d64830db1cc2553ce2e65d8614187c30e2fc01",
     "tools/patch-pnpm.mjs": "cfa8a567fbb1281f540ab847987a052d2796e32b0140afff0a7dd04483ba0577",
-    "tools/plugin-shared.mjs": "10438b1716102b2957daa7677e9e5a13dbfad6a4f4f1afdae16d43987bb52b4b",
+    "tools/plugin-shared.mjs": "59229709059b3b0711c47c8583bf8549727a1712cbd2172bc213604a1989bb8c",
     "tools/preflight.mjs": "605bd523d33000b8015426e5fc672acdfbe84068e2e3ac610dd9a73d0cf9a2f6",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
     "tools/say.ps1": "986c7194a2731d5dcb0aa32f199625f9526f585327c6228cb7d66f5aba977207",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-release.mjs": "49bf0f17ec6e10944d62716cd035bd702866be84eeaf7b5997c4cac0437ef42f",
-    "tools/shell-update.mjs": "57209140cc6294cc8536f49352501cf9b12d17096632fce1087afe8c61a414b8",
+    "tools/shell-update.mjs": "386e121588fe5292a6fab71f0adb2c489a5274379b952f7dc6e240d556ecf439",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "273b3ebe874a23d033598bde4e1643aa19f4ba13a6a4b89e95cf6787d0cca311"
   },
@@ -82,45 +82,29 @@
   ],
   "notes": {
     "added": [
-      "无新功能。这一版只修 QA 揪出来的问题。"
+      "无新功能。"
     ],
     "fixed": [
-      "**默认更新源基址算错**：清单地址 302 跳到 `release-assets.githubusercontent.com` 后，代码把跳转后的主机当成了文件基址，逐文件下载全部失败，只能靠 1.73 MB 整包兜底（一次 24 秒）。现在固定用 `raw.githubusercontent.com/<repo>/refs/tags/<tag>/`。",
-      "**`--cached` 会串味**：缓存不校验来源，先查过一份假清单后再带 `--cached` 查真清单，会回放假清单的结论（preflight 也会被污染）。现在缓存绑定清单来源。",
-      "**`--force` 越权**：原来它会连 `schemaVersion` 太新、`updaterMin` 太高、跨版本太大一起忽略。现在只放开 `requires-dsh` / `requires-node` 这类软要求，硬闸永远挡。",
-      "**纯版本推进不生效**：清单只改了版本号 / 更新说明、没有文件变化时，`apply` 报成功却没写回清单，版本号永远不前进。现在会原子写回 `shell-version.json`。",
-      "**退出码与 JSON 不一致**：被兼容性挡下时进程退出 1、JSON 里写 3。现在统一为 3。",
-      "**`--json` 不是一行**：换装自检的 PASS 行会混进 stdout。现在自检输出收进 JSON 的 `verify.failed`，stdout 只有一行。",
-      "**`check` 无条件写缓存**：连只读检查都落盘（`tmp\\shell-check.json`）。现在只有 `--cached` / `--prompt` 才写。",
-      "**更新说明少一节**：某节为空时（尤其「破坏性变更」）会被整节省略，看着像漏了。现在六节固定，空的打印「无」。",
-      "**用户自建脚本被覆盖**：`tools\\` 是整目录白名单，用户自己放在里面的脚本一旦和官方文件同名就会被覆盖。现在「本地有、上一版清单没装过」的 `tools\\*` 一律保留（会在输出里列为「保留」）。",
-      "**删掉的用户配置被装回来**：`home\\` 下属于用户自己的文件（package.json / pnpm-workspace.yaml / cordis.patch.yml 等）被用户删掉后，升级会把它加回来。现在尊重删除意图，不再补装。",
-      "**大小写导致的误报**：`verify` 的「清单覆盖完整」按大小写敏感比较，`TOOLS/X.MJS` 这类会误判。现在按小写比较。",
-      "**doctor 的假阳性**：「pnpm aligned」只比 store 大版本，profile 里记的 storeDir 指向一个已经不存在的路径时照样报 aligned（仓库里实测复现）。现在会核对记录的 storeDir 是否存在、盘内 store 是否有内容。"
+      "**装/卸插件后 `verify` 误报**：`version.json` 里的 `bundlesWeb` / `bundlesDesktop` 是发布时刻的快照，用户在商城装一个插件后两份 profile 的 bundles 变多，`verify` 就报「bundles 数量与 version.json 声明不一致」。现在 `plugin-shared` 每次改动 profile 清单都会同步刷新这两个计数（`add` / `remove` / `adopt` / `disable` / `sync` 全覆盖）。",
+      "**doctor 的「壳更新」一行会长期显示旧结论**：`tool/shell-update.mjs check` 之前在非 `--cached` / 非 `--prompt` 场景不写缓存，升级完壳之后 `tmp\\shell-check.json` 还停留在升级前的结论，doctor 继续显示「x.y.z 可更新」。现在凡是**从网络真查到**的结果都会刷新缓存（本地清单测试仍然不落盘），doctor / preflight 读到的永远是最近一次真实结论。",
+      "**实例侧数据修正**：`app\\node_modules\\.modules.yaml` 里残留的旧 store 路径（`C:\\Users\\...\\pnpm-store`）在 `migrate-store` 之后不会自动更新，会误导 pnpm；本次已把实例刷新为盘内路径（`cache\\pnpm-store\\v11`）。"
     ],
-    "optimized": [
-      "`verify-published` 对网络抖动（代理偶发 618）重试 3 次，不再把「网络不好」判成「版本不能升级」。",
-      "成功换装后清掉 `tmp\\build` 里的 staging；失败时保留，便于排查。",
-      "文档纠正：降级命令的正确写法是 `--force`（直接调 node CLI；走 `dsh-portable.cmd` 时写 `-Force`，脚本会翻），备份目录在 `cache\\shell-backup-*`；顺带刷新了一批过期数字。"
-    ],
-    "breaking": [
-      "无。行为变得更保守（该挡的一定挡、该保留的一定保留），不影响正常升级。"
-    ],
+    "optimized": [],
+    "breaking": [],
     "upgrade": [
-      "替换清单里的壳文件（54 个）；`home\\` 下你的插件清单 / 网关配置 / 会话 / 凭证一律不碰；你自己放进 `tools\\` 的脚本也会保留。",
-      "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。",
-      "升级后如需让 pnpm 补丁生效（compat 档），跑一次 `dsh-portable.cmd repair`。"
+      "同前：只替换清单里的壳文件（54 个），`home\\` 下的插件清单 / 网关配置 / 会话 / 凭证一律不碰。",
+      "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。"
     ],
     "rollback": [
-      "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回某个更早版本：`node tools\\shell-update.mjs apply --to 0.1.1 --force`（降级必须显式 `--force`）。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.1.2.zip` 整包覆盖壳文件。"
+      "`dsh-portable.cmd shell-update rollback`（按最新备份整体还原）。",
+      "想退回某个更早版本：`node tools\\shell-update.mjs apply --to 0.1.2 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.1.3.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/hack3rx-harness/releases/tag/v0.1.2",
+  "notesUrl": "https://github.com/Blue-Seventeen/hack3rx-harness/releases/tag/v0.1.3",
   "zip": {
-    "name": "harness-shell-0.1.2.zip",
-    "sha256": "3bc29ff3026e0fbadb8f927bf8c996b4ecda11f889444f910102b74288d9845e",
-    "bytes": 1818378
+    "name": "harness-shell-0.1.3.zip",
+    "sha256": "f149a0f690cd523edb813993a0b40019df7daf4fe3af7227fb609de0233037d5",
+    "bytes": 1819357
   }
 }

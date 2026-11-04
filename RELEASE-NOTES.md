@@ -150,3 +150,36 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.1 --force`（降级必须显式 `--force`）。
 - 网页兜底：从 Release 页下载 `harness-shell-0.1.2.zip` 整包覆盖壳文件。
+
+## v0.1.3 — 2026-11-04
+
+插件生态相关的两个小修复（装/卸插件之后的自检误报、doctor 的更新状态陈旧），无破坏性变更。
+
+### 新增
+
+- 无新功能。
+
+### 修复
+
+- **装/卸插件后 `verify` 误报**：`version.json` 里的 `bundlesWeb` / `bundlesDesktop` 是发布时刻的快照，用户在商城装一个插件后两份 profile 的 bundles 变多，`verify` 就报「bundles 数量与 version.json 声明不一致」。现在 `plugin-shared` 每次改动 profile 清单都会同步刷新这两个计数（`add` / `remove` / `adopt` / `disable` / `sync` 全覆盖）。
+- **doctor 的「壳更新」一行会长期显示旧结论**：`tool/shell-update.mjs check` 之前在非 `--cached` / 非 `--prompt` 场景不写缓存，升级完壳之后 `tmp\shell-check.json` 还停留在升级前的结论，doctor 继续显示「x.y.z 可更新」。现在凡是**从网络真查到**的结果都会刷新缓存（本地清单测试仍然不落盘），doctor / preflight 读到的永远是最近一次真实结论。
+- **实例侧数据修正**：`app\node_modules\.modules.yaml` 里残留的旧 store 路径（`C:\Users\...\pnpm-store`）在 `migrate-store` 之后不会自动更新，会误导 pnpm；本次已把实例刷新为盘内路径（`cache\pnpm-store\v11`）。
+
+### 优化
+
+- 无。
+
+### 破坏性变更
+
+- 无。
+
+### 升级会做什么
+
+- 同前：只替换清单里的壳文件（54 个），`home\` 下的插件清单 / 网关配置 / 会话 / 凭证一律不碰。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。
+
+### 如何回退
+
+- `dsh-portable.cmd shell-update rollback`（按最新备份整体还原）。
+- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.2 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.1.3.zip` 整包覆盖壳文件。
