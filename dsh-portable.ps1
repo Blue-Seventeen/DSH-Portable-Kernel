@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'plugin-stage', 'plugin-stage-remove', 'plugin-stage-list', 'plugin-stage-discard', 'plugin-activate', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
+  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'plugin-stage', 'plugin-stage-remove', 'plugin-stage-list', 'plugin-stage-discard', 'plugin-activate', 'market-history', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
   [string]$Action = 'doctor',
   [Parameter(Position = 1)]
   [string]$From,
@@ -1836,6 +1836,17 @@ switch ($Action) {
     exit (Plugin-Tool @('stage-discard', $From))
   }
   'plugin-activate' { exit (Plugin-Tool @('activate')) }
+  # 商城"操作历史"清不掉：界面只关当次显示，服务端读的是 <profile>\.dsh-market\drain.ndjson。
+  # 这里直接整理那几个文件（默认清已结束记录；-Force 连 log.ndjson 一起清）。
+  'market-history' {
+    $mh = Join-Path $Root 'tools\market-history.mjs'
+    if (-not (Test-Path -LiteralPath $mh)) { Warn2 '缺少 tools\market-history.mjs'; exit 2 }
+    $mhArgs = @()
+    if ($From -eq 'check') { $mhArgs += '--check' }
+    if ($Force) { $mhArgs += '--all' }
+    & $Node $mh @mhArgs | Out-Host
+    exit $LASTEXITCODE
+  }
   'shell-update' {
     # 壳自更新 v2：真正干活的是 tools\shell-update.mjs（取版本线清单 → 校验 → 调 shell-apply.mjs 备份 /
     # 换装 / 回滚，verify 不过就整体回滚）。这里只做三件事：子命令分派、占用检查、把 -Force 翻成 --force。

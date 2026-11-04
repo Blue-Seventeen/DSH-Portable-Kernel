@@ -100,6 +100,7 @@ dsh-portable.cmd bootstrap
 | `plugin-stage` / `plugin-stage-remove` | **运行期也能装/卸**：下载与校验在影子目录做，退出程序后下次启动自动启用（不冻结正在跑的会话） |
 | `plugin-stage-list` / `plugin-stage-discard` / `plugin-activate` | 看暂存队列 / 丢弃暂存项 / 手工提交（启动器会自动提交） |
 | `plugin-adopt` / `plugin-revoke` | 把插件收进共享目录 / 撤销 |
+| `market-history [check]` | 清空商城的操作历史（安装/卸载记录）。界面上的“关闭此提示”只关当次显示，记录仍留在 `.dsh-market\drain.ndjson`，重启会再显示；`-Force` 连 `log.ndjson` 一起清 |
 | `plugin-repair` | 修"市场装不上也卸不掉"：pnpm 大版本变了就重建插件依赖（**默认预演**，`-Force` 才真重建） |
 | `shell-update [check\|apply\|rollback\|recover\|notes]` | **更新壳自己**（v2 版本线：只换壳，不动官方层与你的数据；`apply` 默认预演，`-Force` 才真换；`--full` 整包换装、`--to v<版本>` 锁定/降级——这两个高级参数直接传给 `node tools\shell-update.mjs`，`dsh-portable.cmd` 只转 `-Force`；verify 不过自动整体回滚，`rollback` 用最新备份还原，`recover` 恢复中断） |
 | `fs-profile` | 重新探测所在卷的类型并切档位（NTFS→native / exFAT→compat） |

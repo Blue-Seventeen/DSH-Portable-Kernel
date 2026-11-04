@@ -711,8 +711,13 @@ const runCheck = async (opts) => {
   // 缓存：只有"取不到远端"或显式 --cached 时才用；有缓存且未过期就直接回放
   const sourceKey = opts.manifest || (opts.to ? RAW_BASE + '/refs/tags/' + tagFor(opts.to) + '/' + SHELL_MANIFEST : DEFAULT_MANIFEST)
   const cache = opts.cached > 0 ? readCache() : null
-  // 缓存必须绑定"同一份清单来源"，否则 --manifest 切换后会回放别的清单的结论（preflight 也会被污染）
-  if (cache && cache.at && cache.source === sourceKey && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
+  // 缓存必须绑定"同一份清单来源"，否则 --manifest 切换后会回放别的清单的结论（preflight 也会被污染）；
+  // 还必须绑定"本地版本"：升级完成后本地版本变了，旧缓存的 "0.2.0 -> 0.2.1" 就不能再回放
+  //（2026-11-04 实测：升级到 0.2.1 后 preflight 仍提示 0.2.0 -> 0.2.1）。
+  const installedNow = readLocalManifest()
+  const cacheLocalOk = !!cache && !!cache.summary
+    && String(cache.summary.local || '') === String(installedNow.shellVersion || '')
+  if (cache && cacheLocalOk && cache.at && cache.source === sourceKey && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
     const s = cache.summary
     if (opts.prompt && snoozedFor(s.remote)) return finish(EXIT_UP_TO_DATE)
     if (opts.json) { emitJson(Object.assign({}, s, { cached: true, exitCode: s.exitCode, _rows: undefined, _removed: undefined })); return finish(s.exitCode) }
@@ -968,6 +973,21 @@ const runApply = async (opts) => {
   const m = await loadManifest(opts)
   if (!m.ok) return fail(opts.json, 'apply', m.errorCode, m.error)
   const installed = readLocalManifest()
+  // 已经是这一版：直接说"已是最新"，不要再走 stage/换装，也不要打印
+  // "清单已从 0.2.1 推进到 0.2.1"（2026-11-04 用户实测的困惑）。
+  if (installed.present && String(installed.shellVersion || '') === String(m.shellVersion || '')) {
+    if (opts.json) {
+      emitJson({
+        ok: true, action: 'apply', upToDate: true, from: installed.shellVersion, to: m.shellVersion,
+        applied: [], deleted: [], preserved: [], skipped: 0,
+        verify: { ok: null, code: null, failed: [], ran: false }, migrations: [],
+        rolledBack: false, backup: null, journal: null, errors: [], exitCode: EXIT_OK,
+      })
+      return finish(EXIT_OK)
+    }
+    line('已是最新（' + installed.shellVersion + '），没有需要更新的文件')
+    return finish(EXIT_OK)
+  }
   const blockers = compatBlockers(m, installed, opts)
   const hard = blockers.filter((b) => !b.ignoredByForce)
   if (hard.length) return fail(opts.json, 'apply', 'blocked', hard.map((b) => b.message).join('；'), { blockers: hard, exitCode: EXIT_BLOCKED })
