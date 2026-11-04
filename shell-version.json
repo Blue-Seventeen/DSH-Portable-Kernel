@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.2.0",
-  "tag": "v0.2.0",
-  "releasedAt": "2026-11-04T12:16:33.028Z",
+  "shellVersion": "0.2.1",
+  "tag": "v0.2.1",
+  "releasedAt": "2026-11-04T13:12:03.000Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T13:10:07.648Z",
+  "generatedAt": "2026-11-04T13:12:39.753Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -68,7 +68,7 @@
     "tools/shell-update.mjs": "810ecd88c6b624c992f3fa40cc821c1e03201b127d88ddaf32944cb2e0c5b86d",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
-    "tools/verify-shell.mjs": "0d28a2311adcbc0967b467fb5872bf48649f0247650e1243c4ce267d707f9947"
+    "tools/verify-shell.mjs": "24639c0029cc1a21b2aa980737177ab341d6c86b8026834bf8c933d1dc4fb3a7"
   },
   "userOwned": [
     "home/cordis.patch.yml",
@@ -82,39 +82,32 @@
   ],
   "notes": {
     "added": [
-      "**运行期暂存安装**：`dsh-portable.cmd plugin-stage <包名>` 在后台把下载 / 解压 / 校验做完（在影子目录里，不碰正在用的插件树），退出程序后下次启动自动启用。配套 `plugin-stage-remove` / `plugin-stage-list` / `plugin-stage-discard` / `plugin-activate`。**会话在跑时也能装插件，不再等所有会话结束**。",
-      "`tools\\patch-all.mjs`：三族补丁（商城路径 + drain、exFAT 硬链接回退、pnpm 项目注册）的统一入口，`--check` 打印状态表，`--json` 给门禁用。",
-      "`tools\\selftest-patches.mjs`：补丁锚点夹具（官方两代真实代码形状 + pnpm 三种写法），纯文本、不碰文件。",
-      "`doctor` 增加 `patches` 三行；`verify` 增加「补丁三族」「补丁锚点自测」「暂存安装」等检查（47 → 54 项）。"
+      "无（补丁版只修问题）。"
     ],
     "fixed": [
-      "**商城排队会冻结其他会话**：dshmarket 的 drain 在「等别的会话空闲」期间就把空闲会话占住了，它们的新消息只进队列、不开回合（实测一条消息等了 42 分钟，取消排队后同秒才开跑）。现在等待期一个都不占，只在「全员空闲的提交边界」一次性占用。",
-      "**官方升级后商城装插件报 EISDIR**：桌面升到 0.2.2-rc.1 时整份替换了内置 pnpm，补丁丢失且没人重打。现在 pnpm 补丁按调用形态定位（参数改名、缩进变化都还能命中），并且每次启动与升级收尾自动重打。",
-      "**桌面升级后 `app.asar` 里的硬链接回退补丁失配**：改成按 `createIfAbsent → link → catch` 的结构定位，0.2.1 与 0.2.2 两代形状都能打；asar 被运行中的桌面占用时记「下次启动自动补」，不再误报失败。",
-      "桌面内置 pnpm 与 `runtime\\pnpm` 补丁不一致：`patch-pnpm` 现在自动发现所有副本。",
-      "商城卸载插件后留下的悬空条目（清单里仍写着依赖、bundles 计数对不上）：`plugin-shared sync --prune` 清理，`version.json` 计数自动跟随。"
+      "**升级后商城装/卸插件报\"store 不一致\"**：`storeDir` / `packageImportMethod` 是机器配置，却写在随壳发布的 `home\\profiles\\*\\pnpm-workspace.yaml` 里；升级把这些文件换回\"干净版\"后 pnpm 回落到 `$PNPM_HOME\\store`，与 `node_modules\\.modules.yaml` 记录的盘内 store 不一致，于是该 profile 的所有装/卸都被拒绝。现在这三份 yaml **不再随壳发布**，机器配置由 `tools\\fix-pnpm-state.mjs` 每次启动生成。",
+      "**升级后立刻对齐**：清单新增 `migrations`，换装成功后由已安装的升级器直接跑一次 `fix-pnpm-state`，**不用先重启**就能装插件。",
+      "同一原因丢失的 `packageImportMethod: copy` 一并恢复（exFAT 上没有它，pnpm 会去试硬链接）。"
     ],
     "optimized": [
-      "补丁三族有了**启动自愈**：两个启动器在 `dsh web` 之前跑 `patch-all`，`repair` / `bootstrap` / `update-app` / `update-desktop` / `update-all` 收尾也各跑一次——**官方升级后不需要你记得手动 repair**。",
-      "三份 `pnpm-workspace.yaml` 的两个写入方统一为「只补缺、不重排、单个结尾换行」，`sync --check` 不再每次启动都报「将改写」。",
-      "`patch-pnpm` 的改动面从「整段替换 registerProject」缩到「只包一行 try/catch」，对官方改版的敏感度更低。",
-      "启动顺序固定为 `activate`（暂存插件）→ `patch-all`（补丁）→ `compat-heal`，都在 dsh 起来之前完成。"
+      "`verify` 新增「pnpm store 与 node_modules 记录一致」「store 一致性自测」（54 → 56 项）；新增 `tools\\selftest-store.mjs`（10 个夹具：缺 storeDir、指向不同 store、记录带 `v11`、坏 `.modules.yaml` 等）。",
+      "`doctor` 与门禁能从\"记录 vs 解析\"的角度发现这类问题，而不是等用户点安装才报错。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变，老壳可以自动升到本版。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变；`home\\` 下的插件清单、网关配置、会话、凭证一律不碰。"
     ],
     "upgrade": [
-      "替换清单里的壳文件；`home\\` 下的插件清单 / 网关配置 / 会话 / 凭证一律不碰，你自己放进 `tools\\` 的脚本会保留。",
-      "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。",
-      "升级后第一次启动会自动补三族补丁，不需要再手动跑 `repair`。"
+      "替换清单里的壳文件；**不再覆盖**三份 `pnpm-workspace.yaml`（它们从此不随壳走）。",
+      "换装成功后自动跑一次 `fix-pnpm-state`（幂等、几十毫秒），把 store 配置对齐回当前机器。",
+      "换装前整份备份到 `cache\\shell-backup-<时间戳>`；换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回某个更早版本：`node tools\\shell-update.mjs apply --to 0.1.4 --force`（降级必须显式 `--force`）。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.2.0.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.2.0 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.2.1.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.2.0",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.2.1",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -125,8 +118,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.2.0.zip",
-    "sha256": "efc54f3385e36fb5e1c192272037459ee932ca7b212a6b364584144f9682ce0c",
-    "bytes": 1845474
+    "name": "harness-shell-0.2.1.zip",
+    "sha256": "d86c81cd23d1aff43f0125c7866537585ae103db3c305b2a72f6233d2e9d0c49",
+    "bytes": 1850990
   }
 }
