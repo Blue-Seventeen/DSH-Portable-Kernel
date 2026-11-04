@@ -183,3 +183,38 @@
 - `dsh-portable.cmd shell-update rollback`（按最新备份整体还原）。
 - 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.2 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.1.3.zip` 整包覆盖壳文件。
+
+## v0.1.4 — 2026-11-04
+
+一个 bug 修复版（第三位 +1）：修好"从桌面商城装/卸插件在 exFAT 上失败"。
+
+### 新增
+
+- 无新功能。
+
+### 修复
+
+- **桌面窗口内置的那份 pnpm 没打补丁**：便携壳里有两份 pnpm —— `runtime\pnpm`（壳的插件 CLI 用）和 `desktop\resources\runtime\...\dependencies\pnpm`（**桌面窗口的插件管理、也就是商城装/卸用**）。之前只补了前者，所以在 exFAT 上从商城点安装仍会卡在 pnpm 的 `prepareStoreDir → registerProject`（建符号链接 `EISDIR` / 兜底链里 `ENOENT`）。现在两份都补。
+- `tools\patch-pnpm.mjs` 改成**多副本**：自动发现所有带 `registerProject` 的 pnpm 主文件（壳 + 桌面 + app），逐个按版本白名单打补丁、各自备份到 `cache\pnpm-pristine-<ver>\`，`--check` / `--apply` / `--revert` 对全部副本生效。
+- 该补丁已接进 `dsh-portable.cmd repair`：`update-app` / `bootstrap` 换掉官方层之后，跑一次 `repair` 就能把所有 pnpm 副本重新补上。
+
+### 优化
+
+- **发布流程加"用户批准"闸门**：`node tools\shell-release.mjs publish` 不带 `--approved`（或环境变量 `DSH_RELEASE_APPROVED=1`）会直接以退出码 2 拒绝——版本只由用户本地测完、明确说"发布"之后才发，agent 不能自己拍板。
+- `RELEASING.md` 写明版本号规则：第一位 = 不兼容更新、第二位 = 小版本功能升级、第三位 = Bug 修复；一次发布只允许一种类型，修复版不夹带功能。
+
+### 破坏性变更
+
+- 无。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（54 个）；`home\` 下的插件清单 / 网关配置 / 会话 / 凭证一律不碰，你自己放进 `tools\` 的脚本也会保留。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。
+- **升级后建议跑一次 `dsh-portable.cmd repair`**：compat 档（exFAT/FAT32）下它会把 `runtime\pnpm` 与桌面内置 pnpm 的补丁都重新打上，之后商城装/卸才正常。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.3 --force`（降级必须显式 `--force`）。
+- 网页兜底：从 Release 页下载 `harness-shell-0.1.4.zip` 整包覆盖壳文件。

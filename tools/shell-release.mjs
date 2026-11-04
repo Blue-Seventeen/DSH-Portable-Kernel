@@ -1708,7 +1708,8 @@ const USAGE = [
   '',
   'prepare 可加：--updater-min <n> --min-shell-version <ver> --date <ISO>',
   '             --dsh-range <range> --node-range <range> --no-postcheck --root <dir> --assets-dir <dir>',
-  'publish 可加：--version <ver> --repo <owner/name> --no-push --no-zip --sync-notes',
+  'publish 可加：--version <ver> --repo <owner/name> --approved（表示用户已批准）',
+  '             --no-push --no-zip --sync-notes',
   '             --assets-dir <dir> --skip-asset-verify',
   'verify-published 可加：--prev-tag <tag> --keep --repo <owner/name>',
   '',
@@ -1718,7 +1719,7 @@ const USAGE = [
 ].join('\n')
 
 const BOOL_FLAGS = new Set([
-  '--dry-run', '--skip-gates', '--json', '--push', '--no-push', '--no-zip',
+  '--dry-run', '--skip-gates', '--json', '--push', '--no-push', '--no-zip', '--approved',
   '--no-postcheck', '--sync-notes', '--skip-asset-verify', '--keep', '--help',
 ])
 const VALUE_FLAGS = new Set([
