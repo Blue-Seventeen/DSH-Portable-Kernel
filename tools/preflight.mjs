@@ -39,16 +39,44 @@ const readShellInfo = () => {
     return { version: String(mf.shellVersion || ''), channel: String(mf.channel || 'stable'), tag: String(mf.tag || '') }
   } catch { return { version: '', channel: '', tag: '' } }
 }
+const shellInfo = readShellInfo()
+/** 极简版本比较：返回 1 / 0 / -1（够用于 "远端是否比本地新"） */
+const cmpVersion = (a, b) => {
+  const norm = (v) => String(v).replace(/^v/i, '').split(/[.+-]/).map((x) => (/^\d+$/.test(x) ? Number(x) : x))
+  const A = norm(a)
+  const B = norm(b)
+  for (let i = 0; i < Math.max(A.length, B.length); i++) {
+    const x = A[i] === undefined ? 0 : A[i]
+    const y = B[i] === undefined ? 0 : B[i]
+    if (x === y) continue
+    if (typeof x === 'number' && typeof y === 'number') return x > y ? 1 : -1
+    if (typeof x === 'number') return 1
+    if (typeof y === 'number') return -1
+    return String(x) > String(y) ? 1 : -1
+  }
+  return 0
+}
+/**
+ * 只读缓存里的"有更新"结论。必须同时满足三条才显示，否则一律不提示：
+ *   1) 缓存 24h 内；2) 缓存里的 local == 当前安装版本（升级后旧缓存立刻作废）；
+ *   3) 远端版本**确实比本地新**（防止把"上个版本记下的 0.3.1"念给 0.3.2 的用户）。
+ */
 const readUpdateHint = () => {
   try {
     const c = JSON.parse(readFileSync(join(root, 'tmp', 'shell-check.json'), 'utf8'))
     const s = c.summary || {}
     const at = Number(c.at || s.at || 0)
-    if (at > 0 && Date.now() - at < 24 * 3600 * 1000 && s.status === 'update-available') return String(s.remote || '')
+    if (!(at > 0 && Date.now() - at < 24 * 3600 * 1000)) return ''
+    if (s.status !== 'update-available') return ''
+    const local = String(s.local || '')
+    const remote = String(s.remote || '')
+    if (!local || !remote) return ''
+    if (local !== String(shellInfo.version || '')) return ''
+    if (cmpVersion(remote, local) <= 0) return ''
+    return remote
   } catch { /* 没检查过就不提示 */ }
   return ''
 }
-const shellInfo = readShellInfo()
 const shellUpdate = readUpdateHint()
 const RULE = '─'.repeat(60)
 console.log('')

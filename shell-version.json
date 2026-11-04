@@ -6,7 +6,7 @@
   "tag": "v0.3.2",
   "releasedAt": "2026-11-04T14:41:36.160Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T14:42:14.931Z",
+  "generatedAt": "2026-11-04T14:47:47.772Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -56,7 +56,7 @@
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
     "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
-    "tools/preflight.mjs": "d290c4abae519ca2612d8e3d6a4827ce764836ee9a9f81dd7e98057286528730",
+    "tools/preflight.mjs": "1c57778adb930e5b67666ab3d242d8a0cfc0fa2a9137aa07bbe1aefb4442de9d",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
     "tools/say.ps1": "45ad446f810aa32787623876ff694fe159b52f2c7442604e26f51deca440d6c1",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
