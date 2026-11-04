@@ -57,7 +57,16 @@ const dshBin = join(root, 'app', 'node_modules', '@deepseek-ai', 'dsh', 'lib', '
 const storeRoot =
   argOf('--store') || process.env.DSH_PNPM_STORE || join(root, 'cache', 'pnpm-store')
 // exFAT 没有硬链接/软链：compat 档用 copy 导入；NTFS 用 pnpm 默认（auto）。
-const importMethod = process.env.DSH_PNPM_IMPORT_METHOD || 'auto'
+// 没有 env.cmd 上下文时（被 shell-update 的迁移调用、或被别处直接调用），回退读本机探测片段
+// tmp\fs-profile.cmd —— 否则会把 copy 悄悄写成 auto，exFAT 上装插件立刻坏（2026-11-04 实测）。
+const importMethodFromProfile = () => {
+  try {
+    const frag = readFileSync(join(root, 'tmp', 'fs-profile.cmd'), 'utf8')
+    const m = frag.match(/^\s*set\s+"?DSH_PNPM_IMPORT_METHOD=([^"\r\n]*)"?\s*$/im)
+    return m ? m[1].trim() : ''
+  } catch { return '' }
+}
+const importMethod = process.env.DSH_PNPM_IMPORT_METHOD || importMethodFromProfile() || 'auto'
 const profilesDir = join(argOf('--root') ? join(argOf('--root'), 'home') : join(root, 'home'), 'profiles')
 
 const samePath = (a, b) =>
@@ -460,6 +469,9 @@ const main = () => {
   }
   for (const n of readdirSync(profilesDir)) {
     if (n === 'node_modules') continue
+    // 点目录（.backup-20261103-… 之类的历史备份）不是 profile：不能进去改它的 yaml，
+    // 否则备份会被"顺手修复"，日志里还会冒出 [.backup-…] 这种看不懂的行。
+    if (n.startsWith('.')) continue
     // 只挑"看起来是 profile"的目录：有 pnpm-workspace.yaml 或 package.json 都算。
     // 原来要求必须已存在 node_modules，于是 desktop 这种"已配置但还没装依赖"的 profile
     // 永远修不到，换机后它的 storeDir/workspace 里还留着原机器路径。

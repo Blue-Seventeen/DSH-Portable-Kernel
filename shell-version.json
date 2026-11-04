@@ -6,7 +6,7 @@
   "tag": "v0.3.3",
   "releasedAt": "2026-11-04T14:51:02.519Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T14:51:40.765Z",
+  "generatedAt": "2026-11-04T15:31:24.087Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -19,7 +19,7 @@
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
-    "dsh-portable.ps1": "08929b45fa57f7a92959456d0b596964f775f428515f098bb079684f19263dea",
+    "dsh-portable.ps1": "a974de076feec9b79e58e604b4e711ff7b0da8d2d3fba630526430faa8e6bebb",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
     "env.cmd": "e85c64c0f2133ff53d8a99215105e5e03194f103bb04fe657db1555f0ee2b7b1",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
@@ -46,7 +46,7 @@
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
     "tools/clean-ship.mjs": "5c045ea9182deddc9d0c88c71c69ea0afd4c0d1332fea3f821f8c3742b62853e",
     "tools/download.mjs": "b24e406b496acfe167f638ee04c9f02dfcf859dacd836ce2f00884a488257c78",
-    "tools/fix-pnpm-state.mjs": "2b7f951070d8cfbb8a2341bdf60e32a29938c3834fd3f25e20ea8745f9c6a335",
+    "tools/fix-pnpm-state.mjs": "d6fc2f34bfbe3f3d40696fd2e4535a4815659fbb2163ef6c996f81fd2c132e4c",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",
     "tools/mask-log.mjs": "e4b43a4d79ce0dc624b828fe281df364f601c3e0990b27cffaca6369cb722778",

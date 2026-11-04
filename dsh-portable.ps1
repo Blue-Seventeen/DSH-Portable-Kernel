@@ -1965,10 +1965,16 @@ switch ($Action) {
         $epoch = New-Object System.DateTime(1970, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
         $ageH = ((([datetime]::UtcNow - $epoch).TotalMilliseconds) - $at) / 3600000
       }
+      # 缓存可能来自"上一个本地版本"：必须校验归属，否则会把旧版本号念给已升级的用户
+      $cacheLocal = [string]$chk.summary.local
+      $cacheRemote = [string]$chk.summary.remote
+      $newerRemote = $false
+      try { $newerRemote = ([version]$cacheRemote) -gt ([version]$shVer) } catch { $newerRemote = $true }
       if ($ageH -lt 0 -or $ageH -gt 24) { $shUpd = '未知（缓存过期）' }
-      elseif ($chk.summary.status -eq 'update-available') { $shUpd = ([string]$chk.summary.remote + ' 可更新') }
-      elseif ($chk.summary.status -eq 'blocked') { $shUpd = ('被兼容性挡下（' + [string]$chk.summary.remote + '）') }
-      elseif ($chk.summary.status -eq 'local-newer') { $shUpd = ('本地比远端新（' + [string]$chk.summary.remote + '）') }
+      elseif ($shVer -eq 'MISSING' -or $cacheLocal -ne $shVer) { $shUpd = '未知（缓存属于旧版本 ' + $cacheLocal + '）' }
+      elseif ($chk.summary.status -eq 'update-available' -and $newerRemote) { $shUpd = ($cacheRemote + ' 可更新') }
+      elseif ($chk.summary.status -eq 'blocked') { $shUpd = ('被兼容性挡下（' + $cacheRemote + '）') }
+      elseif ($chk.summary.status -eq 'local-newer') { $shUpd = ('本地比远端新（' + $cacheRemote + '）') }
       else { $shUpd = '已是最新' }
     }
     Say ("shell-upd : " + $shUpd)
