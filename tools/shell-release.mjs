@@ -1242,6 +1242,17 @@ const printRemedy = (ctx, assetsDir, opts) => {
 }
 
 const publish = async (opts) => {
+  // ---- 发布闸门（用户 2026-11-04 明确要求）----
+  // 版本只由"用户本地测完并明确说发布"之后才能发；任何 agent 都不许自己决定发布。
+  if (!opts.approved && !opts.dryRun) {
+    log('')
+    log('=== 发布被拦下：需要用户本人批准 ===')
+    log('  规则：只有你在自己机器上完整测过、并明确说“发布”之后，才允许发布。')
+    log('  确认无误后重跑：node tools\\shell-release.mjs publish --approved')
+    log('  （等价：环境变量 DSH_RELEASE_APPROVED=1）')
+    log('')
+    return 2
+  }
   const manifest = readManifest()
   const version = String(opts.version || manifest.json.shellVersion || '').trim().replace(/^v/i, '')
   if (!validSemver(version)) {
@@ -1774,6 +1785,7 @@ const main = async () => {
       })
     case 'publish':
       return await publish({
+        approved: f('--approved') || process.env.DSH_RELEASE_APPROVED === '1',
         push: !f('--no-push'),
         dryRun: f('--dry-run'),
         tokenEnv: v('--token-env'),

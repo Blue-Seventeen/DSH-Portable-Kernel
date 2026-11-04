@@ -12,7 +12,7 @@
   "desktopSizeMB": 1044.4,
   "desktopAsarBytes": 182766999,
   "desktopAsarSizeMB": 174.3,
-  "shipTime": "2026-11-04T01:24:22.972Z",
+  "shipTime": "2026-11-04T01:35:28.117Z",
   "bundlesWeb": 6,
   "bundlesDesktop": 13,
   "shipNote": "发布版：仅便携壳 + 主题 + dsh 插件商城 + 会话删除插件；官方 app/desktop/runtime 由 bootstrap 自动下载"
