@@ -37,7 +37,7 @@ export const SHELL_MANIFEST = 'shell-version.json'
 export const MANIFEST_SCHEMA = 2
 /** 本更新器自身的能力级别（写进清单的 updaterMin 不能高于它） */
 export const UPDATER_MIN = 2
-export const REPO = 'Blue-Seventeen/hack3rx-harness'
+export const REPO = 'Blue-Seventeen/DSH-Portable-Kernel'
 export const RELEASES = 'https://github.com/' + REPO + '/releases'
 export const DEFAULT_MANIFEST = RELEASES + '/latest/download/' + SHELL_MANIFEST
 export const RAW_BASE = 'https://raw.githubusercontent.com/' + REPO

@@ -30,7 +30,7 @@ const fsProfile = readFsProfile()
 // 片段没生成时退回环境（env.cmd 会读同一份片段），两者都没有就是"未探测"
 const profileName = () => (fsProfile && fsProfile.DSH_FS_PROFILE) || process.env.DSH_FS_PROFILE || ''
 
-console.log('\n=== Hack3rX-Harness 便携版 环境自检 ===\n')
+console.log('\n=== DSH-Portable-Kernel 便携版 环境自检 ===\n')
 
 console.log('[1] 系统')
 console.log('  位置: ' + root)

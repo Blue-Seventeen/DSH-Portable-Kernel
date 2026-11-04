@@ -19,7 +19,7 @@
 
 前提：Windows 10（1703 这类老版本也行）/ Server 2016 以上，能上网。**唯一的硬要求是 PowerShell 5.1**（Win7 SP1 起自带）；`tar` / `robocopy` / `curl` 都是"有就用系统自带的、没有就用随包 7z 兜底"，不需要另装任何东西。
 
-1. `git clone https://github.com/Blue-Seventeen/hack3rx-harness` 到任意目录（**路径别太深**，见"已知坑"）。
+1. `git clone https://github.com/Blue-Seventeen/DSH-Portable-Kernel` 到任意目录（**路径别太深**，见"已知坑"）。
 2. 双击 `preflight.cmd`。
 3. 第一次运行会发现"官方那层不在"，自动补齐（可断点重跑），补完直接选自检 / 浏览器模式 / 桌面模式。
 
@@ -171,7 +171,7 @@ dsh-portable.cmd bootstrap
 | `fix-office` 在 Win10 1809+ 默认**跳过** vcredist 拷贝 | 系统自带运行库就够了；确实要重装用 `fix-office -Force` 或 `DSH_PORTABLE_OFFICE_ALWAYS=1` |
 | 市场补丁显示"另有 17 处未覆盖的 `node_modules` 引用" | 已知且可接受：这 17 处不是 `join(a, 'node_modules', b)` 的三参形状，不影响商城装/列插件（补丁本身 55 处字面 = 1 定义 + 54 调用点，`verify` 会逐文件核对） |
 | 市场里装/卸插件报 `ERR_PNPM_UNEXPECTED_STORE` | 两代 pnpm 抢同一个 profile（机器上装了别的 pnpm）。先彻底退出 DeepSeek Harness，再 `dsh-portable.cmd plugin-repair -Force` 重建；`doctor` 的 `pnpm` 行会提前告诉你是否已经错配 |
-| 壳更新报"取不到清单 HTTP 404" | 远端还没有 Release（或网络/代理问题）。`shell-update check` 的退出码：`4`=已最新、`1`=暂不可用；不影响启动，过几天再试，或从 [Release 页](https://github.com/Blue-Seventeen/hack3rx-harness/releases)手工下载 |
+| 壳更新报"取不到清单 HTTP 404" | 远端还没有 Release（或网络/代理问题）。`shell-update check` 的退出码：`4`=已最新、`1`=暂不可用；不影响启动，过几天再试，或从 [Release 页](https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases)手工下载 |
 | 壳更新被"兼容性挡下"（退出码 3） | 三种原因：清单 `schemaVersion`/`updaterMin` 比本壳新 → 从 Release 页下载整包手工覆盖一次；`shellVersion` 低于 `minShellVersion` → 改跑 `shell-update apply -Force --full`；`requires.dsh`/`node` 不满足 → 先 `update-app` / `update-desktop`（`-Force` 可越过，后果自负） |
 | 壳换装中断（壳"少了一半"） | 看 `dsh-portable.cmd doctor` 的 `journal` 行：不是 `none` 就跑 `dsh-portable.cmd shell-update recover`；重跑启动器时 `Repair-State` 也会自动恢复。备份在 `cache\shell-backup-<时间戳>\`，`rollback` 可整体还原 |
 

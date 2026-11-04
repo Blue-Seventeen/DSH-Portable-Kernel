@@ -86,16 +86,16 @@ export const NOTES_FILE = 'RELEASE-NOTES.md'
 export const RELEASING_FILE = 'RELEASING.md'
 
 /** 默认仓库（remote 解析不出来时兜底；正常情况下从 `git remote get-url origin` 读） */
-export const DEFAULT_REPO = 'Blue-Seventeen/hack3rx-harness'
+export const DEFAULT_REPO = 'Blue-Seventeen/DSH-Portable-Kernel'
 /**
  * 产品名（2026-11-04 用户指定）：Release 标题、release commit、tag 注释、文档统一用它。
  * tag 本身仍是 `v<版本>` —— 工具与清单按 `v<shellVersion>` 解析，tag 里不能带产品名前缀。
  */
 export const PRODUCT_NAME = 'DSH-Portable-Kernel'
 /** 默认清单地址：releases/latest/download —— 永远指"最新的非 prerelease/非 draft"那一版 */
-export const DEFAULT_MANIFEST_URL = 'https://github.com/Blue-Seventeen/hack3rx-harness/releases/latest/download/shell-version.json'
+export const DEFAULT_MANIFEST_URL = 'https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/latest/download/shell-version.json'
 /** 默认文件基址模板：每个版本的资产挂在 <base>/<tag>/ 下 */
-export const DEFAULT_BASE_URL = 'https://github.com/Blue-Seventeen/hack3rx-harness/releases/download/v<shellVersion>'
+export const DEFAULT_BASE_URL = 'https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/download/v<shellVersion>'
 /** 默认 tag 模板 */
 export const TAG_TEMPLATE = 'v<shellVersion>'
 

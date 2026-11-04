@@ -616,7 +616,7 @@ check('更新源是版本线', () => {
   let j = null
   try { j = JSON.parse(String(r.out).trim().split(/\r?\n/).pop()) } catch { add(label, false, 'defaults 输出不是 JSON：' + String(r.out).trim().slice(0, 100)); return }
   const bad = []
-  const wantManifest = 'https://github.com/Blue-Seventeen/hack3rx-harness/releases/latest/download/shell-version.json'
+  const wantManifest = 'https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/latest/download/shell-version.json'
   if (String(j.manifest || '') !== wantManifest) bad.push('manifest 不是 releases/latest：' + String(j.manifest || '（空）'))
   if (!/\/refs\/tags\/v<version>\//.test(String(j.tagTemplate || ''))) bad.push('tagTemplate 不含 refs/tags/v<version>：' + String(j.tagTemplate || '（空）'))
   if (/master/i.test(String(j.rawBase || ''))) bad.push('rawBase 还在 master：' + String(j.rawBase))
