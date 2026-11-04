@@ -6,7 +6,7 @@
   "tag": "v0.2.0",
   "releasedAt": "2026-11-04T12:16:33.028Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T12:17:07.081Z",
+  "generatedAt": "2026-11-04T12:21:18.876Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -65,7 +65,7 @@
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
-    "tools/shell-release.mjs": "335b0edede19989d4a8048b977ebd097a8938e8143896c6dece71fce208d4ce7",
+    "tools/shell-release.mjs": "084cf4529504629807b77ea029ab0fe18f7e5ac7c6d22782ab9c220414cd61af",
     "tools/shell-update.mjs": "386e121588fe5292a6fab71f0adb2c489a5274379b952f7dc6e240d556ecf439",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "c267b9f775c06a5e7a51e904fc28737127bc6aa14bf8be466dd1dfa688534624"

@@ -1592,13 +1592,14 @@ const verifyPublished = async (opts) => {
     const staged = existsSync(stageDir) ? hashPath(stageDir, '.') : new Map()
     const stagedNorm = new Map()
     for (const [k, v] of staged) stagedNorm.set(k.replace(/^\.\//, ''), v)
-    const missing = []
-    const mismatch = []
-    for (const [rel, sha] of Object.entries(expected)) {
-      const got = stagedNorm.get(rel)
-      if (!got) missing.push(rel)
-      else if (got !== sha) mismatch.push(rel)
-    }
+    // stage 是**增量**的：只落盘"需要变更"的文件，未变的按 skip 跳过、不进 stage 目录。
+    // 所以判据只能是"所有该变的都在、且 sha 对"，不能要求整包 57 个都在（那样每次都会误报）。
+    const localNorm = new Map()
+    for (const [k, v] of hashPath(cloneDir, '.')) localNorm.set(k.replace(/^\.\//, ''), v)
+    const required = Object.keys(expected).filter((rel) => localNorm.get(rel) !== expected[rel])
+    const missing = required.filter((rel) => !stagedNorm.has(rel))
+    const mismatch = required.filter((rel) => stagedNorm.get(rel) !== expected[rel])
+    const skipped = Object.keys(expected).length - required.length
     const expectedKeys = new Set(Object.keys(expected).map((k) => k.toLowerCase()))
     const extra = [...stagedNorm.keys()].filter((k) => {
       const low = k.toLowerCase()
@@ -1607,14 +1608,14 @@ const verifyPublished = async (opts) => {
     out.rows.push({
       label: 'stage → 临时目录',
       ok: stg.status === 0,
-      detail: '退出码 ' + stg.status + (stg.status === 0 ? '，落盘 ' + stagedNorm.size + ' 个文件' : '：' + truncate((stg.stdout || '') + (stg.stderr || ''), 300)),
+      detail: '退出码 ' + stg.status + (stg.status === 0 ? '，落盘 ' + stagedNorm.size + ' 个文件（需要变更 ' + required.length + ' 个）' : '：' + truncate((stg.stdout || '') + (stg.stderr || ''), 300)),
     })
     out.rows.push({
-      label: 'staged 逐文件 sha 与清单一致',
+      label: 'staged 覆盖全部变更且 sha 与清单一致',
       ok: !missing.length && !mismatch.length,
       detail: missing.length || mismatch.length
         ? '缺 ' + missing.length + ' 个（' + missing.slice(0, 3).join(', ') + '）；sha 不符 ' + mismatch.length + ' 个（' + mismatch.slice(0, 3).join(', ') + '）'
-        : '全部 ' + Object.keys(expected).length + ' 项一致',
+        : '需要变更 ' + required.length + ' 个全部一致；未变的 ' + skipped + ' 个按增量跳过（正常）',
     })
     out.rows.push({
       label: 'staged 没有多余文件',
