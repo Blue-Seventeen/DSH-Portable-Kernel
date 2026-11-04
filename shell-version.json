@@ -6,7 +6,7 @@
   "tag": "v0.3.3",
   "releasedAt": "2026-11-04T14:51:02.519Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T16:13:01.197Z",
+  "generatedAt": "2026-11-04T16:19:29.001Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -66,7 +66,7 @@
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "f24ccf7a6ccd5e2740f428df8bfef369010456d6ea83d6189ee91dd0e25682f1",
-    "tools/shell-update.mjs": "772b3c47ada76844b28e1e532ccf0849b8ec3f1ef01afc1e2aa0dc640642d779",
+    "tools/shell-update.mjs": "bec2d4e9474e7bb27abf2d058196cadac8d9e5b31952eb9b9a5ce096d5d4de04",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "82eeb69ae3f1617e9be98b3d4ca776c1344976b917b6f473742b4dc662007ac5"

@@ -26,7 +26,7 @@
  */
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APPLY_JOURNAL, applyUpdate, listBackups, recoverUpdate, rollbackUpdate } from './shell-apply.mjs'
@@ -61,7 +61,7 @@ const USAGE = [
   '  node tools\\shell-update.mjs apply    [--force] [--dry-run] [--to <版本>] [--full] [--no-verify] [--json]',
   '  node tools\\shell-update.mjs rollback [--json]',
   '  node tools\\shell-update.mjs recover  [--json]',
-  '  node tools\\shell-update.mjs snooze   [--json]',
+  '  node tools\\shell-update.mjs snooze   [--json] [--clear]   （--clear 撤销"这次不更新"）',
   '  node tools\\shell-update.mjs notes    [--to <版本>] [--json]',
   '  node tools\\shell-update.mjs defaults [--json]',
   '',
@@ -1179,6 +1179,13 @@ const runRecover = async (opts) => {
 // ---- snooze -----------------------------------------------------------------
 /** 「这次不更新」：记下远端版本，7 天内 preflight 不再问（菜单 U 随时可用） */
 const runSnooze = async (opts) => {
+  // --clear：撤销"这次不更新"，让 preflight 立刻恢复提示
+  if (opts.clear) {
+    try { unlinkSync(SNOOZE_FILE) } catch { /* 本来就没有 */ }
+    if (opts.json) { emitJson({ ok: true, action: 'snooze', cleared: true, exitCode: EXIT_OK }); return finish(EXIT_OK) }
+    line('已恢复更新提示（下次启动会重新检查）')
+    return finish(EXIT_OK)
+  }
   const m = await loadManifest(opts)
   const remote = m.ok ? m.shellVersion : String((readCache() || {}).version || '')
   if (!remote) return fail(opts.json, 'snooze', 'manifest-unreachable', '取不到远端版本，无法记录"这次不更新"')
@@ -1224,10 +1231,10 @@ const runDefaults = (opts) => {
 
 // ---- CLI --------------------------------------------------------------------
 const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached' }
-const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--help': 'help', '-h': 'help' }
+const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--help': 'help', '-h': 'help' }
 
 const parseArgs = (argv) => {
-  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, help: false, bad: '' }
+  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, help: false, bad: '' }
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i]
     if (BOOL_FLAGS[t]) { a[BOOL_FLAGS[t]] = true; continue }
