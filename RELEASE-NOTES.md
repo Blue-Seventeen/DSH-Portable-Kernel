@@ -406,3 +406,36 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.1 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.3.2.zip` 整包覆盖壳文件。
+---
+
+## v0.3.3 — 2026-11-04
+
+修 preflight 把"上一版记下的更新"念给已升级用户的 bug。
+
+### 新增
+
+- 无（补丁版只修问题）。
+
+### 修复
+
+- **preflight 升级后仍显示"有可用更新：旧版本"**：`[11]` 与头部提示直接读 `tmp\shell-check.json`，只要里面写着"有更新"就照念，不看缓存属于哪个本地版本、也不比较远端是否真的更新。现在必须同时满足"24 小时内 + 缓存 local == 当前安装版本 + 远端严格更新"才提示（例如本地已 0.3.2 时，缓存里的 0.3.1 不再出现）。
+
+### 优化
+
+- 无。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`home\` 下的数据一律不碰。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。
+- 换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`）。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.2 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.3.3.zip` 整包覆盖壳文件。
