@@ -1,4 +1,4 @@
-# 壳发布说明（RELEASE-NOTES）
+# DSH-Protable-Kernel 发布说明（RELEASE-NOTES）
 
 本文件随壳发布：每个版本一节，`shell-update check` 会把它当成"更新细则"展示给用户，
 `tools\shell-release.mjs prepare` 会把 `## v<版本>` 这一节的六个小节解析成清单里的 `notes`。

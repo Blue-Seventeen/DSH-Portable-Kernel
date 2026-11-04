@@ -87,6 +87,11 @@ export const RELEASING_FILE = 'RELEASING.md'
 
 /** 默认仓库（remote 解析不出来时兜底；正常情况下从 `git remote get-url origin` 读） */
 export const DEFAULT_REPO = 'Blue-Seventeen/hack3rx-harness'
+/**
+ * 产品名（2026-11-04 用户指定）：Release 标题、release commit、tag 注释、文档统一用它。
+ * tag 本身仍是 `v<版本>` —— 工具与清单按 `v<shellVersion>` 解析，tag 里不能带产品名前缀。
+ */
+export const PRODUCT_NAME = 'DSH-Protable-Kernel'
 /** 默认清单地址：releases/latest/download —— 永远指"最新的非 prerelease/非 draft"那一版 */
 export const DEFAULT_MANIFEST_URL = 'https://github.com/Blue-Seventeen/hack3rx-harness/releases/latest/download/shell-version.json'
 /** 默认文件基址模板：每个版本的资产挂在 <base>/<tag>/ 下 */
@@ -672,8 +677,8 @@ const prepare = (opts) => {
   // 整包 sha 每次都要重算，旧 zip 字段先摘掉（下面第 5 步再写回来）
   delete next.zip
   const changes = describeManifestChanges(curJson, next)
-  const commitMsg = 'chore(release): 壳 ' + tag
-  const tagMsg = '壳 ' + tag + '（详见 ' + NOTES_FILE + '）'
+  const commitMsg = 'chore(release): ' + PRODUCT_NAME + ' ' + tag
+  const tagMsg = PRODUCT_NAME + ' ' + tag + '（详见 ' + NOTES_FILE + '）'
   const planned = [
     'node tools\\clean-ship.mjs refresh',
     'node tools\\verify-shell.mjs',
@@ -1166,7 +1171,7 @@ const ensureRelease = async (ctx, token, opts) => {
       const patched = await httpJson(GH + '/repos/' + ctx.repo + '/releases/' + got.json.id, {
         method: 'PATCH',
         headers: Object.assign({ 'Content-Type': 'application/json' }, h),
-        body: JSON.stringify({ body: ctx.body }),
+        body: JSON.stringify({ name: PRODUCT_NAME + ' ' + ctx.tag, body: ctx.body }),
       })
       if (!patched.ok) warn('--sync-notes 更新 Release 说明失败：HTTP ' + patched.status)
       else log('  已用 RELEASE-NOTES 小节刷新 Release 说明')
@@ -1176,7 +1181,7 @@ const ensureRelease = async (ctx, token, opts) => {
   if (got.status !== 404) throw new ReleaseError('查 Release 失败：HTTP ' + got.status, truncate(got.text))
   const payload = {
     tag_name: ctx.tag,
-    name: '壳 ' + ctx.tag,
+    name: PRODUCT_NAME + ' ' + ctx.tag,
     body: ctx.body,
     draft: false,
     prerelease: false,
@@ -1234,7 +1239,7 @@ const printRemedy = (ctx, assetsDir, opts) => {
   help('     经典 PAT 需要 repo scope。取不到 token 时先 set ' + (opts.tokenEnv || 'GH_TOKEN') + '=<PAT> 再跑。')
   help('  3) Release/资产失败可以在网页上补齐：')
   help('     打开 ' + ctx.releaseUrl + ' → 若没有 Release：Draft a new release，Tag 选 ' + ctx.tag + '，')
-  help('     Title 填 `壳 ' + ctx.tag + '`，正文粘贴 RELEASE-NOTES.md 的 `## ' + ctx.tag + '` 小节，不勾 pre-release。')
+  help('     Title 填 `' + PRODUCT_NAME + ' ' + ctx.tag + '`，正文粘贴 RELEASE-NOTES.md 的 `## ' + ctx.tag + '` 小节，不勾 pre-release。')
   help('     然后把下面文件拖进 Assets（文件名不要改）：')
   help('       ' + SHELL_MANIFEST + '  ← 别用工作树那份！用 `git show ' + ctx.tag + ':' + SHELL_MANIFEST + ' > ' + SHELL_MANIFEST)
   help('       ' + ZIP_DISPLAY_NAME(ctx.version) + '  ← ' + join(assetsDir, ZIP_DISPLAY_NAME(ctx.version)))

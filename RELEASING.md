@@ -2,6 +2,15 @@
 
 给维护者的 30 秒版本。完整规则见 [`doc/agent-develop-doc/10-release-and-versioning.md`](doc/agent-develop-doc/10-release-and-versioning.md)。
 
+## 产品名（强制，2026-11-04 起）
+
+- 对外名字：**`DSH-Protable-Kernel`**；版本：**`DSH-Protable-Kernel vX.Y.Z`**。
+- Release 标题、release commit（`chore(release): DSH-Protable-Kernel vX.Y.Z`）、tag 注释、文档统一用它；
+  **"壳 vX.Y.Z"这个旧叫法不再使用**。
+- **tag 名保持 `vX.Y.Z`**（清单 `tag`、`TAG_TEMPLATE`、`shell-update` 都按 `v<shellVersion>` 解析），
+  tag 里不要加产品名前缀。
+- 工具里只有一处：`tools\shell-release.mjs` 的 `PRODUCT_NAME`。
+
 ## 版本号规则（0.x 阶段）
 
 | 改动性质 | 版本位 | 例子 | 注意 |
