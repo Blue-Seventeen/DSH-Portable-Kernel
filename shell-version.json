@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.3.2",
-  "tag": "v0.3.2",
-  "releasedAt": "2026-11-04T14:41:36.160Z",
+  "shellVersion": "0.3.3",
+  "tag": "v0.3.3",
+  "releasedAt": "2026-11-04T14:51:02.519Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T14:50:17.667Z",
+  "generatedAt": "2026-11-04T14:51:40.765Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -86,8 +86,7 @@
       "无（补丁版只修问题）。"
     ],
     "fixed": [
-      "**`sync --prune` 会删掉仍有本地副本的插件**：判定\"悬空\"以前只看共享目录，若某依赖的文件还在某个 profile 的 `node_modules` 里（历史遗留、或刚被手工搬动），会连依赖和 bundles 一起清掉。现在 prune 前先探每个 profile，仍有本地副本就**只提示不删**，并在真正删除前再兜一次底。",
-      "`plugin-shared` 的用法说明漏了 `stage-selftest`（暂存引擎自测），补上。"
+      "**preflight 升级后仍显示\"有可用更新：旧版本\"**：`[11]` 与头部提示直接读 `tmp\\shell-check.json`，只要里面写着\"有更新\"就照念，不看缓存属于哪个本地版本、也不比较远端是否真的更新。现在必须同时满足\"24 小时内 + 缓存 local == 当前安装版本 + 远端严格更新\"才提示（例如本地已 0.3.2 时，缓存里的 0.3.1 不再出现）。"
     ],
     "optimized": [],
     "breaking": [
@@ -100,11 +99,11 @@
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.1 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.3.2.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.2 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.3.3.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.2",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.3",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -115,8 +114,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.3.2.zip",
-    "sha256": "74e4990d34b8dac1788daf6269389735226973fd2c05e4c99015ab9297060332",
-    "bytes": 1857133
+    "name": "harness-shell-0.3.3.zip",
+    "sha256": "a3d063b0a105063304545f0d8fe1c73f01c8d09d77e3da96e690946de0085f3a",
+    "bytes": 1857866
   }
 }
