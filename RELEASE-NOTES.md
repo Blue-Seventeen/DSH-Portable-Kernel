@@ -262,3 +262,39 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.4 --force`（降级必须显式 `--force`）。
 - 网页兜底：从 Release 页下载 `harness-shell-0.2.0.zip` 整包覆盖壳文件。
+---
+
+## v0.2.1 — 2026-11-04
+
+修 0.2.0 升级后"商城装不上插件"的问题：pnpm 的 store 被升级冲掉了。
+
+### 新增
+
+- 无（补丁版只修问题）。
+
+### 修复
+
+- **升级后商城装/卸插件报"store 不一致"**：`storeDir` / `packageImportMethod` 是机器配置，却写在随壳发布的 `home\profiles\*\pnpm-workspace.yaml` 里；升级把这些文件换回"干净版"后 pnpm 回落到 `$PNPM_HOME\store`，与 `node_modules\.modules.yaml` 记录的盘内 store 不一致，于是该 profile 的所有装/卸都被拒绝。现在这三份 yaml **不再随壳发布**，机器配置由 `tools\fix-pnpm-state.mjs` 每次启动生成。
+- **升级后立刻对齐**：清单新增 `migrations`，换装成功后由已安装的升级器直接跑一次 `fix-pnpm-state`，**不用先重启**就能装插件。
+- 同一原因丢失的 `packageImportMethod: copy` 一并恢复（exFAT 上没有它，pnpm 会去试硬链接）。
+
+### 优化
+
+- `verify` 新增「pnpm store 与 node_modules 记录一致」「store 一致性自测」（54 → 56 项）；新增 `tools\selftest-store.mjs`（10 个夹具：缺 storeDir、指向不同 store、记录带 `v11`、坏 `.modules.yaml` 等）。
+- `doctor` 与门禁能从"记录 vs 解析"的角度发现这类问题，而不是等用户点安装才报错。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`home\` 下的插件清单、网关配置、会话、凭证一律不碰。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；**不再覆盖**三份 `pnpm-workspace.yaml`（它们从此不随壳走）。
+- 换装成功后自动跑一次 `fix-pnpm-state`（幂等、几十毫秒），把 store 配置对齐回当前机器。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`；换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.2.0 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.2.1.zip` 整包覆盖壳文件。

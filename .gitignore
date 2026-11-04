@@ -65,3 +65,7 @@ desktop.ini
 # 本地交接文档（给下一个接手这个壳的 Agent 看的）：含本机路径与排障记录，
 # 故意不进仓库。要发布时先自查再决定。
 /doc/
+# 机器配置（storeDir / packageImportMethod / modulesDir）：由 fix-pnpm-state 每次启动生成，不进仓库、不随壳发布
+/home/profiles/pnpm-workspace.yaml
+/home/profiles/web/pnpm-workspace.yaml
+/home/profiles/desktop/pnpm-workspace.yaml

@@ -90,14 +90,11 @@ export const ROOT_SHELL_FILES = [
 export const USER_OWNED = [
   'home/cordis.patch.yml',
   'home/profiles/package.json',
-  'home/profiles/pnpm-workspace.yaml',
   'home/profiles/pnpm-lock.yaml',
   'home/profiles/web/package.json',
-  'home/profiles/web/pnpm-workspace.yaml',
   'home/profiles/web/pnpm-lock.yaml',
   'home/profiles/web/cordis.patch.yml',
   'home/profiles/desktop/package.json',
-  'home/profiles/desktop/pnpm-workspace.yaml',
   'home/profiles/desktop/pnpm-lock.yaml',
 ]
 /** 整条路径点名（不支持通配）：README/LICENSE/发布说明 + home\profiles 的固定根 */
@@ -109,15 +106,14 @@ const SHELL_EXACT = [
   SHELL_MANIFEST,
   'home/cordis.patch.yml',
   'home/profiles/package.json',
-  'home/profiles/pnpm-workspace.yaml',
+  // 注意：三份 pnpm-workspace.yaml **不随壳发布**（见 SHELL_DENY）：里面是 storeDir 等机器配置，
+  // 由 tools\fix-pnpm-state.mjs 每次启动时生成/对齐；发布它们会让升级把用户的 store 配置冲掉。
   'home/profiles/pnpm-lock.yaml',
   'home/profiles/web/package.json',
-  'home/profiles/web/pnpm-workspace.yaml',
   'home/profiles/web/pnpm-lock.yaml',
   'home/profiles/web/cordis.yml',
   'home/profiles/web/cordis.patch.yml',
   'home/profiles/desktop/package.json',
-  'home/profiles/desktop/pnpm-workspace.yaml',
   'home/profiles/desktop/pnpm-lock.yaml',
   'home/profiles/desktop/cordis.yml',
 ]
@@ -129,7 +125,14 @@ const SHELL_PREFIXES = ['tools/', 'runtime/vcredist/']
  *   home/profiles/web/cordis.patch.yml    反过来：它是用户网页模式的网关配置，属"用户可变"，不禁止但要保留改动
  *   version.json 是官方层出厂快照、.gitattributes/.gitignore 是仓库元数据，都不属于"壳"
  */
-const SHELL_DENY = ['home/profiles/desktop/cordis.patch.yml', 'version.json', '.gitattributes', '.gitignore']
+const SHELL_DENY = [ 'home/profiles/desktop/cordis.patch.yml', // 用户私有网关配置，覆盖会打掉中转
+  // 机器配置（storeDir / packageImportMethod / modulesDir）由 fix-pnpm-state 在每次启动时写入，
+  // 绝不能随壳发布：一旦被 tag 里的干净版覆盖，pnpm 的 store 解析就会漂到 $PNPM_HOME/store，
+  // 与 node_modules\.modules.yaml 记录不一致 → 该 profile 的装/卸全部被 pnpm 拒绝（2026-11-04 事故）。
+  'home/profiles/pnpm-workspace.yaml',
+  'home/profiles/web/pnpm-workspace.yaml',
+  'home/profiles/desktop/pnpm-workspace.yaml',
+  'version.json', '.gitattributes', '.gitignore']
 
 const SHELL_EXACT_SET = new Set(SHELL_EXACT.map((s) => s.toLowerCase()))
 const SHELL_DENY_SET = new Set(SHELL_DENY.map((s) => s.toLowerCase()))
@@ -1029,6 +1032,18 @@ const runApply = async (opts) => {
 
   // 成功换装后 staging 没用了：留着只会让 tmp\build 越堆越大（失败时保留，便于排查）
   if (res.ok) { try { rmSync(stageDir, { recursive: true, force: true }) } catch { } }
+  // 换装后立刻把机器配置对齐一次：storeDir / packageImportMethod / modulesDir 由 fix-pnpm-state 写进
+  // 各 profile 的 pnpm-workspace.yaml。不重启也不会出现「node_modules 记录的 store ≠ pnpm 解析的 store」
+  // → 商城装/卸插件不会被 pnpm 以 store 不一致拒绝（2026-11-04 事故的兜底）。
+  if (res.ok) {
+    try {
+      const fix = join(ROOT, 'tools', 'fix-pnpm-state.mjs')
+      if (existsSync(fix)) {
+        const r = spawnSync(process.execPath, [fix, '--quiet'], { cwd: ROOT, encoding: 'utf8', timeout: 120000, windowsHide: true })
+        if (r.status !== 0 && !opts.json) line('  提示：换装后的 pnpm 状态对齐退出码 ' + r.status + '（不影响换装结果，下次启动会再跑一次）')
+      }
+    } catch { /* 对齐失败不影响换装结论 */ }
+  }
   if (opts.json) {
     emitJson(Object.assign({ action: 'apply', from: installed.shellVersion, to: m.shellVersion }, res, { exitCode: res.ok ? EXIT_OK : EXIT_FAIL }))
     return finish(res.ok ? EXIT_OK : EXIT_FAIL)

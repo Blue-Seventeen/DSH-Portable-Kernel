@@ -25,6 +25,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 // 清单口径只有一份：白名单谓词 / schema 版本 / 本地壳文件列表都从壳更新器取，不在这里另写一套
 import { MANIFEST_SCHEMA, SHELL_MANIFEST, UPDATER_MIN, isAllowedShellPath, listLocalShellFiles } from './shell-update.mjs'
+import { checkTree } from './store-consistency.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const NODE = join(ROOT, 'runtime/node/bin/node.exe')
@@ -607,6 +608,25 @@ check('清单里没有禁止路径', () => {
   const rels = Object.keys(manifestJson().files || {})
   const bad = rels.filter(denyHit)
   add(label, bad.length === 0, bad.length ? bad.length + ' 条命中黑名单：' + bad.slice(0, 4).join(', ') : rels.length + ' 条都没碰 app/desktop/runtime/会话/凭证/版本文件')
+})
+
+check('pnpm store 与 node_modules 记录一致', () => {
+  const label = 'pnpm store 与 node_modules 记录一致'
+  // 2026-11-04 事故：升级把三份 pnpm-workspace.yaml 换成"没有 storeDir"的干净版 → pnpm 漂到
+  // $PNPM_HOME/store，而 node_modules\.modules.yaml 记的是盘内 store → pnpm 拒绝该 profile 的一切装卸。
+  const problems = checkTree(ROOT)
+  if (!problems.length) { add(label, true, '一致（或还没装插件，跳过）'); return }
+  const detail = problems.slice(0, 3).map((p) => {
+    const rel = p.file.slice(ROOT.length + 1)
+    return rel + '：' + (p.reason === 'missing-storeDir'
+      ? '没有 storeDir（pnpm 会漂到 $PNPM_HOME/store）'
+      : '记录 ' + p.recorded + ' ≠ ' + p.expected)
+  }).join('；')
+  add(label, false, detail + ' → 运行 dsh-portable.cmd fix-state')
+})
+check('store 一致性自测', () => {
+  const r = run([join(ROOT, 'tools/selftest-store.mjs'), '--quiet'], CHECK_NODE)
+  add('store 一致性自测', r.code === 0, r.code === 0 ? '10 个夹具全过' : String(r.out || '').trim().slice(-200))
 })
 
 check('更新源是版本线', () => {

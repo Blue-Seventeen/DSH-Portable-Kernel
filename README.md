@@ -88,7 +88,7 @@ dsh-portable.cmd bootstrap
 | --- | --- |
 | `bootstrap` | 只有壳时补齐官方那层（可反复跑） |
 | `doctor` | 只读体检：残留、7z、Office 补丁、市场补丁、版本豁免 |
-| `verify` | 交付门禁，54 项断言，全过 exit 0 |
+| `verify` | 交付门禁，56 项断言，全过 exit 0 |
 | `tidy` | 清临时残留（桌面程序在跑会拒绝，`-Force` 强来） |
 | `update-all` / `update-app` / `update-desktop` | 更新官方那层。**默认只预演**，加 `-Force` 才真更新（`xxx.next` → 校验 → 换名） |
 | `repair` | 修启动失败：`check-update.cmd` 会自动调用它 |
@@ -183,7 +183,7 @@ dsh-portable.cmd bootstrap
 
 | 项目 | 结果 |
 | --- | --- |
-| `verify`（交付门禁） | **54 项全过**，连跑多次指纹不变 |
+| `verify`（交付门禁） | **56 项全过**，连跑多次指纹不变 |
 | `doctor`（只读体检） | 6–8 s，残留 0、7z 24.08、Office 已打 14 个 DLL、市场补丁 55 处字面、版本豁免一致 |
 | `clean-ship verify` | 11 项全过，0 文件 / 0 MB 残留 |
 | 桌面冷启动 | 4.3–5.3 s 返 `exit 0`，13 s 出现窗口 |
@@ -194,7 +194,7 @@ dsh-portable.cmd bootstrap
 
 | 场景 | 结果 |
 | --- | --- |
-| 全新空壳（只有壳文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 54 项全过 |
+| 全新空壳（只有壳文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 56 项全过 |
 | 已有官方层再跑 `bootstrap` | 2.8 s 全部跳过，`exit 0`（幂等） |
 | 删掉 `runtime\node`、`runtime\pnpm`、`app` 后重跑 | 418 s 全部重建，五个产物齐全，`exit 0` |
 | **没有任何系统 tar**（`DSH_PORTABLE_NO_SYSTEM_TAR=1`，模拟 Win10 1703） | node 35.9 MB 与 pnpm 5.5 MB 全部由随包 7z 解出，`node -v` 冒烟通过，pnpm 的 tgz 走两趟（gz→tar） |

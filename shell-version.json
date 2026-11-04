@@ -6,15 +6,15 @@
   "tag": "v0.2.0",
   "releasedAt": "2026-11-04T12:16:33.028Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T12:39:30.502Z",
+  "generatedAt": "2026-11-04T13:10:07.648Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "3beeca89dc8719319e9a365a3a6af53e40104cd0f4aeacf3d4023904448372e1",
-    "RELEASE-NOTES.md": "9717deab7b25aa481d018165cfbbd90c0d2dad0ed9a7b80b707732497911f4b0",
+    "README.md": "fe97921e0fbf38e15c26119ac8b77dc33b45404fe37dbd5c5a2ebdaaf2240d03",
+    "RELEASE-NOTES.md": "ccf23c9ebb140cd5f0447e38ef0639fc13b78209eec2312be5396ea7df3d1797",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -26,15 +26,12 @@
     "home/profiles/desktop/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/desktop/package.json": "a8754342c50d77f213dc9078c1adc40d79a4f470b050fba09e93d61f22f1678a",
     "home/profiles/desktop/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
-    "home/profiles/desktop/pnpm-workspace.yaml": "1449565fccc7a6a6d5b9bf7de8d6dc9a1516b79068deb9031ca63d5a4ef0d6b9",
     "home/profiles/package.json": "f0ba9a91b0daebe8f77d1ed57b7eb3b837edeba8b8b5bb2a2aeb35a276fe82b4",
     "home/profiles/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
-    "home/profiles/pnpm-workspace.yaml": "5b5b497a1d88b7f9f1f3b3063d214f04687a7a307ab2ffdacd1a6ef284e6062a",
     "home/profiles/web/cordis.patch.yml": "ef189a8c27db6d63930aa3046a3040482e952eafcb7487c644d508e8d461f027",
     "home/profiles/web/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/web/package.json": "392bd32b0781f8ec3375c2786051ece65b14a8324255dda5a983ae43a5ec4e43",
     "home/profiles/web/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
-    "home/profiles/web/pnpm-workspace.yaml": "1449565fccc7a6a6d5b9bf7de8d6dc9a1516b79068deb9031ca63d5a4ef0d6b9",
     "preflight.cmd": "27f3cd616e8eec6ddd050f40521a1b2a58f7954875207400f34747265dd8c087",
     "runtime/vcredist/concrt140.dll": "2405355f0a58067b258f8df33c327e3a3d716eaac5a3a5aebb757842d85bd376",
     "runtime/vcredist/msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
@@ -47,7 +44,7 @@
     "start-web.cmd": "6f94a04942f5d59681b5e54b194fdb6095ea456350742bb47e05666570c38c51",
     "tools/7z/7z.dll": "e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812",
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
-    "tools/clean-ship.mjs": "8a516b5693f51e09c53f01fb16ce6928a05c45202dc5faa0089828dc3c924222",
+    "tools/clean-ship.mjs": "5c045ea9182deddc9d0c88c71c69ea0afd4c0d1332fea3f821f8c3742b62853e",
     "tools/download.mjs": "b24e406b496acfe167f638ee04c9f02dfcf859dacd836ce2f00884a488257c78",
     "tools/fix-pnpm-state.mjs": "6b83baf851d4357c0058303a868812f20c2c9c265c6c6a8a8c28b64e74b4b31d",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
@@ -64,23 +61,23 @@
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
+    "tools/selftest-store.mjs": "1da327a64c5e6a918f2aeab1da085b570735f7617479fbd6648d8a4c460aa706",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
+    "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "f24ccf7a6ccd5e2740f428df8bfef369010456d6ea83d6189ee91dd0e25682f1",
-    "tools/shell-update.mjs": "3c312009d86c53045da2b0d2033cbf241662024a5b17cbd7437f3980430b9f24",
+    "tools/shell-update.mjs": "810ecd88c6b624c992f3fa40cc821c1e03201b127d88ddaf32944cb2e0c5b86d",
+    "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
-    "tools/verify-shell.mjs": "a742abad6fbb64cb824346ba42c696643a928e2c623907b004514b4bacdddcf8"
+    "tools/verify-shell.mjs": "0d28a2311adcbc0967b467fb5872bf48649f0247650e1243c4ce267d707f9947"
   },
   "userOwned": [
     "home/cordis.patch.yml",
     "home/profiles/package.json",
-    "home/profiles/pnpm-workspace.yaml",
     "home/profiles/pnpm-lock.yaml",
     "home/profiles/web/package.json",
-    "home/profiles/web/pnpm-workspace.yaml",
     "home/profiles/web/pnpm-lock.yaml",
     "home/profiles/web/cordis.patch.yml",
     "home/profiles/desktop/package.json",
-    "home/profiles/desktop/pnpm-workspace.yaml",
     "home/profiles/desktop/pnpm-lock.yaml"
   ],
   "notes": {
@@ -118,6 +115,15 @@
     ]
   },
   "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.2.0",
+  "migrations": [
+    {
+      "id": "pnpm-store-dir",
+      "script": "tools/fix-pnpm-state.mjs",
+      "args": [
+        "--quiet"
+      ]
+    }
+  ],
   "zip": {
     "name": "harness-shell-0.2.0.zip",
     "sha256": "efc54f3385e36fb5e1c192272037459ee932ca7b212a6b364584144f9682ce0c",

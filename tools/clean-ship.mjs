@@ -23,6 +23,7 @@ import {
   MANIFEST_SCHEMA, REPO, SHELL_MANIFEST, UPDATER_MIN, USER_OWNED,
   listLocalShellFiles, readLocalManifest, sha256File,
 } from './shell-update.mjs'
+import { SHELL_MIGRATIONS } from './shell-migrations.mjs'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 // 参数既接受 --apply/--verify，也接受裸词 apply/verify：
@@ -228,6 +229,8 @@ const refreshShellManifest = () => {
       notes,
       notesUrl: String(old.notesUrl || '').trim() || ('https://github.com/' + REPO + '/releases/tag/v' + shellVersion),
     }
+    // 换装后要跑的迁移（幂等、失败不阻断）：机器配置由 fix-pnpm-state 重新对齐，见 shell-migrations.mjs
+    out.migrations = SHELL_MIGRATIONS
     // zip 资产由 shell-release 打包后写回；refresh 不生成 zip，但已经存在就原样保住（否则发布后置校验必红）
     if (old.zip && typeof old.zip === 'object' && !Array.isArray(old.zip)) out.zip = old.zip
     const text = JSON.stringify(out, null, 2) + '\n'
