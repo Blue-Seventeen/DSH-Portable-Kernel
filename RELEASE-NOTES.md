@@ -372,3 +372,37 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.0 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.3.1.zip` 整包覆盖壳文件。
+---
+
+## v0.3.2 — 2026-11-04
+
+修 `plugin-shared sync --prune` 会误删"还有本地副本"的插件（丢 `@michengai/dsh-skills-manager` 的那次）。
+
+### 新增
+
+- 无（补丁版只修问题）。
+
+### 修复
+
+- **`sync --prune` 会删掉仍有本地副本的插件**：判定"悬空"以前只看共享目录，若某依赖的文件还在某个 profile 的 `node_modules` 里（历史遗留、或刚被手工搬动），会连依赖和 bundles 一起清掉。现在 prune 前先探每个 profile，仍有本地副本就**只提示不删**，并在真正删除前再兜一次底。
+- `plugin-shared` 的用法说明漏了 `stage-selftest`（暂存引擎自测），补上。
+
+### 优化
+
+- 无。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`home\` 下的数据一律不碰。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。
+- 换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`）。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.1 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.3.2.zip` 整包覆盖壳文件。
