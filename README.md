@@ -88,14 +88,17 @@ dsh-portable.cmd bootstrap
 | --- | --- |
 | `bootstrap` | 只有壳时补齐官方那层（可反复跑） |
 | `doctor` | 只读体检：残留、7z、Office 补丁、市场补丁、版本豁免 |
-| `verify` | 交付门禁，47 项断言，全过 exit 0 |
+| `verify` | 交付门禁，54 项断言，全过 exit 0 |
 | `tidy` | 清临时残留（桌面程序在跑会拒绝，`-Force` 强来） |
 | `update-all` / `update-app` / `update-desktop` | 更新官方那层。**默认只预演**，加 `-Force` 才真更新（`xxx.next` → 校验 → 换名） |
 | `repair` | 修启动失败：`check-update.cmd` 会自动调用它 |
 | `fix-state` / `fix-office` / `fix-market` / `unblock` | 修 pnpm 状态 / Office 补丁 / 市场补丁 / 解除"下载文件被锁" |
+| （自动）补丁三族 | 每次启动与官方升级收尾都会自动重打：商城路径+drain、exFAT 硬链接回退、pnpm 项目注册；`doctor` 的 `patches` 三行看状态，`node tools\patch-all.mjs --check` 可单独查 |
 | `show-desktop` / `close-desktop` / `focus-desktop` | 桌面窗口三件事（退出码见下） |
 | `clean-ship [apply\|verify\|refresh] [keep-creds]` | 出货前清个人数据；`refresh` 重算 `version.json` 的文件数/体积 |
 | `plugin-list` / `plugin-add` / `plugin-remove` / `plugin-sync` / `plugin-allow` | 插件管理（写的是共享目录） |
+| `plugin-stage` / `plugin-stage-remove` | **运行期也能装/卸**：下载与校验在影子目录做，退出程序后下次启动自动启用（不冻结正在跑的会话） |
+| `plugin-stage-list` / `plugin-stage-discard` / `plugin-activate` | 看暂存队列 / 丢弃暂存项 / 手工提交（启动器会自动提交） |
 | `plugin-adopt` / `plugin-revoke` | 把插件收进共享目录 / 撤销 |
 | `plugin-repair` | 修"市场装不上也卸不掉"：pnpm 大版本变了就重建插件依赖（**默认预演**，`-Force` 才真重建） |
 | `shell-update [check\|apply\|rollback\|recover\|notes]` | **更新壳自己**（v2 版本线：只换壳，不动官方层与你的数据；`apply` 默认预演，`-Force` 才真换；`--full` 整包换装、`--to v<版本>` 锁定/降级——这两个高级参数直接传给 `node tools\shell-update.mjs`，`dsh-portable.cmd` 只转 `-Force`；verify 不过自动整体回滚，`rollback` 用最新备份还原，`recover` 恢复中断） |
@@ -137,6 +140,8 @@ dsh-portable.cmd bootstrap
 | 只有一个实例，第二次双击会唤回旧窗口 | 官方单实例锁；壳把它映射成退出码 3 / `focus-desktop` |
 | LibreOffice 转换成功却 `exit 1` | 官方 kit 的退出码怪癖：产物文件才是判断依据。壳已给它打 `maxRetries: 3` 补丁缓解只读目录清理失败，**再遇到 exit 1 先看产物** |
 | 启动时有个黑框一闪 | `desktop\...\app-update.yml` 被禁用后仍会尝试，日志已脱敏 |
+| 商城点安装后显示「等待 N 个会话空闲」，久等不动 | 商城（dshmarket）自己的维护屏障：改插件树前要占住所有会话。壳的补丁只保证**等待期不再冻结空闲会话**（见 `doc\agent-develop-doc\04-plugins-and-market.md` §4.1）；真正改写文件的那几十秒仍会占住。想完全不占，用 `plugin-stage` |
+| 装了插件但重启后没出现 | 先看 `plugin-stage-list` 是否有待启用项；再跑 `verify` 看「补丁状态」和「三份清单一致」 |
 
 ---
 
@@ -178,7 +183,7 @@ dsh-portable.cmd bootstrap
 
 | 项目 | 结果 |
 | --- | --- |
-| `verify`（交付门禁） | **47 项全过**，连跑多次指纹不变 |
+| `verify`（交付门禁） | **54 项全过**，连跑多次指纹不变 |
 | `doctor`（只读体检） | 6–8 s，残留 0、7z 24.08、Office 已打 14 个 DLL、市场补丁 55 处字面、版本豁免一致 |
 | `clean-ship verify` | 11 项全过，0 文件 / 0 MB 残留 |
 | 桌面冷启动 | 4.3–5.3 s 返 `exit 0`，13 s 出现窗口 |
@@ -189,7 +194,7 @@ dsh-portable.cmd bootstrap
 
 | 场景 | 结果 |
 | --- | --- |
-| 全新空壳（只有壳文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 47 项全过 |
+| 全新空壳（只有壳文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 54 项全过 |
 | 已有官方层再跑 `bootstrap` | 2.8 s 全部跳过，`exit 0`（幂等） |
 | 删掉 `runtime\node`、`runtime\pnpm`、`app` 后重跑 | 418 s 全部重建，五个产物齐全，`exit 0` |
 | **没有任何系统 tar**（`DSH_PORTABLE_NO_SYSTEM_TAR=1`，模拟 Win10 1703） | node 35.9 MB 与 pnpm 5.5 MB 全部由随包 7z 解出，`node -v` 冒烟通过，pnpm 的 tgz 走两趟（gz→tar） |

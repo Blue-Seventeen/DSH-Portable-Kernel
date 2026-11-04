@@ -173,6 +173,58 @@ check('dshmarket lib 语法正常', () => {
   const syntaxBad = allJs.filter((n) => run(['--check', join(libDir, n)]).code !== 0)
   add('dshmarket lib ' + allJs.length + ' 个文件语法正常', syntaxBad.length === 0, syntaxBad.join(', '))
 })
+check('drain 语义补丁已打（等待期不再冻结空闲会话）', () => {
+  const f = join(ROOT, 'home/profiles/node_modules/dshmarket/lib/drain.js')
+  if (!exists(f)) { add('drain 语义补丁已打（等待期不再冻结空闲会话）', true, '没装 dshmarket，跳过', true); return }
+  const src = read(f)
+  const hunks = (src.match(/\[portable-drain\]/g) || []).length
+  const hasRelease = /this\.releaseAll\(\);\n\s+\/\/ The probe may still be refused/.test(src)
+  const hasBoundary = /const busyNow = unheld\.filter\(agent => agent\.status === 'running'\)/.test(src)
+  const hasGate = /active\.state === 'queued-for-mutation' \|\| active\.state === 'running'/.test(src)
+  add('drain 语义补丁已打（等待期不再冻结空闲会话）', hunks >= 3 && hasRelease && hasBoundary && hasGate,
+    '标记 ' + hunks + ' 处；D1释放=' + (hasRelease ? 'ok' : '缺') + ' D2边界=' + (hasBoundary ? 'ok' : '缺') + ' D3门控=' + (hasGate ? 'ok' : '缺'))
+})
+check('drain 等待期不冻结会话（selftest-drain）', () => {
+  const r = run([join(ROOT, 'tools/selftest-drain.mjs'), '--quiet'])
+  add('drain 等待期不冻结会话（selftest-drain）', r.code === 0, r.code === 0 ? '5 例全过' : (r.out || '').trim().slice(-300))
+})
+check('暂存安装：队列自洽', () => {
+  const r = run([join(ROOT, 'tools/plugin-shared.mjs'), 'stage-status', '--check'])
+  add('暂存安装：队列自洽', r.code === 0, r.code === 0 ? '队列可读、字段齐全' : (r.out || '').trim().slice(-200))
+})
+check('暂存安装：两个启动器都在补丁之前提交', () => {
+  const bad = []
+  for (const f of ['start-web.cmd', 'start-desktop.cmd']) {
+    if (!exists(join(ROOT, f))) { bad.push(f + ': 缺文件'); continue }
+    const src = read(join(ROOT, f))
+    const act = src.indexOf('plugin-shared.mjs" activate')
+    const patch = src.indexOf('patch-all.mjs" --apply')
+    if (act < 0) bad.push(f + ': 没接 activate')
+    else if (patch < 0) bad.push(f + ': 没接 patch-all')
+    else if (act > patch) bad.push(f + ': activate 排在 patch-all 之后')
+  }
+  add('暂存安装：两个启动器都在补丁之前提交', bad.length === 0, bad.join('；') || '顺序正确')
+})
+check('暂存目录不进仓库', () => {
+  const gi = exists(join(ROOT, '.gitignore')) ? read(join(ROOT, '.gitignore')) : ''
+  add('暂存目录不进仓库', /^\/home\/plugin-stage\/$/m.test(gi), '/.gitignore 缺 /home/plugin-stage/')
+})
+check('补丁三族：market / fs / pnpm 状态可查', () => {
+  const r = run([join(ROOT, 'tools/patch-all.mjs'), '--check', '--json'])
+  let parsed = null
+  try { parsed = JSON.parse(r.out) } catch { parsed = null }
+  if (!parsed) { add('补丁三族：market / fs / pnpm 状态可查', false, 'patch-all --check --json 解析失败'); return }
+  const bad = (parsed.families || []).filter((f) => f.state === 'failed')
+  const need = (parsed.families || []).filter((f) => f.state === 'needs-work')
+  add('补丁三族：market / fs / pnpm 状态可查', bad.length === 0,
+    bad.length ? bad.map((f) => f.family + ': ' + (f.detail || '')).join('；')
+      : need.length ? '需要修复（WARN）：' + need.map((f) => f.family).join('、')
+        : (parsed.families || []).map((f) => f.family + '=' + f.state).join(' '))
+})
+check('补丁锚点自测（官方两代形状）', () => {
+  const r = run([join(ROOT, 'tools/selftest-patches.mjs'), '--quiet'])
+  add('补丁锚点自测（官方两代形状）', r.code === 0, r.code === 0 ? '5 个夹具全过' : (r.out || '').trim().slice(-200))
+})
 check('无补丁错误日志 logs/patch-market.err', () => {
   add('无补丁错误日志 logs/patch-market.err', !exists(join(ROOT, 'logs/patch-market.err')) || bytes(join(ROOT, 'logs/patch-market.err')) === 0)
 })
@@ -377,6 +429,13 @@ check('compat 档补丁已打 / native 档无残留补丁', () => {
   // stdio ignore：受限会话里管道会 EPERM，只看退出码
   const r = spawnSync(node, [tool, '--check', '--quiet'], { stdio: 'ignore', windowsHide: true })
   const code = r.status
+  if (profile === 'compat' && code === 4) {
+    // 桌面在跑时 app.asar 被占用，补丁只能等下次启动（启动器会自动补）：记 SKIP，不判失败
+    const tl = spawnSync('tasklist', ['/FI', 'IMAGENAME eq DeepSeek Harness.exe', '/NH'], { encoding: 'utf8', windowsHide: true })
+    const running = (tl.stdout || '').includes('DeepSeek Harness.exe')
+    add(label, true, running ? 'asar 被运行中的桌面占用；退出后下次启动自动补（patch-all 会做）' : 'compat 档补丁未打全，运行 dsh-portable.cmd repair', running)
+    return
+  }
   if (profile === 'compat') add(label, code === 0, code === 0 ? 'app 与 asar 都已打' : 'compat 档补丁未打全（code ' + code + '），运行 dsh-portable.cmd repair')
   else if (profile === 'native') add(label, code === 4, code === 4 ? 'native 档无补丁（正常）' : 'NTFS 上仍有补丁（code ' + code + '），运行 patch-fs.mjs --revert')
   else add(label, true, '档位未知，跳过')

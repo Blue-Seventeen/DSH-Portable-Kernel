@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
+  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'plugin-stage', 'plugin-stage-remove', 'plugin-stage-list', 'plugin-stage-discard', 'plugin-activate', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
   [string]$Action = 'doctor',
   [Parameter(Position = 1)]
   [string]$From,
@@ -260,6 +260,18 @@ function Fix-MarketPatch {
   if ($Quiet) { $toolArgs += '--quiet' }
   & $Node $script @toolArgs | Out-Host
 }
+function Repair-OfficialPatches {
+  # 三族补丁的统一入口：market（商城路径 + drain 语义）/ fs（exFAT 硬链接回退）/ pnpm（store 项目注册）。
+  # 官方 update-app / update-desktop / bootstrap / 商城自更新会**整份替换**这些文件，补丁随之消失，
+  # 所以每次启动和每次升级收尾都要补一次。退出码：0 全好 / 2 本次有改动 / 4 有没打上（WARN，不阻断）/ 1 硬失败。
+  param([switch]$Quiet)
+  $tool = Join-Path $Root 'tools\patch-all.mjs'
+  if (-not (Test-Path -LiteralPath $tool)) { return 0 }
+  $toolArgs = @('--apply')
+  if ($Quiet) { $toolArgs += '--quiet' }
+  & $Node $tool @toolArgs | Out-Host
+  return $LASTEXITCODE
+}
 function Clean-TempJunk([switch]$Force) {
   # tmp\ 里会堆运行时垃圾，都在便携目录内，不清会无限变大（审计 #2：原来只认 3 个前缀，
   # dsh-subprocess-* / dsh-workspace-changes-* / *.tmp / logs\desktop-console.log* 全漏）：
@@ -296,6 +308,16 @@ function Clean-TempJunk([switch]$Force) {
     Get-ChildItem -LiteralPath $logDir -File -Filter 'desktop-console.log*' -Force -ErrorAction SilentlyContinue | ForEach-Object {
       if ($_.LastWriteTime -gt $cut) { return }
       try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction Stop; $n++ } catch { }
+    }
+  }
+  # 5) tmp\stage\*  插件暂存的影子 home（下载/校验用；正常结束会自己删，崩了才会留）
+  #    正在跑暂存时有一个 .lock 在 home\plugin-stage\，此时整段跳过，别删到一半
+  $shadowDir = Join-Path $Root 'tmp\stage'
+  $stageLock = Join-Path $Root 'home\plugin-stage\.lock'
+  if ((Test-Path -LiteralPath $shadowDir) -and -not (Test-Path -LiteralPath $stageLock)) {
+    Get-ChildItem -LiteralPath $shadowDir -Directory -Force -ErrorAction SilentlyContinue | ForEach-Object {
+      if ($_.LastWriteTime -gt $cut) { return }
+      try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop; $n++ } catch { }
     }
   }
   if ($n -gt 0) { Say ("  已清理 " + $n + " 项临时残留") }
@@ -1601,21 +1623,17 @@ function Bootstrap-Profiles {
 try {
 # 只读动作不再顺手改包：原来 Repair-State 在分派前无条件执行（删 journal / .part / .next），
 # 于是"跑一次 doctor"本身就成了修改。清理统一走 tidy、启动路径或 repair。
-if ($Action -notin @('doctor', 'verify', 'plugin-list', 'check-quiet', 'check-updates', 'sync-home', 'focus-desktop', 'show-desktop', 'clean-ship', 'fs-profile')) { Repair-State }
+if ($Action -notin @('doctor', 'verify', 'plugin-list', 'plugin-stage-list', 'check-quiet', 'check-updates', 'sync-home', 'focus-desktop', 'show-desktop', 'clean-ship', 'fs-profile')) { Repair-State }
 
 switch ($Action) {
   'repair' {
     Fix-Bom; Fix-PnpmState; Fix-Motw -IfNeeded; Fix-OfficeCli; Fix-MarketPatch; Clean-TempJunk
-    # compat 档：exFAT 没有硬链接，给 dsh-fs-local 的"新建文件"补一条 rename 回退（NTFS 不动）
-    if ($env:DSH_FS_PROFILE -eq 'compat') {
-      $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --apply --quiet 2>&1
-      if ($LASTEXITCODE -notin @(0, 2)) { Warn2 '硬链接回退补丁未打上（锚点不匹配或桌面正在运行），详情：node tools\patch-fs.mjs --check' }
-      # pnpm 11 在 exFAT 上会因 registerProject 的符号链接而装不上（EISDIR）：补一条容错
-      $null = & $Node (Join-Path $Root 'tools\patch-pnpm.mjs') --apply --quiet 2>&1
-      $null = & $Node (Join-Path $Root 'tools\probe-fs.mjs') --quiet 2>&1
-      $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --check --quiet 2>&1
-      if ($LASTEXITCODE -ne 0) { Warn2 '补丁仍不完整（asar 可能被占用）：退出桌面后再运行 dsh-portable.cmd repair' }
-    }
+    # compat 档：exFAT 没有硬链接，给 dsh-fs-local 的"新建文件"补一条 rename 回退（NTFS 不动）；
+    # 同时补商城路径与 pnpm 项目注册。三族都幂等，已打过是毫秒级检查。
+    $patchRc = Repair-OfficialPatches -Quiet
+    if ($patchRc -eq 4) { Warn2 '有补丁没打上（官方层可能刚升级过）：doctor 的 patches 三行有详情' }
+    if ($patchRc -eq 1) { Warn2 '补丁写入失败（桌面程序可能占着 app.asar）：退出 DeepSeek Harness 后再修复' }
+    if ($env:DSH_FS_PROFILE -eq 'compat') { $null = & $Node (Join-Path $Root 'tools\probe-fs.mjs') --quiet 2>&1 }
     $null = Plugin-Tool @('sync', '--quiet'); Say '已检查并修复中断残留'; break
   }
   'tidy' {
@@ -1725,6 +1743,8 @@ switch ($Action) {
       exit 1
     }
     try { Fix-MarketPatch } catch { }
+    # 自举会把 app / desktop / pnpm 整份换掉：三族补丁收尾统一重打（不需要人记得 repair）
+    $null = Repair-OfficialPatches -Quiet
     Say ''
     Say ('自举完成：app ' + (AppVersion) + ' / desktop ' + (DesktopVersion) + ' / node ' + (& $Node -v))
     Say '下一步：preflight.cmd（或直接 start-web.cmd / start-desktop.cmd）'
@@ -1800,6 +1820,22 @@ switch ($Action) {
     exit (Plugin-Tool @('adopt', $From))
   }
   'plugin-sync' { exit (Plugin-Tool @('sync')) }
+  # 暂存安装：下载/校验在影子 home 里做，不碰 live 插件树；退出程序后下次启动由启动器提交。
+  # 参数透传（插件名/规格可能带 @ 和版本号），From 只接第一个，多个用 dsh-plugin-shared.cmd。
+  'plugin-stage' {
+    if (-not $From) { Say '用法：dsh-portable.cmd plugin-stage <包名或包名@版本>'; Say '（一次装多个请用 dsh-plugin-shared.cmd stage A B）'; exit 1 }
+    exit (Plugin-Tool @('stage', $From))
+  }
+  'plugin-stage-remove' {
+    if (-not $From) { Say '用法：dsh-portable.cmd plugin-stage-remove <包名>'; exit 1 }
+    exit (Plugin-Tool @('stage-remove', $From))
+  }
+  'plugin-stage-list' { exit (Plugin-Tool @('stage-list')) }
+  'plugin-stage-discard' {
+    if (-not $From) { Say '用法：dsh-portable.cmd plugin-stage-discard <id|all>'; exit 1 }
+    exit (Plugin-Tool @('stage-discard', $From))
+  }
+  'plugin-activate' { exit (Plugin-Tool @('activate')) }
   'shell-update' {
     # 壳自更新 v2：真正干活的是 tools\shell-update.mjs（取版本线清单 → 校验 → 调 shell-apply.mjs 备份 /
     # 换装 / 回滚，verify 不过就整体回滚）。这里只做三件事：子命令分派、占用检查、把 -Force 翻成 --force。
@@ -1931,6 +1967,13 @@ switch ($Action) {
     Say ("leftovers : " + (Get-LeftoverCount))
     Say ("auto-upd  : " + $(if (Test-Path (Join-Path $Root 'desktop\resources\app-update.yml')) { 'ENABLED' } else { 'disabled' }))
     Say ("market    : " + (Get-MarketPatchState))
+    # 三族补丁状态：applied / needs-work / failed / n-a。needs-work 通常是官方刚升级、壳还没适配
+    $patchTool = Join-Path $Root 'tools\patch-all.mjs'
+    if (Test-Path -LiteralPath $patchTool) {
+      $patchLines = @(& $Node $patchTool --check 2>&1 | Where-Object { $_ -match '^\s+(market|fs|pnpm)\s' })
+      if ($patchLines.Count -eq 0) { Say 'patches   : （三族状态读取失败）' }
+      foreach ($pl in $patchLines) { Say ('patches   : ' + ([string]$pl).Trim()) }
+    }
     Say ("compat    : " + (Get-CompatState))
     Say ("running   : " + $(if (DesktopRunning) { 'desktop window is open' } else { 'no' }))
     Say ("backups   : " + (@(Get-ChildItem -LiteralPath $Root -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*.bak-*' }).Count))
@@ -1956,6 +1999,8 @@ switch ($Action) {
   'update-app' {
     if (-not $Force) { Say ("app 当前 " + (AppVersion) + "；这是预演，加 -Force 才真更新"); break }
     Install-App
+    # 官方层整份换掉了：补丁必须跟着重打（否则商城装不上、exFAT 上新建文件失败）
+    $null = Repair-OfficialPatches -Quiet
     break
   }
   'update-desktop' {
@@ -1976,6 +2021,8 @@ switch ($Action) {
       if (-not $Force) { Say '这是预演，加 -Force 才真更新'; break }
       Install-Desktop $null $m
     }
+    # 桌面层整份换掉了（app.asar / 内置 pnpm）：补丁必须跟着重打
+    $null = Repair-OfficialPatches -Quiet
     break
   }
   'update-all' {
@@ -1988,6 +2035,8 @@ switch ($Action) {
     }
     catch { $failed++; Warn2 ("桌面更新跳过：" + $_.Exception.Message) }
     if ($failed -gt 0) { Say '更新未全部成功；原版本仍然可用。'; exit 1 }
+    # app 与 desktop 都可能被换掉：收尾统一重打三族补丁
+    $null = Repair-OfficialPatches -Quiet
     break
   }
 }

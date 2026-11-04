@@ -20,30 +20,101 @@ import { createHash } from 'node:crypto'
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const PKG_DIR = join(ROOT, 'app', 'node_modules', '@deepseek-ai', 'dsh-fs-local')
 const TARGET = join(PKG_DIR, 'lib', 'index.js')
-const ASAR = join(ROOT, 'desktop', 'resources', 'app.asar')
+const ASAR = process.env.H3RX_PATCH_FS_ASAR || join(ROOT, 'desktop', 'resources', 'app.asar')
+// H3RX_PATCH_FS_ASAR 只给自测/排障用（在副本上验证重写与回滚）；正常流程不要设它
 const ASAR_ENTRY = 'dsh/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js'
 const MARK = 'h3rx-fs-patch: link-fallback'
-const SUPPORTED = ['0.2.1-rc.5']
+/** 版本只用于报告；判据永远是"能不能语义定位到补丁点" */
+const VERIFIED_APP = ['0.2.1-rc.5']
+
+/* 语义锚点：不依赖缩进、引号、变量名。两代真实形状都能命中——
+ *  0.2.1-rc.5: if (createIfAbsent !== void 0) try { await linkFile(...) } catch (error) { await throwGuardedCreateFailure(...) }
+ *  0.2.2-rc.1: if (options.createIfAbsent) try { await linkFile(...) } catch (error) { await throwGuardedCreateFailure(..., displayPath, ...) }
+ * 为什么不用整段字面：官方改一次缩进/参数名/重构就失配（2026-11-04 实测：0.2.2-rc.1 换行后 asar 直接 anchor-mismatch）。
+ */
+const SITE_IF = /if\s*\(([^)]*createIfAbsent[^)]*)\)\s*try\s*\{/
+const SITE_LINK = /await\s+link\w*\s*\([^)]*\)\s*;/
+const SITE_CATCH = /\}\s*catch\s*\(\s*(\w+)\s*\)\s*\{/
+const FALLBACK_CODES = ['ENOTSUP', 'ENOSYS', 'EPERM', 'EACCES', 'EISDIR', 'EXDEV']
+const MARK_LINE = '/* ' + MARK + ' */'
+
+/** 从 `{` 起配平找到对应的 `}`（跳过字符串/模板/注释；这两份源码里够用） */
+const matchBrace = (text, openAt) => {
+  let depth = 0
+  let quote = null
+  for (let i = openAt; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === '\\') { i++; continue }
+      if (ch === quote) quote = null
+      continue
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue }
+    if (ch === '/' && text[i + 1] === '/') { const nl = text.indexOf('\n', i); if (nl < 0) return -1; i = nl; continue }
+    if (ch === '/' && text[i + 1] === '*') { const end = text.indexOf('*/', i + 2); if (end < 0) return -1; i = end + 1; continue }
+    if (ch === '{') depth++
+    else if (ch === '}') { depth--; if (depth === 0) return i }
+  }
+  return -1
+}
+
+/** 定位"发布新文件用硬链接、失败要回退 rename"的那段 try/catch */
+const findSite = (text) => {
+  const head = SITE_IF.exec(text)
+  if (!head) return null
+  const afterHead = head.index + head[0].length
+  const seg = text.slice(afterHead, afterHead + 600)
+  const link = SITE_LINK.exec(seg)
+  if (!link) return null
+  const afterLink = afterHead + link.index + link[0].length
+  const catchM = SITE_CATCH.exec(text.slice(afterLink, afterLink + 400))
+  if (!catchM) return null
+  const bodyStart = afterLink + catchM.index + catchM[0].length
+  const bodyEnd = matchBrace(text, bodyStart - 1)
+  if (bodyEnd < 0) return null
+  const body = text.slice(bodyStart, bodyEnd)
+  // 只处理"单语句"catch 体：这样 else 分支不必加花括号，还原也能按字符串精确剥离
+  if (body.split(';').filter((s) => s.trim().length).length !== 1) return null
+  return { bodyStart, bodyEnd, errVar: catchM[1] }
+}
+
+const indentAt = (text, at) => {
+  const lineStart = text.lastIndexOf('\n', at) + 1
+  const m = /^[ \t]*/.exec(text.slice(lineStart, at))
+  return m ? m[0] : ''
+}
+
+/** 在 catch 体首插入分支：exFAT 上 link 的 EISDIR/EPERM… → rename。返回 null = 找不到可改的点 */
+const siteApply = (text) => {
+  const site = findSite(text)
+  if (!site) return null
+  // 缩进取 catch 体里第一条语句的缩进（体首通常是换行）
+  let firstNonSpace = site.bodyStart
+  while (firstNonSpace < text.length && /\s/.test(text[firstNonSpace])) firstNonSpace++
+  const indent = indentAt(text, firstNonSpace)
+  const cond = site.errVar + ' && typeof ' + site.errVar + " === 'object' && ("
+    + FALLBACK_CODES.map((c) => site.errVar + ".code === '" + c + "'").join(' || ') + ')'
+  const insert = '\n' + indent + MARK_LINE + '\n' + indent
+    + 'if (' + cond + ') { await rename(tempPath, absolutePath); } else '
+  return text.slice(0, site.bodyStart) + insert + text.slice(site.bodyStart)
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+/** 精确剥离 siteApply 插入的片段（不依赖备份） */
+const siteRevert = (text) => {
+  // v2：/* MARK */ + if (cond) { rename } else <原语句>
+  const v2 = new RegExp('\\n[ \\t]*' + escapeRe(MARK_LINE) + '\\n[ \\t]*if \\([^\\n]*\\) \\{ await rename\\(tempPath, absolutePath\\); \\} else ')
+  const once = text.replace(v2, '')
+  if (once !== text) return once
+  // v1 老补丁（三行：const code / if / else）也要能精确剥掉，否则 --revert 会卡在 revert-mismatch
+  const v1 = new RegExp('\\n[ \\t]*' + escapeRe(MARK_LINE) + '\\n[ \\t]*const code = [^\\n]*\\n[ \\t]*if \\(code === [^\\n]*\\) await rename\\(tempPath, absolutePath\\);\\n[ \\t]*else ')
+  return text.replace(v1, '')
+}
 
 const argv = process.argv.slice(2)
 const quiet = argv.includes('--quiet')
 const say = (m) => { if (!quiet) console.log('  ' + m) }
-const EXIT = { OK: 0, ANCHOR: 1, APPLIED: 2, NOT_PATCHED: 4 }
-
-const ANCHOR = `\t\tif (createIfAbsent !== void 0) try {
-\t\t\tawait linkFile(tempPath, absolutePath);
-\t\t} catch (error) {
-\t\t\tawait throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);
-\t\t}`
-
-const PATCHED = `\t\tif (createIfAbsent !== void 0) try {
-\t\t\tawait linkFile(tempPath, absolutePath);
-\t\t} catch (error) {
-\t\t\t/* ${MARK} */
-\t\t\tconst code = error && typeof error === 'object' ? error.code : void 0;
-\t\t\tif (code === 'ENOTSUP' || code === 'ENOSYS' || code === 'EPERM' || code === 'EACCES' || code === 'EISDIR' || code === 'EXDEV') await rename(tempPath, absolutePath);
-\t\t\telse await throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);
-\t\t}`
+const EXIT = { OK: 0, ANCHOR: 1, APPLIED: 2, LOCKED: 3, NOT_PATCHED: 4 }
 
 // 只留最近一份备份：asar 备份有 174 MB，堆多了会把 U 盘吃满
 const pruneBackups = (dir, prefix) => {
@@ -59,40 +130,54 @@ const stamp = () => {
 const pkgVersion = () => {
   try { return JSON.parse(readFileSync(join(PKG_DIR, 'package.json'), 'utf8')).version || '' } catch { return '' }
 }
+/** asar 里那份 fs-local 的版本（和 app 目录里那份可能不是同一代；unpacked 条目也能读） */
+const asarVersion = () => {
+  try {
+    const rel = 'dsh/node_modules/@deepseek-ai/dsh-fs-local/package.json'
+    const unpacked = join(ROOT, 'desktop', 'resources', 'app.asar.unpacked', rel.split('/').join('\\'))
+    if (existsSync(unpacked)) return JSON.parse(readFileSync(unpacked, 'utf8')).version || ''
+    const buf = readFileSync(ASAR)
+    const info = readAsarInfo(buf)
+    const node = getNode(info.header, rel)
+    if (!node || node.unpacked) return ''
+    const start = info.dataStart + Number(node.offset)
+    return JSON.parse(buf.subarray(start, start + Number(node.size)).toString('utf8')).version || ''
+  } catch { return '' }
+}
 const syntaxOk = (file) => spawnSync(process.execPath, ['--check', file], { stdio: 'ignore', windowsHide: true }).status === 0
 
 // ---------------------------------------------------------------- npm 副本
 const appCheck = () => {
   if (!existsSync(TARGET)) return { state: 'missing' }
   const text = readFileSync(TARGET, 'utf8')
-  if (text.includes(MARK)) return { state: 'applied' }
-  if (text.includes(ANCHOR)) return { state: 'not-patched' }
-  return { state: 'anchor-mismatch' }
+  const version = pkgVersion()
+  if (text.includes(MARK)) return { state: 'applied', version }
+  if (findSite(text)) return { state: 'not-patched', version }
+  return { state: 'anchor-mismatch', version }
 }
-const appApply = (text) => {
-  const v = pkgVersion()
+const appApply = () => {
+  const version = pkgVersion()
   const cur = readFileSync(TARGET, 'utf8')
-  // 版本白名单只做提示：真正的判据是锚点是否还在（官方升级后锚点失配才需要人工复核）
-  const unknownVersion = !SUPPORTED.includes(v)
-  if (cur.includes(MARK)) return { state: 'already' }
-  if (!cur.includes(ANCHOR)) return { state: 'anchor-mismatch', version: v }
+  if (cur.includes(MARK)) return { state: 'already', version }
+  const next = siteApply(cur)
+  if (!next) return { state: 'anchor-mismatch', version }
   const bak = TARGET + '.bak-h3rx-' + stamp()
   writeFileSync(bak, cur, 'utf8')
-  writeFileSync(TARGET, text(cur), 'utf8')
+  writeFileSync(TARGET, next, 'utf8')
   if (!syntaxOk(TARGET)) {
     writeFileSync(TARGET, cur, 'utf8')
     try { unlinkSync(bak) } catch { }
-    return { state: 'syntax-failed-restored' }
+    return { state: 'syntax-failed-restored', version }
   }
   pruneBackups(dirname(TARGET), 'index.js.bak-h3rx-')
-  return { state: 'applied', backup: bak, unknownVersion }
+  return { state: 'applied', backup: bak, version, unknownVersion: !VERIFIED_APP.includes(version) }
 }
 const appRevert = () => {
   if (!existsSync(TARGET)) return { state: 'missing' }
   const cur = readFileSync(TARGET, 'utf8')
   if (cur.includes(MARK)) {
-    const restored = cur.replace(PATCHED, ANCHOR)
-    if (!restored.includes(ANCHOR)) return { state: 'revert-mismatch' }
+    const restored = siteRevert(cur)
+    if (restored === cur || restored.includes(MARK)) return { state: 'revert-mismatch' }
     writeFileSync(TARGET, restored, 'utf8')
     if (!syntaxOk(TARGET)) { writeFileSync(TARGET, cur, 'utf8'); return { state: 'revert-syntax-failed' } }
     return { state: 'reverted' }
@@ -174,10 +259,10 @@ const asarCheck = () => {
         const want = integrityOf(content, Number(node.integrity.blockSize) || 4194304)
         if (JSON.stringify(want) !== JSON.stringify(node.integrity)) return { state: 'stale-integrity' }
       }
-      return { state: 'applied' }
+      return { state: 'applied', version: asarVersion() }
     }
-    if (text.includes(ANCHOR)) return { state: 'not-patched' }
-    return { state: 'anchor-mismatch' }
+    if (findSite(text)) return { state: 'not-patched', version: asarVersion() }
+    return { state: 'anchor-mismatch', version: asarVersion() }
   } catch (error) {
     return { state: 'unreadable', message: String(error.message || error) }
   } finally {
@@ -235,10 +320,12 @@ const verifyAsar = (oldBuf, oldInfo, newBuf, newContent, expect = 'patched') => 
     if (sha(oldBuf.subarray(ao, ao + as)) !== sha(newBuf.subarray(an, an + bs))) throw new Error('条目内容变了：' + a.path)
   }
   const node = getNode(info.header, ASAR_ENTRY)
-  const text = newBuf.subarray(info.dataStart + Number(node.offset), info.dataStart + Number(node.offset) + Number(node.size))
+  const text = newBuf.subarray(info.dataStart + Number(node.offset), info.dataStart + Number(node.offset) + Number(node.size)).toString('utf8')
   if (expect === 'patched') {
     if (!text.includes(MARK) || !text.includes('rename(tempPath, absolutePath)')) throw new Error('目标条目补丁缺失')
-  } else if (text.includes(MARK) || !text.includes(ANCHOR)) throw new Error('目标条目还原不完整')
+  } else if (text.includes(MARK) || !findSite(text)) {
+    throw new Error('目标条目还原不完整（mark=' + text.includes(MARK) + ' site=' + Boolean(findSite(text)) + '）')
+  }
   if (Number(node.size) !== newContent.length) throw new Error('目标条目大小不符')
   if (node.integrity) {
     const want = integrityOf(newContent, Number(node.integrity.blockSize) || 4194304)
@@ -268,9 +355,11 @@ const asarApply = () => {
     const want = node.integrity ? integrityOf(content, Number(node.integrity.blockSize) || 4194304) : null
     if (!node.integrity || JSON.stringify(want) === JSON.stringify(node.integrity)) return { state: 'already' }
     next = content // 内容已经打过，只补 integrity 元数据
-  } else if (text.includes(ANCHOR)) {
-    next = Buffer.from(text.replace(ANCHOR, PATCHED), 'utf8')
-  } else return { state: 'anchor-mismatch' }
+  } else {
+    const patchedText = siteApply(text)
+    if (!patchedText) return { state: 'anchor-mismatch', version: asarVersion() }
+    next = Buffer.from(patchedText, 'utf8')
+  }
   const out = buildAsar(buf, info, next)
   verifyAsar(buf, info, out, next, 'patched')
   const stampStr = stamp()
@@ -315,12 +404,8 @@ const asarRevert = () => {
   const start = info.dataStart + Number(node.offset)
   const text = buf.subarray(start, start + Number(node.size)).toString('utf8')
   if (!text.includes(MARK)) return { state: 'not-patched' }
-  let restored = text.replace(PATCHED, ANCHOR)
-  if (!restored.includes(ANCHOR) || restored.includes(MARK)) {
-    // 旧补丁字节可能与当前 PATCHED 不完全一致：按标记块整体剥离（不依赖备份）
-    restored = text.replace(/\r?\n\t\t\t\/\* h3rx-fs-patch: link-fallback \*\/\r?\n\t\t\tconst code = [^\n]*\r?\n\t\t\tif \(code === [^\n]*\r?\n/, '\n')
-  }
-  if (!restored.includes(ANCHOR) || restored.includes(MARK)) return { state: 'revert-mismatch' }
+  const restored = siteRevert(text)
+  if (restored === text || restored.includes(MARK)) return { state: 'revert-mismatch' }
   const next = Buffer.from(restored, 'utf8')
   const out = buildAsar(buf, info, next)
   verifyAsar(buf, info, out, next, 'restored')
@@ -358,14 +443,45 @@ if (argv.includes('--help') || argv.includes('-h')) {
   console.log('  --revert  用最近备份还原两处')
   process.exit(0)
 }
+if (argv.includes('--selftest')) {
+  // 纯文本回归：不碰任何文件。锚点必须同时认 0.2.1 与 0.2.2 两代真实形状，且能精确还原。
+  const cases = [
+    {
+      name: 'fs-local 0.2.1（tab 缩进，createIfAbsent !== void 0）',
+      text: ['\t\tif (createIfAbsent !== void 0) try {',
+        '\t\t\tawait linkFile(tempPath, absolutePath);',
+        '\t\t} catch (error) {',
+        '\t\t\tawait throwGuardedCreateFailure(error, absolutePath, createIfAbsent.displayPath, inspectPublicationTarget);',
+        '\t\t}'].join('\n'),
+    },
+    {
+      name: 'fs-local 0.2.2（2 空格，options.createIfAbsent，displayPath）',
+      text: ['    if (options.createIfAbsent) try {',
+        '        await linkFile(tempPath, absolutePath);',
+        '    } catch (error) {',
+        '        await throwGuardedCreateFailure(error, absolutePath, displayPath, inspectPublicationTarget);',
+        '    }'].join('\n'),
+    },
+  ]
+  let bad = 0
+  for (const c of cases) {
+    const patched = siteApply(c.text)
+    const back = patched ? siteRevert(patched) : null
+    const ok = Boolean(patched) && patched.includes(MARK) && back === c.text
+    console.log('  ' + (ok ? 'OK  ' : 'FAIL') + ' ' + c.name)
+    if (!ok) bad++
+  }
+  console.log(bad ? '  patch-fs 自测失败：' + bad : '  patch-fs 自测通过：' + cases.length)
+  process.exit(bad ? 1 : 0)
+}
 if (mode === 'check') {
   const a = onlyAsar ? { state: 'skipped' } : appCheck()
   const s = onlyApp ? { state: 'skipped' } : asarCheck()
   if (!quiet) {
-    console.log('  app  : ' + a.state + '  (' + TARGET.replace(ROOT + '\\', '') + ')')
-    console.log('  asar : ' + s.state + '  (desktop/resources/app.asar)')
+    console.log('  app  : ' + a.state + '  (' + TARGET.replace(ROOT + '\\', '') + ', fs-local ' + (a.version || '?') + ')')
+    console.log('  asar : ' + s.state + '  (desktop/resources/app.asar, fs-local ' + (s.version || '?') + ')')
   }
-  const bad = [a.state, s.state].some((x) => x === 'anchor-mismatch' || x === 'unsupported-version')
+  const bad = [a.state, s.state].some((x) => x === 'anchor-mismatch')
   if (bad) process.exit(EXIT.ANCHOR)
   const needsWork = new Set(['not-patched', 'stale-integrity', 'missing', 'entry-missing', 'header-invalid', 'unreadable'])
   const missing = [a.state, s.state].some((x) => needsWork.has(x))
@@ -373,23 +489,27 @@ if (mode === 'check') {
 }
 if (mode === 'revert') {
   let failed = false
-  if (!onlyAsar) { const r = appRevert(); say('app  : ' + r.state); if (!['reverted', 'not-patched', 'missing'].includes(r.state)) failed = true }
+  if (!onlyAsar) { const r = appRevert(); say('app  : ' + r.state + ' (fs-local ' + (pkgVersion() || '?') + ')'); if (!['reverted', 'not-patched', 'missing'].includes(r.state)) failed = true }
   if (!onlyApp) { const r = asarRevert(); say('asar : ' + r.state + (r.message ? ' ' + r.message : '')); if (!['reverted', 'not-patched', 'missing'].includes(r.state)) failed = true }
   process.exit(failed ? EXIT.ANCHOR : EXIT.OK)
 }
 let applied = 0
 let hardFail = false
+let locked = false
 if (!onlyAsar) {
-  const r = appApply((text) => text.replace(ANCHOR, PATCHED))
+  const r = appApply()
   say('app  : ' + r.state + (r.backup ? ' (' + r.backup.split('\\').pop() + ')' : '') + (r.unknownVersion ? ' [版本不在白名单，按锚点处理]' : '') + (r.message ? ' ' + r.message : ''))
   if (r.state === 'applied') applied++
-  if (r.state === 'anchor-mismatch' || r.state === 'unsupported-version' || r.state === 'syntax-failed-restored') hardFail = true
+  if (r.state === 'anchor-mismatch' || r.state === 'syntax-failed-restored') hardFail = true
 }
 if (!onlyApp) {
   const r = asarApply()
   say('asar : ' + r.state + (r.backup ? ' (' + r.backup.split('\\').pop() + ')' : '') + (r.message ? ' ' + r.message : ''))
   if (r.state === 'applied') applied++
-  if (r.state === 'anchor-mismatch' || r.state === 'locked' || r.state === 'swap-failed-restored' || r.state === 'verify-failed-restored' || r.state === 'unreadable') hardFail = true
+  if (r.state === 'locked') locked = true
+  if (r.state === 'anchor-mismatch' || r.state === 'swap-failed-restored' || r.state === 'verify-failed-restored' || r.state === 'unreadable') hardFail = true
 }
 if (hardFail) process.exit(EXIT.ANCHOR)
+// asar 被运行中的桌面占着：不是错误，下次启动会补上
+if (locked) process.exit(EXIT.LOCKED)
 process.exit(applied > 0 ? EXIT.APPLIED : EXIT.OK)

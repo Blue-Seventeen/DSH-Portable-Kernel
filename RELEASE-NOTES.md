@@ -218,3 +218,47 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.3 --force`（降级必须显式 `--force`）。
 - 网页兜底：从 Release 页下载 `harness-shell-0.1.4.zip` 整包覆盖壳文件。
+
+---
+
+## v0.2.0 — 2026-11-04
+
+运行期也能装插件，且官方升级后补丁自己会补回来。
+
+### 新增
+
+- **运行期暂存安装**：`dsh-portable.cmd plugin-stage <包名>` 在后台把下载 / 解压 / 校验做完（在影子目录里，不碰正在用的插件树），退出程序后下次启动自动启用。配套 `plugin-stage-remove` / `plugin-stage-list` / `plugin-stage-discard` / `plugin-activate`。**会话在跑时也能装插件，不再等所有会话结束**。
+- `tools\patch-all.mjs`：三族补丁（商城路径 + drain、exFAT 硬链接回退、pnpm 项目注册）的统一入口，`--check` 打印状态表，`--json` 给门禁用。
+- `tools\selftest-patches.mjs`：补丁锚点夹具（官方两代真实代码形状 + pnpm 三种写法），纯文本、不碰文件。
+- `doctor` 增加 `patches` 三行；`verify` 增加「补丁三族」「补丁锚点自测」「暂存安装」等检查（47 → 54 项）。
+
+### 修复
+
+- **商城排队会冻结其他会话**：dshmarket 的 drain 在「等别的会话空闲」期间就把空闲会话占住了，它们的新消息只进队列、不开回合（实测一条消息等了 42 分钟，取消排队后同秒才开跑）。现在等待期一个都不占，只在「全员空闲的提交边界」一次性占用。
+- **官方升级后商城装插件报 EISDIR**：桌面升到 0.2.2-rc.1 时整份替换了内置 pnpm，补丁丢失且没人重打。现在 pnpm 补丁按调用形态定位（参数改名、缩进变化都还能命中），并且每次启动与升级收尾自动重打。
+- **桌面升级后 `app.asar` 里的硬链接回退补丁失配**：改成按 `createIfAbsent → link → catch` 的结构定位，0.2.1 与 0.2.2 两代形状都能打；asar 被运行中的桌面占用时记「下次启动自动补」，不再误报失败。
+- 桌面内置 pnpm 与 `runtime\pnpm` 补丁不一致：`patch-pnpm` 现在自动发现所有副本。
+- 商城卸载插件后留下的悬空条目（清单里仍写着依赖、bundles 计数对不上）：`plugin-shared sync --prune` 清理，`version.json` 计数自动跟随。
+
+### 优化
+
+- 补丁三族有了**启动自愈**：两个启动器在 `dsh web` 之前跑 `patch-all`，`repair` / `bootstrap` / `update-app` / `update-desktop` / `update-all` 收尾也各跑一次——**官方升级后不需要你记得手动 repair**。
+- 三份 `pnpm-workspace.yaml` 的两个写入方统一为「只补缺、不重排、单个结尾换行」，`sync --check` 不再每次启动都报「将改写」。
+- `patch-pnpm` 的改动面从「整段替换 registerProject」缩到「只包一行 try/catch」，对官方改版的敏感度更低。
+- 启动顺序固定为 `activate`（暂存插件）→ `patch-all`（补丁）→ `compat-heal`，都在 dsh 起来之前完成。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变，老壳可以自动升到本版。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；`home\` 下的插件清单 / 网关配置 / 会话 / 凭证一律不碰，你自己放进 `tools\` 的脚本会保留。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过就整体回滚。
+- 升级后第一次启动会自动补三族补丁，不需要再手动跑 `repair`。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回某个更早版本：`node tools\shell-update.mjs apply --to 0.1.4 --force`（降级必须显式 `--force`）。
+- 网页兜底：从 Release 页下载 `harness-shell-0.2.0.zip` 整包覆盖壳文件。

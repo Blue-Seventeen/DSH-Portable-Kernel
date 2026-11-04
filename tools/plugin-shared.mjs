@@ -26,11 +26,12 @@
  *   node tools\plugin-shared.mjs sync [--prune]        对齐清单/依赖/lockfile（换机器、手工改过后用）
  * 通用开关：--dry-run 预演  --quiet 静默  --force 跳过"正在运行"检查  --root <便携根目录>
  */
-import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, rmSync, statSync, readdirSync, renameSync } from 'node:fs'
 import { join, dirname, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { execFileSync, spawnSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 
 const argv = process.argv.slice(2)
 const hasFlag = (f) => argv.includes(f)
@@ -229,20 +230,31 @@ const classify = (name) => {
  */
 const writeWorkspace = (dir, isProfile) => {
   const file = join(dir, 'pnpm-workspace.yaml')
-  const lines = [
-    'packages:',
-    "  - '.'",
-    '',
-    'nodeLinker: hoisted',
-    'autoInstallPeers: false',
-  ]
-  if (isProfile) lines.push('', 'modulesDir: ../node_modules')
   let old = ''
   try { old = readFileSync(file, 'utf8') } catch { /* 没有就新建 */ }
-  // 保留原有的 storeDir 行（如果有），位置放在 autoInstallPeers 之后
-  const kept = old.split('\n').filter((l) => /^\s*(storeDir|packageImportMethod)\s*:/.test(l))
-  if (kept.length) lines.splice(5, 0, '', ...kept.map((l) => l.trimEnd()))
-  const text = lines.join('\n') + '\n'
+  const eol = old.includes('\r\n') ? '\r\n' : '\n'
+  const lines = old ? old.split(/\r?\n/) : []
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop()
+  if (!old) lines.push('packages:', "  - '.'")
+  // 只补缺、不重排既有行：fix-pnpm-state.mjs 每次启动会把 storeDir / packageImportMethod
+  // 追加在末尾（按卷能力决定值）。这里一旦重排，两个写入方就会互相"纠正"，
+  // verify 的「sync 已收敛」每次都抖（0A 0A 0A / 顺序来回变）。
+  const need = [
+    ['nodeLinker', 'nodeLinker: hoisted'],
+    ['autoInstallPeers', 'autoInstallPeers: false'],
+  ]
+  if (isProfile) need.push(['modulesDir', 'modulesDir: ../node_modules'])
+  for (const [key, line] of need) {
+    const re = new RegExp('^\\s*' + key + '\\s*:')
+    const i = lines.findIndex((l) => re.test(l))
+    if (i >= 0) {
+      if (lines[i].trim() !== line) lines[i] = line
+      continue
+    }
+    if (lines.length && lines[lines.length - 1].trim() !== '') lines.push('')
+    lines.push(line)
+  }
+  const text = lines.join(eol) + eol
   const differs = old !== text
   // 注意：先比较再决定要不要真的写/记账，否则 --check 会把三份本来就一致的文件也报成"待改"
   if ((dryRun || checkMode) && differs) {
@@ -672,6 +684,507 @@ const ensureState = () => {
   })
 }
 
+/* ------------------------------------------------- 暂存安装（阶段 A / 阶段 B） */
+
+/**
+ * 为什么要分两段：插件树是 home\profiles\node_modules，全进程共用；只要有会话可能开回合，
+ * 换文件就会让"老代码 + 新文件"混着跑（这是市场 drain 存在的理由）。
+ * 所以把耗时的下载/解压/校验放到影子 home 里做（不碰 live），
+ * 真正的落盘留到"没有 dsh 进程"的时候（启动器在 dsh web 之前调用 activate）。
+ */
+const stageRoot = join(root, 'home', 'plugin-stage')
+const stageQueueFile = join(stageRoot, 'queue.json')
+const stageLockFile = join(stageRoot, '.lock')
+const stageLogsDir = join(stageRoot, 'logs')
+const stageDoneDir = join(stageRoot, 'done')
+const stageSnapDir = join(stageRoot, 'snapshots')
+const shadowRoot = join(root, 'tmp', 'stage')
+/** 影子 profile 要从 live 复制的文件（不含 node_modules：pnpm 会重建） */
+const SHADOW_COPY = ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'cordis.yml', 'cordis.patch.yml', 'compatibility.json']
+
+const stageNow = () => new Date().toISOString()
+/** "pkg@1.2.3" / "@scope/pkg@^1.2.0" / "pkg" → 包名 */
+const packageNameOf = (spec) => {
+  const s = String(spec).trim()
+  const at = s.lastIndexOf('@')
+  return at <= 0 ? s : s.slice(0, at)
+}
+/** 规格里写的版本部分：pkg@1.2.3 → "1.2.3"；不带版本的 pkg → "" */
+const exactOfSpec = (spec) => {
+  const s = String(spec).trim()
+  const at = s.lastIndexOf('@')
+  return at <= 0 ? '' : s.slice(at + 1)
+}
+const stageNewId = () => {
+  const d = new Date()
+  const p = (n, w = 2) => String(n).padStart(w, '0')
+  return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + 'T'
+    + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '-' + randomBytes(3).toString('hex')
+}
+
+const emptyQueue = () => ({ schemaVersion: 1, operations: [] })
+const readQueue = () => {
+  if (!existsSync(stageQueueFile)) return emptyQueue()
+  const q = readJson(stageQueueFile)
+  if (!q || typeof q !== 'object' || !Array.isArray(q.operations)) throw new Error('队列文件结构不符')
+  if (q.schemaVersion !== 1) throw new Error('队列是更新版本（schemaVersion ' + q.schemaVersion + '），本壳不认识')
+  return q
+}
+/** 同目录临时文件 + rename：断电也不会留下半个 JSON */
+const writeQueue = (q) => {
+  if (dryRun || checkMode) return
+  mkdirSync(stageRoot, { recursive: true })
+  const tmp = stageQueueFile + '.tmp'
+  writeFileSync(tmp, JSON.stringify(q, null, 2) + '\n', 'utf8')
+  try { if (existsSync(stageQueueFile)) copyFileSync(stageQueueFile, stageQueueFile + '.bak') } catch { /* 忽略 */ }
+  renameSync(tmp, stageQueueFile)
+}
+/** 读队列但把坏文件改名保存：启动路径不能因为一个坏 JSON 起不来 */
+const readQueueTolerant = () => {
+  try { return { queue: readQueue() } }
+  catch (e) {
+    if (!existsSync(stageQueueFile)) return { queue: emptyQueue() }
+    const bad = stageQueueFile + '.corrupt-' + Date.now()
+    try { renameSync(stageQueueFile, bad) } catch { /* 改不了就放着 */ }
+    console.error('  暂存队列读不动（' + e.message + '），已改名：' + bad.replace(root + '\\', ''))
+    return { queue: emptyQueue(), broken: bad }
+  }
+}
+
+const takeStageLock = () => {
+  const stamp = String(process.pid) + ' ' + stageNow()
+  const attempt = () => { writeFileSync(stageLockFile, stamp, { encoding: 'utf8', flag: 'wx' }) }
+  try { mkdirSync(stageRoot, { recursive: true }); attempt(); return true }
+  catch {
+    try {
+      if (Date.now() - statSync(stageLockFile).mtimeMs > 10 * 60 * 1000) { rmSync(stageLockFile, { force: true }); attempt(); return true }
+    } catch { /* 抢占失败就放弃 */ }
+    return false
+  }
+}
+const dropStageLock = () => { try { rmSync(stageLockFile, { force: true }) } catch { /* 忽略 */ } }
+
+/** 提交前要能整体回滚的那几份文件（清单 + 锁 + 发布计数） */
+const snapshotTargets = () => [
+  sharedManifestFile,
+  profileManifestFile('web'),
+  profileManifestFile('desktop'),
+  join(root, 'version.json'),
+  join(sharedDir, 'pnpm-lock.yaml'),
+  join(profileDir('web'), 'pnpm-lock.yaml'),
+  join(profileDir('desktop'), 'pnpm-lock.yaml'),
+].filter((f) => existsSync(f))
+
+const snapshotTo = (dir) => {
+  mkdirSync(dir, { recursive: true })
+  const map = {}
+  for (const f of snapshotTargets()) {
+    const name = f.slice(root.length + 1).replace(/[\\/]/g, '_')
+    copyFileSync(f, join(dir, name))
+    map[f] = name
+  }
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(map, void 0, 2) + '\n', 'utf8')
+  return Object.keys(map).length
+}
+const restoreFrom = (dir) => {
+  const map = readJson(join(dir, 'manifest.json'))
+  let n = 0
+  for (const [f, name] of Object.entries(map)) {
+    const src = join(dir, name)
+    if (!existsSync(src)) continue
+    copyFileSync(src, f)
+    n++
+  }
+  return n
+}
+
+/** 建影子 home：与 live 同形的清单/配置，node_modules 交给 pnpm 重建 */
+const buildShadow = (id) => {
+  const dir = join(shadowRoot, id)
+  const home = join(dir, 'home')
+  const profiles = join(home, 'profiles')
+  mkdirSync(profiles, { recursive: true })
+  for (const name of SHADOW_COPY) {
+    const src = join(sharedDir, name)
+    if (existsSync(src)) copyFileSync(src, join(profiles, name))
+  }
+  for (const p of PROFILES) {
+    const target = join(profiles, p)
+    mkdirSync(target, { recursive: true })
+    for (const name of SHADOW_COPY) {
+      const src = join(profileDir(p), name)
+      if (existsSync(src)) copyFileSync(src, join(target, name))
+    }
+  }
+  return { dir, home, profiles }
+}
+
+/** 在影子 home 里跑 dsh 自己的插件通道（DSH_HOME 一指，整条路径就换到影子） */
+const shadowPluginAdd = (home, spec, logFile) => {
+  const bin = join(root, 'app', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  if (!existsSync(bin)) return { ok: false, text: '找不到 dsh（' + bin + '）' }
+  const cmd = [quoteArg(nodeExe), quoteArg(bin), 'plugin', '--profile', 'web', 'add', quoteArg(spec)].join(' ')
+  out('  > [影子] dsh plugin --profile web add ' + spec)
+  if (dryRun) return { ok: true, text: '(dry-run)' }
+  const r = spawnSync(cmd, {
+    cwd: root,
+    shell: true,
+    encoding: 'utf8',
+    timeout: 900000,
+    windowsHide: true,
+    env: { ...process.env, PATH: launcherPath(), DSH_HOME: home, npm_config_store_dir: storeRoot },
+  })
+  const text = ((r.stdout || '') + (r.stderr || '')).trim()
+  try { mkdirSync(dirname(logFile), { recursive: true }); writeFileSync(logFile, text + '\n', 'utf8') } catch { /* 日志写不了不影响主流程 */ }
+  return { ok: r.status === 0, text }
+}
+
+/** 只用组合配置校验一次（不启动插件）：能发现重复 entry id、坏 patch 行 */
+const shadowDumpConfig = (home) => {
+  const bin = join(root, 'app', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
+  if (!existsSync(bin)) return { ok: false, skipped: true }
+  if (dryRun) return { ok: true, skipped: true }
+  const cmd = [quoteArg(nodeExe), quoteArg(bin), '--profile', 'web', '--dump-config'].join(' ')
+  const r = spawnSync(cmd, {
+    cwd: root, shell: true, encoding: 'utf8', timeout: 180000, windowsHide: true,
+    env: { ...process.env, PATH: launcherPath(), DSH_HOME: home },
+  })
+  return { ok: r.status === 0, skipped: false, text: ((r.stdout || '') + (r.stderr || '')).trim().slice(-800) }
+}
+
+const shadowPackageDir = (shadow, name) => join(shadow.profiles, 'node_modules', name)
+
+/** 影子里的安装结果检查：包在不在、是不是能启用的插件、跟当前 dsh 兼不兼容 */
+const validateShadow = (shadow, name) => {
+  const checks = { present: false, bundle: false, client: false, engines: 'missing', dumpConfig: 'skipped' }
+  const pkgFile = join(shadowPackageDir(shadow, name), 'package.json')
+  if (!existsSync(pkgFile)) return { checks, pkg: null }
+  checks.present = true
+  let pkg = null
+  try { pkg = readJson(pkgFile) } catch { pkg = null }
+  if (pkg) {
+    checks.bundle = Boolean(pkg.dsh && pkg.dsh.bundle)
+    checks.client = Boolean(pkg.dsh && pkg.dsh.client)
+    const unmet = unmetRequirements(pkg)
+    checks.engines = Object.keys(unmet).length ? JSON.stringify(unmet) : 'ok'
+  }
+  return { checks, pkg }
+}
+
+const stageLogFile = (id) => join(stageLogsDir, id + '.log')
+
+const findStageOp = (q, pkg) => q.operations.find((o) => o.package === pkg && o.state !== 'done')
+
+const pushStageOp = (op) => {
+  const { queue } = readQueueTolerant()
+  const same = findStageOp(queue, op.package)
+  if (same) {
+    same.spec = op.spec
+    same.requested = op.requested
+    same.exact = op.exact
+    same.kind = op.kind
+    same.checks = op.checks
+    same.state = 'pending'
+    same.attempts = 0
+    same.lastError = null
+    same.updatedAt = stageNow()
+  } else {
+    queue.operations.push(op)
+  }
+  writeQueue(queue)
+  return queue.operations.length
+}
+
+const removeStageOp = (q, id) => {
+  const i = q.operations.findIndex((o) => o.id === id)
+  if (i >= 0) q.operations.splice(i, 1)
+  return i >= 0
+}
+
+const finishStageOp = (op) => {
+  try {
+    mkdirSync(stageDoneDir, { recursive: true })
+    writeFileSync(join(stageDoneDir, op.id + '.json'), JSON.stringify(op, void 0, 2) + '\n', 'utf8')
+  } catch { /* 历史记录写不了不影响主流程 */ }
+  // 完成记录只留最近 50 条
+  try {
+    const files = readdirSync(stageDoneDir).filter((n) => n.endsWith('.json')).sort()
+    for (const f of files.slice(0, Math.max(0, files.length - 50))) rmSync(join(stageDoneDir, f), { force: true })
+  } catch { /* 忽略 */ }
+}
+
+/** live 里是否**已声明**且是这个精确版本（用户在商城自己装了 / 重复提交）
+ *  只看 installedVersion 不够：`ms` 这种传递依赖在 node_modules 里本来就能解析到，
+ *  但清单里没声明 —— 那样跳过就不会写进 dependencies，下次 pnpm install 它就消失了。 */
+const liveHasExact = (name, exact) => {
+  if (!exact) return false
+  let declared = null
+  try { declared = (readJson(sharedManifestFile).dependencies || {})[name] || null } catch { declared = null }
+  if (!declared) return false
+  const v = installedVersion(name)
+  if (!v) return false
+  return String(v).replace(/^[\^~]/, '') === String(exact).replace(/^[\^~]/, '')
+}
+
+const cmdStage = (specs) => {
+  if (!specs.length) die('用法：stage <包名或包名@版本> [...]（同名待启用项会被最新一次覆盖）')
+  const id = stageNewId()
+  const shadow = dryRun ? { dir: join(shadowRoot, id), home: join(shadowRoot, id, 'home'), profiles: join(shadowRoot, id, 'home', 'profiles') } : buildShadow(id)
+  if (!dryRun) say('已在影子目录准备：' + shadow.dir.replace(root + '\\', ''))
+  try {
+    for (const spec of specs) {
+      const name = packageNameOf(spec)
+      if (!name) { console.error('  看不懂的规格：' + spec); continue }
+      if (liveHasExact(name, exactOfSpec(spec))) { say(name + ' 已经是 ' + exactOfSpec(spec) + '，无需安装'); continue }
+      out('  正在下载并校验 ' + spec + '（不碰 live 树）……')
+      const r = shadowPluginAdd(shadow.home, spec, stageLogFile(id))
+      if (!r.ok) {
+        console.error('  暂存失败，live 插件树未改动：')
+        if (r.text) console.error(r.text.split(/\r?\n/).slice(-25).map((l) => '    ' + l).join('\n'))
+        if (/UNEXPECTED_(VIRTUAL_)?STORE/.test(r.text || '')) console.error('  → pnpm 记录过期：先跑 dsh-portable.cmd fix-state')
+        if (/Ignored build scripts|allowBuilds/i.test(r.text || '')) console.error('  → 该包需要构建脚本批准：把它打印的 allowBuilds 键写进 home\\profiles\\pnpm-workspace.yaml 再重试')
+        return 1
+      }
+      const v = validateShadow(shadow, name)
+      if (!v.checks.present) {
+        console.error('  暂存完成但找不到安装结果（' + name + '），live 未改动；详见 ' + stageLogFile(id).replace(root + '\\', ''))
+        return 1
+      }
+      const dump = v.checks.bundle ? shadowDumpConfig(shadow.home) : { ok: true, skipped: true }
+      v.checks.dumpConfig = dump.skipped ? 'skipped' : (dump.ok ? 'ok' : 'failed')
+      const exact = v.pkg && v.pkg.version ? String(v.pkg.version) : exactOfSpec(spec)
+      const created = stageNow()
+      pushStageOp({
+        id, kind: 'add', package: name, spec: name + '@' + exact, requested: spec, exact,
+        createdAt: created, updatedAt: created, state: 'pending', attempts: 0, lastError: null,
+        checks: v.checks, snapshot: 'home/plugin-stage/snapshots/' + id,
+      })
+      if (v.checks.engines !== 'ok') {
+        console.error('  注意：' + name + ' 与当前 dsh ' + runtimeVersion() + ' 不兼容（' + v.checks.engines + '）——安装后启动时会被 dsh 跳过')
+      }
+      if (v.checks.dumpConfig === 'failed') console.error('  注意：影子 --dump-config 失败，组合配置可能有冲突（详见 ' + stageLogFile(id).replace(root + '\\', '') + '）')
+      say('已暂存 ' + name + '@' + exact + '（' + (v.checks.bundle ? '插件' : '普通依赖') + '，校验 ' + JSON.stringify(v.checks) + '）')
+    }
+  } finally {
+    if (!hasFlag('--keep') && existsSync(shadow.dir)) { try { rmSync(shadow.dir, { recursive: true, force: true }) } catch { /* 删不掉留着，tidy 会清 */ } }
+  }
+  const { queue } = readQueueTolerant()
+  const pending = queue.operations.filter((o) => o.state !== 'done').length
+  if (!pending) return 0
+  if (!runningPortable().length) { say('当前没有 dsh 进程，直接提交……'); return cmdActivate() }
+  say('共 ' + pending + ' 项待启用：退出程序后下次启动自动生效（plugin-stage-list 查看 / plugin-stage-discard 取消）')
+  return 0
+}
+
+const cmdStageRemove = (names) => {
+  if (!names.length) die('用法：stage-remove <包名> [...]')
+  let queued = 0
+  for (const n of names) {
+    const v = installedVersion(n)
+    if (!v && !sharedHas(n)) { say(n + ' 没有安装，跳过'); continue }
+    const created = stageNow()
+    pushStageOp({
+      id: stageNewId(), kind: 'remove', package: n, spec: n, requested: n, exact: v || '',
+      createdAt: created, updatedAt: created, state: 'pending', attempts: 0, lastError: null,
+      checks: {}, snapshot: '',
+    })
+    queued++
+  }
+  if (!queued) return 0
+  if (!runningPortable().length) { say('当前没有 dsh 进程，直接提交……'); return cmdActivate() }
+  say('已暂存 ' + queued + ' 项卸载：退出程序后下次启动自动生效')
+  return 0
+}
+
+const cmdStageList = () => {
+  const { queue } = readQueueTolerant()
+  if (hasFlag('--json')) { console.log(JSON.stringify(queue, void 0, 2)); return 0 }
+  const ops = queue.operations.filter((o) => o.state !== 'done')
+  if (!ops.length) { say('没有暂存的插件操作'); return 0 }
+  say('暂存队列（' + ops.length + ' 项，退出程序后下次启动自动生效）：')
+  for (const o of ops) {
+    const ver = o.kind === 'add' ? (o.exact || '?') : (o.exact || '已装')
+    console.log('  ' + o.id + '  ' + o.kind.padEnd(6) + '  ' + o.package + '@' + ver
+      + '  [' + o.state + (o.attempts ? ' ×' + o.attempts : '') + ']' + (o.lastError ? '  ' + o.lastError : ''))
+  }
+  return 0
+}
+
+/** 给 verify / doctor 用：只校验队列自身是否自洽，不落盘 */
+const cmdStageStatus = () => {
+  let queue
+  try { queue = readQueue() }
+  catch (e) { console.error('  暂存队列不可用：' + e.message); return 1 }
+  const bad = queue.operations.filter((o) => !o.id || !o.kind || !o.package || !o.state)
+  const stuck = queue.operations.filter((o) => o.state === 'applying')
+  if (hasFlag('--json')) { console.log(JSON.stringify({ total: queue.operations.length, bad: bad.length, stuck: stuck.length }, void 0, 2)); return bad.length ? 1 : 0 }
+  if (bad.length) { console.error('  队列里有 ' + bad.length + ' 条缺字段的记录'); return 1 }
+  say('暂存队列自洽：' + queue.operations.length + ' 项' + (stuck.length ? '（其中 ' + stuck.length + ' 项上次提交中断，下次启动会先回滚再重试）' : ''))
+  return 0
+}
+
+const cmdStageDiscard = (ids) => {
+  const { queue } = readQueueTolerant()
+  if (!queue.operations.length) { say('队列是空的'); return 0 }
+  const all = ids.includes('all')
+  let n = 0
+  for (const id of all ? queue.operations.map((o) => o.id) : ids) {
+    if (removeStageOp(queue, id)) {
+      n++
+      try { rmSync(join(stageSnapDir, id), { recursive: true, force: true }) } catch { /* 忽略 */ }
+    }
+  }
+  writeQueue(queue)
+  say('已丢弃 ' + n + ' 项；live 插件树没有改动')
+  return 0
+}
+
+/** 提交队列：只在没有 dsh 进程时真正改文件；失败按快照回滚，绝不阻断启动 */
+const cmdActivate = () => {
+  const { queue, broken } = readQueueTolerant()
+  const ops = queue.operations.filter((o) => o.state !== 'done')
+  if (!ops.length) { if (!quiet && !checkMode) say('没有需要提交的暂存项'); return 0 }
+  const live = runningPortable()
+  if (live.length) {
+    const who = live.slice(0, 3).map((p) => p.name + '(' + p.pid + ')').join(', ')
+    say('有 ' + ops.length + ' 项暂存插件，等程序退出后才提交（当前在跑：' + who + '）')
+    return 0
+  }
+  if (checkMode) { say('有 ' + ops.length + ' 项待提交（--check 不落盘）'); return 0 }
+  if (!takeStageLock()) { say('另一个暂存操作正在进行，本次跳过'); return 0 }
+  let failed = 0
+  let applied = 0
+  try {
+    ensureScaffold()
+    ensureState()
+    for (const op of ops.slice()) {
+      const snap = join(stageSnapDir, op.id)
+      // 上次提交到一半被杀：先按快照回滚再重试这一条
+      if (op.state === 'applying') {
+        if (existsSync(join(snap, 'manifest.json'))) {
+          try { restoreFrom(snap); say('已回滚上次中断的提交：' + op.package) } catch { /* 快照不全就继续尝试提交 */ }
+        }
+      }
+      try { snapshotTo(snap) } catch (e) {
+        console.error('  快照写入失败，跳过 ' + op.package + '：' + e.message)
+        failed++
+        op.state = 'failed'
+        op.lastError = 'snapshot failed'
+        writeQueue(queue)
+        continue
+      }
+      op.state = 'applying'
+      op.attempts = (op.attempts || 0) + 1
+      writeQueue(queue)
+      let r = { ok: true }
+      if (op.kind === 'add') {
+        if (liveHasExact(op.package, op.exact)) {
+          say(op.package + '@' + op.exact + ' 已由其他途径装好，跳过')
+        } else {
+          say('提交 ' + op.package + '@' + op.exact + ' ……')
+          r = applyAdd([op.spec], { preferOffline: true })
+        }
+      } else {
+        say('提交卸载 ' + op.package + ' ……')
+        r = applyRemove([op.package])
+      }
+      if (r.ok) {
+        applied++
+        op.state = 'done'
+        op.lastError = null
+        op.updatedAt = stageNow()
+        finishStageOp(op)
+        removeStageOp(queue, op.id)
+        try { rmSync(snap, { recursive: true, force: true }) } catch { /* 忽略 */ }
+      } else {
+        failed++
+        try { restoreFrom(snap) } catch { /* 快照坏了就只能靠下一次安装覆盖 */ }
+        op.state = 'failed'
+        op.lastError = 'apply failed'
+        op.updatedAt = stageNow()
+        console.error('  提交失败，已回滚清单：' + op.package + '（详见 ' + stageLogFile(op.id).replace(root + '\\', '') + '）')
+      }
+      writeQueue(queue)
+    }
+    // 树可能被 pnpm 重写：补丁 + 豁免 + 备份清理必须补一遍
+    try { const h = compatHeal(); if (h.changed) say('已同步版本豁免 ' + h.changed + ' 处') } catch { /* 忽略 */ }
+    const pm = join(root, 'tools', 'patch-market.mjs')
+    if (existsSync(pm)) spawnSync([quoteArg(nodeExe), quoteArg(pm), '--apply', '--quiet'].join(' '), {
+      shell: true, encoding: 'utf8', timeout: 120000, windowsHide: true, env: { ...process.env, PATH: launcherPath() },
+    })
+    cleanupBaks()
+  } finally {
+    dropStageLock()
+  }
+  if (applied) say('已提交 ' + applied + ' 项暂存插件，重启 dsh 后生效')
+  if (failed) {
+    console.error('  有 ' + failed + ' 项没能提交（已回滚清单，插件树未被破坏）：plugin-stage-list 查看原因后可重试')
+    return hasFlag('--strict') ? 1 : 0
+  }
+  return 0
+}
+
+/** 无网络、无 pnpm 的密封自测：只验队列/快照这些纯逻辑 */
+const cmdStageSelftest = () => {
+  const results = []
+  const check = (name, fn) => {
+    try { fn(); results.push({ name, ok: true }); console.log('  OK   ' + name) }
+    catch (e) { results.push({ name, ok: false }); console.error('  FAIL ' + name + ' — ' + e.message) }
+  }
+  const assert = (cond, m) => { if (!cond) throw new Error(m) }
+  mkdirSync(profilesDir, { recursive: true })
+  // 造一份最小清单
+  for (const p of PROFILES) {
+    mkdirSync(profileDir(p), { recursive: true })
+    writeFileSync(profileManifestFile(p), JSON.stringify({
+      name: 'selftest-' + p, private: true, dependencies: {},
+      dsh: { profile: { bundles: ['dshmarket'] } },
+    }, void 0, 2) + '\n', 'utf8')
+  }
+  writeFileSync(sharedManifestFile, JSON.stringify({ name: 'dsh-profile-shared', private: true, dependencies: {} }, void 0, 2) + '\n', 'utf8')
+  writeFileSync(join(root, 'version.json'), JSON.stringify({ bundlesWeb: 1, bundlesDesktop: 1 }, void 0, 2) + '\n', 'utf8')
+
+  check('空队列可读', () => { const q = readQueue(); assert(Array.isArray(q.operations) && !q.operations.length, '空队列不对') })
+  check('写入后可读回', () => {
+    const q = readQueue()
+    q.operations.push({ id: 'x1', kind: 'add', package: 'p', spec: 'p@1.0.0', exact: '1.0.0', state: 'pending' })
+    writeQueue(q)
+    const back = readQueue()
+    assert(back.operations.length === 1 && back.operations[0].package === 'p', '读回不一致')
+  })
+  check('同名覆盖而不是堆积', () => {
+    pushStageOp({ id: 'x2', kind: 'add', package: 'p', spec: 'p@2.0.0', exact: '2.0.0', state: 'pending' })
+    const q = readQueue()
+    assert(q.operations.filter((o) => o.package === 'p').length === 1, '出现重复条目')
+    assert(q.operations.find((o) => o.package === 'p').exact === '2.0.0', '没有覆盖成新版本')
+  })
+  check('快照 → 改动 → 恢复回原样', () => {
+    const snap = join(stageSnapDir, 'selftest')
+    rmSync(snap, { recursive: true, force: true })
+    snapshotTo(snap)
+    const target = profileManifestFile('web')
+    const original = readFileSync(target, 'utf8')
+    writeFileSync(target, '{"broken":true}\n', 'utf8')
+    restoreFrom(snap)
+    assert(readFileSync(target, 'utf8') === original, '恢复后内容不一致')
+  })
+  check('坏队列被改名而不是抛异常', () => {
+    writeFileSync(stageQueueFile, '{ this is not json', 'utf8')
+    const r = readQueueTolerant()
+    assert(r.queue && Array.isArray(r.queue.operations), '坏队列没有兜底')
+    assert(Boolean(r.broken), '坏文件没有改名保存')
+  })
+  check('丢弃后队列清空', () => {
+    writeQueue({ schemaVersion: 1, operations: [{ id: 'y1', kind: 'add', package: 'q', spec: 'q@1', exact: '1', state: 'pending' }] })
+    cmdStageDiscard(['all'])
+    assert(readQueue().operations.length === 0, '丢弃后仍有残留')
+  })
+  const bad = results.filter((r) => !r.ok)
+  if (bad.length) { console.error('  暂存自测失败 ' + bad.length + '/' + results.length); return 1 }
+  say('暂存自测通过：' + results.length + '/' + results.length)
+  return 0
+}
+
 /* --------------------------------------------------------------------- 命令 */
 
 const warnCompat = (n) => {
@@ -774,14 +1287,28 @@ const cmdAdd = (specs) => {
   guard('安装插件')
   ensureScaffold()
   ensureState()
+  const r = applyAdd(specs)
+  if (!r.ok) die('安装失败，清单未改动。')
+  if (!r.added.length) { say('没有新增依赖，可能已经存在（已顺带对齐两侧清单）。'); return 0 }
+  say('完成：' + r.added.length + ' 个插件已共享安装。两个模式重启后生效。')
+  return 0
+}
+
+/**
+ * 装进共享根并登记为插件（不检查运行状态、不跑 ensure*，调用方负责）。
+ * 抽出来给 cmdAdd 和暂存提交（activate）共用，保证两条路径行为一致。
+ */
+const applyAdd = (specs, opts = {}) => {
   const before = depsOf(readJson(sharedManifestFile))
   // 走 dsh 自己的插件通道（和插件市场同一条路径）：它会解析规格、跑 pnpm、判定兼容性，
   // pnpm 再按 modulesDir 把包装进共享目录。装完把依赖和 lockfile 对齐到另一侧。
-  const r = dshPlugin('web', ['add', ...specs])
-  if (!r.ok) die('安装失败，清单未改动。')
+  // --prefer-offline：暂存提交时 store 已热，别再走一遍网络元数据。
+  const args = ['add', ...specs]
+  if (opts.preferOffline) args.push('--prefer-offline')
+  const r = dshPlugin('web', args)
+  if (!r.ok) return { ok: false, added: [] }
   mirrorDeps(profileManifestFile('web'))
   const added = depsOf(readJson(sharedManifestFile)).filter((n) => !before.includes(n))
-  if (!added.length) { say('没有新增依赖，可能已经存在（已顺带对齐两侧清单）。'); return 0 }
   for (const n of added) {
     // 只有声明了 dsh.bundle 的包才是"能启用的插件"；普通依赖写进 bundles 会让 dsh 启动失败
     const w = classify(n)
@@ -797,8 +1324,7 @@ const cmdAdd = (specs) => {
     warnResolve(n, w)
     warnCompat(n)
   }
-  say('完成：' + added.length + ' 个插件已共享安装。两个模式重启后生效。')
-  return 0
+  return { ok: true, added }
 }
 
 const cmdRemove = (names) => {
@@ -806,12 +1332,20 @@ const cmdRemove = (names) => {
   guard('卸载插件')
   ensureScaffold()
   ensureState()
+  const r = applyRemove(names)
+  if (!r.ok) die('卸载失败；清单已先停用，文件可能还在，可再执行一次。')
+  say('完成：' + names.length + ' 个插件已从两个模式移除。')
+  return 0
+}
+
+/** 从两个 profile 停用并从共享根卸掉（不检查运行状态，调用方负责） */
+const applyRemove = (names) => {
   for (const n of names) {
     const changed = PROFILES.filter((p) => bundleRemove(p, n))
     if (changed.length) say('已从 ' + changed.map((p) => LABEL[p]).join('、') + ' 移除 ' + n)
   }
   const r = dshPlugin('web', ['remove', ...names])
-  if (!r.ok) die('卸载失败；清单已先停用，文件可能还在，可再执行一次。')
+  if (!r.ok) return { ok: false }
   mirrorDeps(profileManifestFile('web'))
   for (const n of names) {
     const w = classify(n)
@@ -821,8 +1355,7 @@ const cmdRemove = (names) => {
       }
     }
   }
-  say('完成：' + names.length + ' 个插件已从两个模式移除。')
-  return 0
+  return { ok: true }
 }
 
 /** 共享根里是否已经真的有这个包（不能靠 classify：本地副本会先命中） */
@@ -989,7 +1522,7 @@ const cmdAllow = (names, on) => {
 const main = () => {
   const command = positional[0]
   const rest = positional.slice(1)
-  if (!existsSync(profilesDir)) die('找不到 home\\profiles，这不是便携版目录？')
+  if (!existsSync(profilesDir) && command !== 'stage-selftest') die('找不到 home\\profiles，这不是便携版目录？')
   if (hasFlag('--check')) checkMode = true
   if (hasFlag('--wildcard')) {
     console.error('官方 dsh 只接受"精确版本号列表"；写 "*" 会被整条忽略并静默跳过插件，--wildcard 已移除。')
@@ -1025,11 +1558,23 @@ const main = () => {
     case 'enable': return cmdDisable(rest, false)
     case 'allow': return cmdAllow(rest, true)
     case 'revoke': return cmdAllow(rest, false)
+    case 'stage': return cmdStage(rest)
+    case 'stage-remove': return cmdStageRemove(rest)
+    case 'stage-list': return cmdStageList()
+    case 'stage-status': return cmdStageStatus()
+    case 'stage-discard': return cmdStageDiscard(rest)
+    case 'stage-selftest': return cmdStageSelftest()
+    case 'activate': return cmdActivate()
     default:
-      console.log('用法：plugin-shared.mjs <list|add|remove|adopt|disable|enable|allow|revoke|sync> [...]')
+      console.log('用法：plugin-shared.mjs <list|add|remove|adopt|disable|enable|allow|revoke|sync|stage|activate> [...]')
       console.log('  list                看共享集与两个模式的对照')
       console.log('  add <规格>...        装进共享根，两个模式一起启用')
       console.log('  remove <包名>...     两个模式一起卸掉并删文件')
+      console.log('  stage <规格>...      后台暂存安装：下载/校验在影子目录做，退出程序后下次启动自动启用')
+      console.log('  stage-remove <包名>...  暂存卸载（同上，退出后生效）')
+      console.log('  stage-list          看暂存队列')
+      console.log('  stage-discard <id|all>  丢弃暂存项，不碰 live 插件树')
+      console.log('  activate            提交暂存队列（两个启动器自动调用；没有 dsh 进程时才改文件）')
       console.log('  disable <包名>...    两个模式一起停用，文件留着（可 enable 回来）')
       console.log('  enable <包名>...     重新启用已停用的插件（版本不符会自动写豁免）')
       console.log('  allow <包名>...      强行允许版本不符的插件（写精确版本号，两个模式一起）')

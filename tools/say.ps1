@@ -30,6 +30,8 @@ $texts = @{
   'bootstrap-start'     = '  缺少官方 dsh（app / desktop / 运行时）。正在自动下载补齐：需要联网，约 700 MB，每一步都有进度条'
   'bootstrap-fail'      = '  自举没完成（已下载的部分会保留）。检查网络后重跑：dsh-portable.cmd bootstrap'
   'bootstrap-done'      = '  自举完成，可以正常启动'
+  'patch-needs-adapt'   = "  有补丁没打上（官方层可能刚升级过）：商城装卸插件、exFAT 上新建文件可能失败。`n  看详情：dsh-portable.cmd doctor（patches 三行）；修复：dsh-portable.cmd repair"
+  'patch-failed'        = "  补丁写入失败（可能桌面程序占着 app.asar）：先退出 DeepSeek Harness，再运行 dsh-portable.cmd repair"
 }
 
 $text = $texts[$Key]

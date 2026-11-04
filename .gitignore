@@ -38,6 +38,10 @@ node_modules/
 /home/preset-runtime/
 /home/dsh-market/
 /home/.plugin-manager/
+# 商城自己的运行记录（drain 队列 / 操作日志）：本机状态，不进仓库
+/home/profiles/*/.dsh-market/
+# 暂存安装队列（待启用的插件操作 + 快照/日志）：本机运行状态，不进仓库
+/home/plugin-stage/
 /home/.credentials.yaml
 /home/.anonymous-user-id
 /home/settings.yaml

@@ -28,6 +28,147 @@ const quiet = argv.includes('--quiet')
 const say = (m) => console.log((quiet ? '' : '  ') + m)
 const MARKER = '/* [portable-shared] 共享安装回退（由 tools\\patch-market.mjs 生成，勿手改） */'
 
+/* ------------------------------------------------ 第二族补丁：drain 占用语义 */
+/**
+ * dshmarket 1.73.6 的 drain（#411 的维护边界）在「排队等别的会话空闲」期间就把空闲
+ * Agent 全部 claim 住了。claim = Agent.runMaintenance()，DSH 会把该会话之后收到的消息
+ * 只放进 next-turn 队列（latch）而不开回合 —— 用户看到的就是「会话暂停」。
+ *
+ * 实测（2026-11-04）：12:23:42 入队的 dsh-skills-manager 安装一直等到 13:05；
+ * 期间 cf3c85c6 在 12:32:08 收到的「你好」没有开回合；13:05:30.643 用户取消排队，
+ * 同一秒 turn/start。等待期被占用的空闲会话 = 根因。
+ *
+ * 修法：维护占用只属于「提交边界」。等待期间一个都不占；全员空闲时再一次性 claim
+ * （抢不到就回到等待）。改写文件期间仍然占住全部 Agent —— 那是 #199 的安全不变量。
+ */
+const DRAIN_MARKER = '/* [portable-drain]'
+/** 三段锚点替换：原文 → 新文（都是 dshmarket 1.73.6 的逐字原文，升级后失配要重建） */
+const DRAIN_HUNKS = [
+  {
+    id: 'D1',
+    from: [
+      '            const unheld = afterClaims.filter(agent => !this.holds.has(agent.id));',
+      '            if (unheld.length === 0 && request.forceDeferred !== true) {',
+      '                return await this.runInline(operation);',
+      '            }',
+    ],
+    to: [
+      '            const unheld = afterClaims.filter(agent => !this.holds.has(agent.id));',
+      '            if (unheld.length === 0 && request.forceDeferred !== true) {',
+      '                return await this.runInline(operation);',
+      '            }',
+      '            ' + DRAIN_MARKER + ' 推迟执行的请求还要等别的会话空闲；等待期间不能攥着空闲 Agent',
+      '               的维护占用 —— 占用会让它们的 inbox 只入队、不开回合（用户看到的就是',
+      '               “会话暂停”）。占用只属于提交边界：drainAgents 全员空闲那一遍。 */',
+      '            this.releaseAll();',
+    ],
+  },
+  {
+    id: 'D2',
+    from: [
+      '            let claimed = 0;',
+      '            for (const agent of unheld) {',
+      '                if (operation.cancelRequested || this.disposeRequested)',
+      '                    break;',
+      '                if (this.claim(agent))',
+      '                    claimed += 1;',
+      '            }',
+      '            const current = this.liveAgents();',
+      '            if (current === null)',
+      '                return false;',
+      '            const remaining = current.filter(agent => !this.holds.has(agent.id));',
+      '            this.setWait(operation, remaining);',
+      '            if (remaining.length === 0)',
+      '                return true;',
+      '            const waitingForTurn = remaining.some(agent => agent.status === \'running\');',
+      '            const activity = this.waitForActivity();',
+      '            try {',
+      '                await Promise.race([',
+      '                    Promise.all(remaining.map(agent => agent.whenIdle().catch(() => undefined))),',
+      '                    activity.promise,',
+      '                ]);',
+      '            }',
+      '            finally {',
+      '                activity.dispose();',
+      '            }',
+      '            // A claim can fail without the Agent being busy (another maintenance',
+      '            // task owns it). `whenIdle` then stays pending, so this yield only',
+      '            // matters for a host that reports idle while refusing the claim. A',
+      '            // turn that just ended retries immediately.',
+      '            if (claimed === 0 && !waitingForTurn)',
+      '                await new Promise(resolve => setTimeout(resolve, 25));',
+    ],
+    to: [
+      '            ' + DRAIN_MARKER + ' 只在「全员都空闲」的提交边界上 claim。等待期间一个都不占：',
+      '               占用会 latch 新消息，用户看到的就是别的会话被商城排队操作冻住。 */',
+      '            const busyNow = unheld.filter(agent => agent.status === \'running\');',
+      '            if (busyNow.length > 0) {',
+      '                const activity = this.waitForActivity();',
+      '                try {',
+      '                    await Promise.race([',
+      '                        Promise.all(busyNow.map(agent => agent.whenIdle().catch(() => undefined))),',
+      '                        activity.promise,',
+      '                    ]);',
+      '                }',
+      '                finally {',
+      '                    activity.dispose();',
+      '                }',
+      '                continue;',
+      '            }',
+      '            let claimed = 0;',
+      '            for (const agent of unheld) {',
+      '                if (operation.cancelRequested || this.disposeRequested)',
+      '                    break;',
+      '                if (this.claim(agent))',
+      '                    claimed += 1;',
+      '            }',
+      '            const current = this.liveAgents();',
+      '            if (current === null)',
+      '                return false;',
+      '            const remaining = current.filter(agent => !this.holds.has(agent.id));',
+      '            this.setWait(operation, remaining);',
+      '            if (remaining.length === 0)',
+      '                return true;',
+      '            ' + DRAIN_MARKER + ' 抢不到只可能是另一个维护任务占着它（它的 whenIdle 要等',
+      '               那边结束才 resolve），让一次行，避免热转。 */',
+      '            if (claimed === 0)',
+      '                await new Promise(resolve => setTimeout(resolve, 25));',
+    ],
+  },
+  {
+    id: 'D3',
+    from: [
+      '        const active = this.active;',
+      '        if (active !== null && !active.settled) {',
+      '            const claimed = this.claim(drainable);',
+    ],
+    to: [
+      '        const active = this.active;',
+      '        ' + DRAIN_MARKER + ' 等待期新建的会话要能正常开第一回合：只有进入提交/改写',
+      '           阶段才在它开回合前占用它。 */',
+      '        if (active !== null && !active.settled',
+      '            && (active.state === \'queued-for-mutation\' || active.state === \'running\' || active.state === \'verifying\')) {',
+      '            const claimed = this.claim(drainable);',
+    ],
+  },
+]
+const lines = (arr) => arr.join('\n')
+/** 幂等套用：已含新文的跳过；找不到原文的记为「失配」（市场升级改版时会这样） */
+const drainPatch = (text) => {
+  let out = text
+  const applied = []
+  const missing = []
+  for (const h of DRAIN_HUNKS) {
+    const from = lines(h.from)
+    const to = lines(h.to)
+    if (out.includes(to)) { applied.push(h.id); continue }
+    if (!out.includes(from)) { missing.push(h.id); continue }
+    out = out.replace(from, to)
+    applied.push(h.id)
+  }
+  return { text: out, applied, missing }
+}
+
 /**
  * 失败时除了打印，还写一行到 logs\patch-market.err。
  * 启动器是用 --quiet 静默调用的：补丁没打上时黑框一闪而过没人看见，
@@ -202,15 +343,28 @@ const main = () => {
   if (!existsSync(profileJs)) { fail('没找到 lib\\profile.js，放弃（未改任何文件）'); return 1 }
   const pending = scanPending()
   const complete = pending.length === 0
+  // drain 语义补丁：与路径补丁互相独立，各自报告
+  const drainFile = join(marketDir, 'lib', 'drain.js')
+  const drainSrc = existsSync(drainFile) ? readFileSync(drainFile, 'utf8') : null
+  const drained = drainSrc === null ? { text: null, applied: [], missing: ['no-drain.js'] } : drainPatch(drainSrc)
+  const drainComplete = drainSrc !== null && drained.missing.length === 0 && drained.text === drainSrc
+  const drainText = drainSrc === null
+    ? 'drain 语义补丁：缺 lib\\drain.js'
+    : drainComplete
+      ? 'drain 语义补丁：已打 ' + DRAIN_HUNKS.length + '/' + DRAIN_HUNKS.length
+      : drained.missing.length
+        ? 'drain 语义补丁：锚点失配（' + drained.missing.join(',') + '）'
+        : 'drain 语义补丁：未打（可套用 ' + drained.applied.length + '/' + DRAIN_HUNKS.length + '）'
 
   if (checkOnly) {
     const unc = scanUncovered()
     const uncText = unc.map((u) => u.file + ':' + u.line).join(', ')
     const tail = unc.length ? ('；另有 ' + unc.length + ' 处未覆盖的 node_modules 引用（' + uncText + '）') : ''
     const sitesNow = () => listJs(join(marketDir, 'lib')).reduce((a, f) => a + (readFileSync(f, 'utf8').match(/profilePackageDir\(/g) || []).length, 0)
-    if (complete) { say('dshmarket ' + version + '，补丁：已打（字面 ' + sitesNow() + ' 处 = 1 定义 + ' + (sitesNow() - 1) + ' 调用点）' + tail); return 0 }
+    if (complete && drainComplete) { say('dshmarket ' + version + '，补丁：已打（字面 ' + sitesNow() + ' 处 = 1 定义 + ' + (sitesNow() - 1) + ' 调用点）；' + drainText + tail); return 0 }
+    if (complete) { say('dshmarket ' + version + '，补丁：已打；' + drainText); return 1 }
     const left = pending.reduce((a, b) => a + b.changed, 0)
-    say('dshmarket ' + version + '，补丁：不完整，还剩 ' + left + ' 处（' + pending.map((p) => p.file.slice(marketDir.length + 1)).join(', ') + '）')
+    say('dshmarket ' + version + '，补丁：不完整，还剩 ' + left + ' 处（' + pending.map((p) => p.file.slice(marketDir.length + 1)).join(', ') + '）；' + drainText)
     // 退出码必须有鉴别力：只看文本的门禁（含 doctor 的提示）才不会被"半打"骗过去
     return 1
   }
@@ -239,11 +393,11 @@ const main = () => {
     }
     if (bad.length) { fail('还原不完整：' + bad.join(', ')); return 1 }
     const left = scanPending()
-    say('已用 cache\\market-pristine-' + marketVersion + ' 还原 ' + n + ' 个文件')
+    say('已用 cache\\market-pristine-' + marketVersion + ' 还原 ' + n + ' 个文件（含 lib\\drain.js 的语义补丁，若已打过）')
     say('  还原后仍有 ' + left.reduce((a, b) => a + b.changed, 0) + ' 处是原文（预期：现在跑 fix-market 会重新打上）')
     return 0
   }
-  if (complete && !force) { if (!quiet) say('dshmarket ' + version + '：补丁已在，无需改动'); return 0 }
+  if (complete && drainComplete && !force) { if (!quiet) say('dshmarket ' + version + '：补丁已在，无需改动（' + drainText + '）'); return 0 }
 
   mkdirSync(backupRoot, { recursive: true })
   // 关键顺序：先对原文做替换，再插入 helper —— 否则 helper 自己的函数体会被改写，导致无限递归
@@ -294,8 +448,28 @@ const main = () => {
     if (existsSync(backupRoot)) for (const f of readdirSync(backupRoot)) copyFileSync(join(backupRoot, f), join(marketDir, f.replace(/_/g, '\\')))
     return 1
   }
+  // drain 语义补丁：与路径补丁分开写，失配时只回滚 drain.js（路径补丁继续有效）
+  let drainSites = 0
+  if (!drainComplete && drainSrc !== null) {
+    if (drained.missing.length) {
+      fail('drain.js 结构不符（锚点失配：' + drained.missing.join(',') + '），未改 lib\\drain.js。市场升级改版后需要重建这三段；'
+        + '在此期间商城排队仍会冻结空闲会话（其它补丁不受影响）')
+      return 1
+    }
+    keepOriginal(drainFile)
+    writeFileSync(drainFile, drained.text, 'utf8')
+    try { execFileSync(process.execPath, ['--check', drainFile], { stdio: 'pipe' }) } catch {
+      try { copyFileSync(backupOf(drainFile), drainFile) } catch { /* 备份不可用时保持原样，下面的 fail 会提醒 */ }
+      fail('drain 语义补丁语法自检失败，已还原 lib\\drain.js')
+      return 1
+    }
+    drainSites = drained.applied.length
+    if (!quiet) say('已改 lib\\drain.js（' + drainSites + ' 处语义：等待期不再占用空闲 Agent）')
+  }
   const sitesFinal = listJs(libDir).reduce((a, f) => a + (readFileSync(f, 'utf8').match(/profilePackageDir\(/g) || []).length, 0)
-  say('补丁完成：dshmarket ' + version + '，' + (files + 1) + ' 个文件、字面 ' + sitesFinal + ' 处（1 定义 + ' + (sitesFinal - 1) + ' 调用点，原件备份 cache\\market-pristine-' + marketVersion + '）')
+  say('补丁完成：dshmarket ' + version + '，' + (files + 1) + ' 个文件、字面 ' + sitesFinal + ' 处（1 定义 + ' + (sitesFinal - 1) + ' 调用点）；'
+    + (drainComplete ? drainText : 'drain 语义补丁：已打 ' + DRAIN_HUNKS.length + '/' + DRAIN_HUNKS.length)
+    + '（原件备份 cache\\market-pristine-' + marketVersion + '）')
   return 0
 }
 try {

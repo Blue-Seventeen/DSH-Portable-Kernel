@@ -338,6 +338,9 @@ const fixWorkspaceYaml = (profDir, name, storePath) => {
     }
   }
   if (!dirty) return false
+  // 收敛格式：只留一个结尾换行。plugin-shared.mjs 的 writeWorkspace 也是这个形状，
+  // 两边不一致的话 verify 的"sync 已收敛"会每次启动都抖（曾经的 0A 0A 0A）。
+  while (lines.length > 1 && lines[lines.length - 1].trim() === '') lines.pop()
   safeWrite(file, lines.join(eol) + eol)
   say(`[${name}] pnpm-workspace.yaml 已对齐（storeDir / modulesDir）`)
   return true
