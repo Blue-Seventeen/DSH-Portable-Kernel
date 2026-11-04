@@ -69,3 +69,5 @@ desktop.ini
 /home/profiles/pnpm-workspace.yaml
 /home/profiles/web/pnpm-workspace.yaml
 /home/profiles/desktop/pnpm-workspace.yaml
+# 本地校验套件：只在工作区用，不进 GitHub、不随壳发布
+/test/

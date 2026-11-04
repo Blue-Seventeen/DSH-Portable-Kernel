@@ -1417,6 +1417,7 @@ const cmdSync = () => {
   for (const p of PROFILES) for (const b of bundlesOf(readProfile(p))) all.add(b)
   let changed = 0
   const localOnly = []
+  const localHint = []
   const dangling = []
   const incompatible = []
   const exempted = []
@@ -1430,7 +1431,14 @@ const cmdSync = () => {
       }
       continue
     }
-    if (PROFILES.every((p) => w[p].kind === 'missing')) { dangling.push(n); continue }
+    if (PROFILES.every((p) => w[p].kind === 'missing')) {
+      // 保护：文件可能还躺在某个 profile 自己的 node_modules 里（历史遗留/刚被手工搬动）。
+      // 这种情况下 prune 只提示、不删——删了就等于把用户已装的插件丢掉（2026-11-04 事故）。
+      const localCopy = PROFILES.find((p) => existsSync(join(profileDir(p), 'node_modules', n, 'package.json')))
+      if (localCopy) { localHint.push(n + '（' + profileDir(localCopy) + '\\node_modules）'); continue }
+      dangling.push(n)
+      continue
+    }
     const dir = (w.web && w.web.dir) || (w.desktop && w.desktop.dir)
     if (Object.keys(compatOf(dir)).length) {
       // 不兼容：只有已经豁免（强行允许）过的才往另一边推，顺带把两边的豁免文件补齐
@@ -1452,6 +1460,8 @@ const cmdSync = () => {
   }
   if (pruneFlag) {
     for (const n of dangling) {
+      const stillOnDisk = PROFILES.some((p) => existsSync(join(profileDir(p), 'node_modules', n, 'package.json')))
+      if (stillOnDisk) { localHint.push(n); continue }
       for (const p of PROFILES) {
         if (bundleRemove(p, n)) { changed++; say('已从 ' + LABEL[p] + ' 移除悬空项 ' + n) }
       }
@@ -1462,6 +1472,7 @@ const cmdSync = () => {
   }
   if (!quiet) {
     if (localOnly.length) say('只有本地副本（要单副本请执行 adopt）：' + localOnly.join(', '))
+    if (localHint.length) say('仍存在本地副本、prune 跳过（先用 adopt 收编再清理）：' + localHint.join('，'))
     if (dangling.length && !pruneFlag) say('悬空项（加 --prune 清理）：' + dangling.join(', '))
     if (incompatible.length) say('与当前 dsh 不兼容、保持原样（会被跳过）：' + incompatible.join(', '))
     if (exempted.length) say('已豁免、两边都启用：' + exempted.join(', '))
@@ -1575,6 +1586,7 @@ const main = () => {
       console.log('  stage-list          看暂存队列')
       console.log('  stage-discard <id|all>  丢弃暂存项，不碰 live 插件树')
       console.log('  activate            提交暂存队列（两个启动器自动调用；没有 dsh 进程时才改文件）')
+      console.log('  stage-selftest      暂存引擎自测（密封、不联网；给 test/ 与排障用）')
       console.log('  disable <包名>...    两个模式一起停用，文件留着（可 enable 回来）')
       console.log('  enable <包名>...     重新启用已停用的插件（版本不符会自动写豁免）')
       console.log('  allow <包名>...      强行允许版本不符的插件（写精确版本号，两个模式一起）')

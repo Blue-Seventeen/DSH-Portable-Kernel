@@ -6,7 +6,7 @@
   "tag": "v0.3.1",
   "releasedAt": "2026-11-04T14:26:30.407Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T14:27:08.121Z",
+  "generatedAt": "2026-11-04T14:38:51.189Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -55,7 +55,7 @@
     "tools/patch-fs.mjs": "0cb3f0d1939dda16fe1b9cd67c55ea954a7df88b9d4c0b82e743d3fa5adbb84f",
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
-    "tools/plugin-shared.mjs": "99cf19e30a393f67b9704ee3b7996d5cf7bf1f17f34f7162f321a949b0341ebe",
+    "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
     "tools/preflight.mjs": "d290c4abae519ca2612d8e3d6a4827ce764836ee9a9f81dd7e98057286528730",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
     "tools/say.ps1": "45ad446f810aa32787623876ff694fe159b52f2c7442604e26f51deca440d6c1",
