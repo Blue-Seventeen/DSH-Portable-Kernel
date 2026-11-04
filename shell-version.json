@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.3.3",
-  "tag": "v0.3.3",
-  "releasedAt": "2026-11-04T14:51:02.519Z",
+  "shellVersion": "0.3.4",
+  "tag": "v0.3.4",
+  "releasedAt": "2026-11-04T16:34:16.780Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T16:32:32.723Z",
+  "generatedAt": "2026-11-04T16:35:03.289Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -83,12 +83,22 @@
   ],
   "notes": {
     "added": [
-      "无（补丁版只修问题）。"
+      "`shell-update snooze --clear`：撤销\"这次不更新\"，让 preflight 立刻恢复更新提示（以前只能等 7 天）。",
+      "`verify` 新增「各 profile 下没有本地 `node_modules`」（共享布局硬约束，57 项）：插件只能有一份共享副本，profile 下出现本地 `node_modules` 就报红。",
+      "本地 `test/` 套件扩到 **72 项**（新增换装引擎单测、健壮性、导入一致性 lint 等，不随壳发布）。"
     ],
     "fixed": [
-      "**preflight 升级后仍显示\"有可用更新：旧版本\"**：`[11]` 与头部提示直接读 `tmp\\shell-check.json`，只要里面写着\"有更新\"就照念，不看缓存属于哪个本地版本、也不比较远端是否真的更新。现在必须同时满足\"24 小时内 + 缓存 local == 当前安装版本 + 远端严格更新\"才提示（例如本地已 0.3.2 时，缓存里的 0.3.1 不再出现）。"
+      "**`snooze --clear` 打印成功但文件还在**：`unlinkSync` 未 import，`ReferenceError` 被空的 `catch {}` 静默吞掉。已补 import，并加**导入一致性 lint**（静态比对 `tools/*.mjs` 里用到的内置函数是否 import/定义）。",
+      "**`clean-ship refresh` 不幂等**：每次重写 `shipTime` / `generatedAt`，工作区永远脏、无法判断是否真有变化。现在内容未变时保留旧时间戳（连跑两次 diff 逐字节相同）。",
+      "**`preflight` 升级失败静默回菜单**：`apply` 退出码非 0 时会打印失败原因（`cmd-failed` / `cmd-blocked`）并停住，不再让用户误以为已升级。",
+      "**`preflight [11]` 把不同状态混成一句\"没有新版本\"**：现在按 `update-available` / `blocked` / `local-newer` / `up-to-date` / 缓存属于旧版本 / 还没检查过 / 状态未知 分别显示。",
+      "**`doctor` 的 `shell-upd` 会念旧缓存**：改为\"24h 内 + 缓存 local == 当前版本 + 远端确实更新\"三条判据，与 `preflight` 一致。",
+      "**`fix-pnpm-state` 两个问题**：① 会进 `.backup-*` 之类的点目录改 yaml（现在跳过）；② 没有 env.cmd 上下文时把 `packageImportMethod` 写成 `auto`（现在回退读 `tmp\\fs-profile.cmd`，exFAT 上仍是 `copy`）。",
+      "**`download.mjs` 无参时抛 `Failed to parse URL from undefined`**：补参数校验，打印用法并退出 2。"
     ],
-    "optimized": [],
+    "optimized": [
+      "`clean-ship refresh` / `verify` 的幂等性可验证（连跑两次指纹一致），发布前更容易判断\"这次到底改了什么\"。"
+    ],
     "breaking": [
       "无。清单 schema 仍是 2、`updaterMin` 不变；`home\\` 下的数据一律不碰。"
     ],
@@ -99,11 +109,11 @@
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.2 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.3.3.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.3 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.3.4.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.3",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.4",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -114,8 +124,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.3.3.zip",
-    "sha256": "a3d063b0a105063304545f0d8fe1c73f01c8d09d77e3da96e690946de0085f3a",
-    "bytes": 1857866
+    "name": "harness-shell-0.3.4.zip",
+    "sha256": "61f5c7bceee2837b3510d24cc32f4efd22199ad315d7365279b4f57087fd1221",
+    "bytes": 1860293
   }
 }
