@@ -52,6 +52,7 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.
 if errorlevel 1 goto :dsh_menu
 echo.
 rem re-run the self-check so the user sees the new shell version right away
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-recheck
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\preflight.mjs"
 goto :dsh_menu
 :dsh_skip_upd
@@ -76,8 +77,11 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.
 goto :end
 :web
 call "%ROOT%start-web.cmd"
+set "RC=%ERRORLEVEL%"
 goto :end
 :desk
 call "%ROOT%start-desktop.cmd"
+set "RC=%ERRORLEVEL%"
 :end
-endlocal
+if not defined RC set "RC=0"
+endlocal & exit /b %RC%

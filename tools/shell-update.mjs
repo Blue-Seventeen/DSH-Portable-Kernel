@@ -770,20 +770,31 @@ const runCheck = async (opts) => {
   finish(clean.exitCode)
 }
 
+const NOTE_LIMIT = 2
 const printPrompt = (s) => {
   if (s.status === 'up-to-date') return
   if (s.status === 'blocked') { line('  壳更新 ' + (s.local || '?') + ' -> ' + s.remote + ' 被挡下：' + ((s.blockers || [])[0] || {}).message); return }
-  line('  发现壳更新：' + (s.local || '(未知)') + ' -> ' + s.remote + '（' + s.changed + ' 个文件，保留你的改动 ' + (s.skippedLocalChanges || []).length + ' 个）')
+  // 一处一行的要点式：以前把一节里所有条目用"；"拼成一行，控制台里会变成一大坨。
+  line('')
+  line('  发现壳更新  ' + (s.local || '(未知)') + '  →  ' + s.remote + '     ' + s.changed + ' 个文件；保留你的改动 ' + (s.skippedLocalChanges || []).length + ' 个')
+  line('  ' + '─'.repeat(54))
   const n = s.notes || {}
   const breaking = Array.isArray(n.breaking) ? n.breaking.filter((x) => String(x).trim()) : []
-  if (breaking.length) line('  ⚠ 破坏性变更：' + breaking.map((x) => String(x).trim()).join('；'))
+  if (breaking.length) {
+    line('  ⚠ 破坏性变更')
+    for (const x of breaking.slice(0, NOTE_LIMIT)) line('      · ' + String(x).trim())
+    if (breaking.length > NOTE_LIMIT) line('      … 还有 ' + (breaking.length - NOTE_LIMIT) + ' 条')
+  }
   for (const [key, label] of NOTES_SECTIONS) {
     if (key === 'breaking') continue
     const arr = Array.isArray(n[key]) ? n[key].filter((x) => String(x).trim()) : []
     if (!arr.length) continue
-    line('  ' + label + '：' + arr.slice(0, 2).map((x) => String(x).trim()).join('；') + (arr.length > 2 ? ' …' : ''))
+    line('  ' + label)
+    for (const x of arr.slice(0, NOTE_LIMIT)) line('      · ' + String(x).trim())
+    if (arr.length > NOTE_LIMIT) line('      … 还有 ' + (arr.length - NOTE_LIMIT) + ' 条（node tools\\shell-update.mjs notes 看全部）')
   }
   if (s.notesUrl) line('  详情：' + s.notesUrl)
+  line('')
 }
 
 // ---- stage ------------------------------------------------------------------

@@ -5,10 +5,12 @@ import os from 'node:os'
 import { execFileSync } from 'node:child_process'
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const ok = (m) => console.log('  [OK]   ' + m)
-const warn = (m) => console.log('  [注意] ' + m)
-const bad = (m) => console.log('  [问题] ' + m)
+let oks = 0
+let warns = 0
 let problems = 0
+const ok = (m) => { oks++; console.log('  [OK]   ' + m) }
+const warn = (m) => { warns++; console.log('  [注意] ' + m) }
+const bad = (m) => console.log('  [问题] ' + m)
 const fail = (m) => { bad(m); problems++ }
 
 // tmp\fs-profile.cmd 是 tools\fs-profile.ps1 探测本机卷后写下的 "set K=V" 片段。
@@ -30,15 +32,38 @@ const fsProfile = readFsProfile()
 // 片段没生成时退回环境（env.cmd 会读同一份片段），两者都没有就是"未探测"
 const profileName = () => (fsProfile && fsProfile.DSH_FS_PROFILE) || process.env.DSH_FS_PROFILE || ''
 
-console.log('\n=== DSH-Portable-Kernel 便携版 环境自检 ===\n')
+// 头部：一屏之内先看到"我是谁 / 什么版本 / 在哪 / 有没有更新"，细节留给下面的分区
+const readShellInfo = () => {
+  try {
+    const mf = JSON.parse(readFileSync(join(root, 'shell-version.json'), 'utf8'))
+    return { version: String(mf.shellVersion || ''), channel: String(mf.channel || 'stable'), tag: String(mf.tag || '') }
+  } catch { return { version: '', channel: '', tag: '' } }
+}
+const readUpdateHint = () => {
+  try {
+    const c = JSON.parse(readFileSync(join(root, 'tmp', 'shell-check.json'), 'utf8'))
+    const s = c.summary || {}
+    const at = Number(c.at || s.at || 0)
+    if (at > 0 && Date.now() - at < 24 * 3600 * 1000 && s.status === 'update-available') return String(s.remote || '')
+  } catch { /* 没检查过就不提示 */ }
+  return ''
+}
+const shellInfo = readShellInfo()
+const shellUpdate = readUpdateHint()
+const RULE = '─'.repeat(60)
+console.log('')
+console.log('  ' + RULE)
+console.log('  DSH-Portable-Kernel · 便携版自检')
+console.log('  壳版本  ' + (shellInfo.version || '（读不到 shell-version.json）') + (shellInfo.version ? '  (' + shellInfo.channel + ')' : '') + (shellUpdate ? '    →  ' + shellUpdate + ' 可更新' : ''))
+console.log('  安装位置  ' + root)
+console.log('  ' + RULE)
 
-console.log('[1] 系统')
-console.log('  位置: ' + root)
+console.log('\n[01] 系统')
 console.log('  系统: ' + (os.version?.() || os.type() + ' ' + os.release()))
 console.log('  架构: ' + os.arch())
 if (os.arch() === 'x64') ok('64 位系统'); else fail('需要 64 位 Windows（当前 ' + os.arch() + '）')
 
-console.log('\n[2] 程序目录完整性')
+console.log('\n[02] 程序目录完整性')
 for (const [name, probe, label] of [
   ['app', 'node_modules/@deepseek-ai/dsh/lib/bin.js', '引擎'],
   ['desktop', 'DeepSeek Harness.exe', '桌面窗口'],
@@ -50,14 +75,14 @@ for (const [name, probe, label] of [
   else fail(`${label}（${name}）缺失或不完整 —— 复制时可能没拷全`)
 }
 
-console.log('\n[3] 运行环境')
+console.log('\n[03] 运行环境')
 const vcDir = join(root, 'runtime', 'vcredist')
 const vcFiles = ['msvcp140.dll', 'vcruntime140.dll']
 const missingVc = vcFiles.filter((f) => !existsSync(join(vcDir, f)))
 if (missingVc.length === 0) ok('已内置 VC++ 运行库（不需要系统另装）')
 else warn('内置 VC 运行库不全：' + missingVc.join(', ') + '（若启动报缺少 DLL，安装 vc_redist.x64.exe）')
 
-console.log('\n[4] 空间与可写性')
+console.log('\n[04] 空间与可写性')
 try {
   const st = statfsSync(root)
   const freeGB = (st.bavail * st.bsize) / 1073741824
@@ -125,7 +150,7 @@ try {
   else ok(`字节放大 ${pre}${ampf.toFixed(2)}×（实际/逻辑）：${head}${tail}`)
 } catch (e) { warn('无法计算字节放大率：' + (e && e.message ? e.message : e)) }
 
-console.log('\n[5] 路径长度')
+console.log('\n[05] 路径长度')
 // 长路径支持要读注册表，进程环境变量里没有这个信息
 let longPaths = false
 try {
@@ -142,7 +167,7 @@ if (longPaths) ok(`当前根路径 ${rootLen} 字符（系统已开长路径支�
 else if (budget >= need) ok(`当前根路径 ${rootLen} 字符，余量充足（还剩 ${budget}）`)
 else warn(`当前根路径 ${rootLen} 字符偏长：官方程序解包后最长路径约 180 字符，Windows 上限 260，只剩 ${budget}。建议挪到更短的目录（例如 X:\Hack3rX-Harness），或开启系统长路径支持（注册表 LongPathsEnabled=1）`)
 
-console.log('\n[6] 网络')
+console.log('\n[06] 网络')
 const probe = async (name, url) => {
   try {
     const r = await fetch(url, { signal: AbortSignal.timeout(4000) })
@@ -152,7 +177,7 @@ const probe = async (name, url) => {
 await probe('插件源 npmjs', 'https://registry.npmjs.org/@deepseek-ai%2Fdsh/latest')
 await probe('更新源 deepseek', 'https://download.deepseek.com/dsh-desk/feeds/win-x64/nightly.yml')
 
-console.log('\n[7] 便携模式确认')
+console.log('\n[07] 便携模式确认')
 if (!process.env.DSH_HOME) {
   warn('没有检测到 DSH_HOME —— 直接从 exe 双击会用到 C 盘默认目录，请始终用 start-web.cmd / start-desktop.cmd 启动')
 } else if (process.env.DSH_HOME.toLowerCase().startsWith(root.toLowerCase())) {
@@ -165,19 +190,19 @@ if (existsSync(join(root, 'home', '.credentials.yaml'))) {
   warn('凭据是明文存在 home\\.credentials.yaml 里的：U 盘丢失 = 密钥泄露，请妥善保管')
 } else warn('没有找到登录凭据文件，首次可能要登录')
 
-console.log('\n[8] 数据文件')
+console.log('\n[08] 数据文件')
 try {
   const sdir = join(root, 'home', 'storages')
   const bomFiles = []
   for (const f of readdirSync(sdir)) {
     if (!f.endsWith('.json')) continue
     const buf = readFileSync(join(sdir, f))
-    if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) bomFiles.push(f)
+    if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[ 2] === 0xbf) bomFiles.push(f)
   }
   if (bomFiles.length) warn('这些数据文件带了 BOM，DSH 会拒绝加载：' + bomFiles.join(', ') + '（运行 dsh-portable.cmd repair 可修）')
   else ok('数据文件格式正常（无 BOM）')
 } catch (e) { if (e && e.code === 'ENOENT') ok('还没有数据文件（首次运行时会自动创建）'); else warn('数据文件检查跳过：' + e.message) }
-console.log('\n[9] 换机相关')
+console.log('\n[09] 换机相关')
 // 9.1 当前盘是否支持“来自其他计算机”标记（只有 NTFS 支持这种附加数据流）
 let ntfs = false
 try {
@@ -245,22 +270,14 @@ if (existsSync(join(sysRoot, 'System32', 'curl.exe'))) ok('系统 curl 就位（
 else ok('没有系统 curl：主下载失败时不会兜底（不影响正常运行）')
 
 // 壳版本与更新状态：只读（不下载、不写任何文件；真正的检查由启动流程里的 shell-update check 负责）
-console.log('\n[11] 壳版本')
-let shellVer = ''
-let shellChan = 'stable'
-try {
-  const mf = JSON.parse(readFileSync(join(root, 'shell-version.json'), 'utf8'))
-  shellVer = String(mf.shellVersion || '')
-  shellChan = String(mf.channel || 'stable')
-} catch { }
-if (shellVer) console.log('  壳版本：' + shellVer + ' (' + shellChan + ')')
-else warn('读不到 shell-version.json（壳清单缺失：这个目录可能不是完整的壳）')
-try {
-  const c = JSON.parse(readFileSync(join(root, 'tmp', 'shell-check.json'), 'utf8'))
-  const s = c.summary || {}
-  const at = Number(c.at || s.at || 0)
-  // 只在 24h 缓存新鲜、且远端确实更新时提示；启动流程自己还有一次带缓存的上游检查
-  if (at > 0 && Date.now() - at < 24 * 3600 * 1000 && s.status === 'update-available') console.log('  壳更新：' + s.remote + ' 可用（启动时可选择更新）')
-} catch { }
-console.log('\n=== ' + (problems === 0 ? '自检通过，可以开始使用' : `发现 ${problems} 个需要处理的问题`) + ' ===\n')
+console.log('\n[11] 壳版本明细')
+if (shellInfo.version) {
+  console.log('  清单 tag  ' + (shellInfo.tag || ('v' + shellInfo.version)))
+  if (shellUpdate) warn('有可用更新：' + shellUpdate + '（启动时可选择更新；不想看到可执行 shell-update snooze）')
+  else ok('24 小时内没有发现新版本（检查结果来自 tmp/shell-check.json）')
+} else {
+  warn('读不到 shell-version.json（壳清单缺失：这个目录可能不是完整的壳）')
+}
+console.log('\n=== ' + (problems === 0 ? '自检通过，可以开始使用' : `发现 ${problems} 个需要处理的问题`) + ' ===')
+console.log('  结果：OK ' + oks + ' · 注意 ' + warns + ' · 问题 ' + problems + '\n')
 process.exit(problems === 0 ? 0 : 1)

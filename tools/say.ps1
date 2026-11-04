@@ -13,6 +13,7 @@ $texts = @{
   'store-mismatch'      = "  插件依赖环境和当前 pnpm 大版本不一致：市场里会装不上也卸不掉（pnpm 报 UNEXPECTED_STORE）。`n  先彻底退出 DeepSeek Harness，再运行：dsh-portable.cmd plugin-repair -Force"
   'shell-found'         = '  发现壳更新：{0}'
   'shell-updating'      = '  正在更新壳（只换壳，不动 app / desktop / 运行时和你的数据）……'
+  'shell-recheck'      = '  更新完成，重新自检：'
   'shell-updated'       = '  壳已更新到 {0}，重新启动后生效'
   'shell-update-failed' = '  壳更新没完成，已回滚到原来能用的版本；详见 logs\shell-update.err'
   'shell-update-prompt'   = '  发现壳更新。现在更新吗？（更新内容见上方；只换壳，不动 app / desktop / 运行时和你的数据）'

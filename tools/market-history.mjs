@@ -44,7 +44,11 @@ const stamp = () => {
   return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds())
 }
 
-const profiles = (profSel === 'all' ? ['web', 'desktop'] : [profSel]).filter((p) => p === 'web' || p === 'desktop')
+if (!['all', 'web', 'desktop'].includes(profSel)) {
+  console.error('  --profile 只能是 all / web / desktop（收到：' + profSel + '）')
+  process.exit(2)
+}
+const profiles = profSel === 'all' ? ['web', 'desktop'] : [profSel]
 const dirFor = (p) => join(ROOT, 'home', 'profiles', p, '.dsh-market')
 
 /** 读 JSONL：返回 [{ raw, json|null }]；解析不了的坏行原样保留（不擅自删证据） */
@@ -65,7 +69,6 @@ const rewrite = (file, lines) => {
 }
 
 let totalRemoved = 0
-let failed = 0
 for (const p of profiles) {
   const dir = dirFor(p)
   const drainFile = join(dir, 'drain.ndjson')
@@ -120,4 +123,4 @@ for (const p of profiles) {
 if (checkOnly) { say('（--check：一个字节都没写）'); process.exit(0) }
 if (totalRemoved > 0) say('完成：共清掉 ' + totalRemoved + ' 条；重启商城后不会再显示（备份为同名 .bak-<时间戳>）')
 else say('完成：没有需要清理的记录')
-process.exit(failed ? 1 : 0)
+process.exit(0)
