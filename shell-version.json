@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.3.1",
-  "tag": "v0.3.1",
-  "releasedAt": "2026-11-04T14:26:30.407Z",
+  "shellVersion": "0.3.2",
+  "tag": "v0.3.2",
+  "releasedAt": "2026-11-04T14:41:36.160Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T14:40:52.642Z",
+  "generatedAt": "2026-11-04T14:42:14.931Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -86,25 +86,25 @@
       "无（补丁版只修问题）。"
     ],
     "fixed": [
-      "**0.3.0 升级会删掉 `home\\profiles\\{,\\web,\\desktop}\\pnpm-workspace.yaml`**：升到 0.3.0 后 pnpm 回落到 `$PNPM_HOME\\store`，与 `node_modules\\.modules.yaml` 记录不一致，该 profile 的装/卸全部被拒绝；市场还会把插件装进 profile 自己的 `node_modules` 形成第二份副本。现在 `computeRemoved()` 的保护集包含\"新清单 userOwned + 已安装清单 userOwned + 机器配置文件\"，**绝不再删这三份 yaml**。",
-      "**yaml 被删后不会自愈**：`fix-pnpm-state` 以前遇到缺失文件直接跳过；现在会**重建**（packages / nodeLinker / autoInstallPeers / modulesDir + storeDir + packageImportMethod 一次写全），启动器与升级迁移都会跑它。"
+      "**`sync --prune` 会删掉仍有本地副本的插件**：判定\"悬空\"以前只看共享目录，若某依赖的文件还在某个 profile 的 `node_modules` 里（历史遗留、或刚被手工搬动），会连依赖和 bundles 一起清掉。现在 prune 前先探每个 profile，仍有本地副本就**只提示不删**，并在真正删除前再兜一次底。",
+      "`plugin-shared` 的用法说明漏了 `stage-selftest`（暂存引擎自测），补上。"
     ],
     "optimized": [],
     "breaking": [
       "无。清单 schema 仍是 2、`updaterMin` 不变；`home\\` 下的数据一律不碰。"
     ],
     "upgrade": [
-      "替换清单里的壳文件；**不会再删**三份 `pnpm-workspace.yaml`（0.3.0 删掉的会在升级后由 `fix-pnpm-state` 自动重建）。",
-      "换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`），把 store 配置对齐回当前机器。",
+      "替换清单里的壳文件；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。",
+      "换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`）。",
       "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.0 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.3.1.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.1 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.3.2.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.2",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -115,8 +115,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.3.1.zip",
-    "sha256": "e932ce6b30293fcc8e8d9e757710e29905fb4a0f521d11366541b2fb4443a751",
-    "bytes": 1856583
+    "name": "harness-shell-0.3.2.zip",
+    "sha256": "74e4990d34b8dac1788daf6269389735226973fd2c05e4c99015ab9297060332",
+    "bytes": 1857133
   }
 }
