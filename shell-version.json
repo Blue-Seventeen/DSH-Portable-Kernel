@@ -6,15 +6,15 @@
   "tag": "v0.2.0",
   "releasedAt": "2026-11-04T12:16:33.028Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T12:30:25.631Z",
+  "generatedAt": "2026-11-04T12:34:51.967Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "cc844c587452ddedd8eec1573792b4e7493f510583431a51e36323b702e18e6f",
-    "RELEASE-NOTES.md": "1fe34acff0e6d884c7fa09c75c6f72aa483ae4dd8a65a547e9dff9af00871256",
+    "README.md": "ec85484b98c4812d51806031d66e7e527e049553156bb59c98384c238a6400a3",
+    "RELEASE-NOTES.md": "9717deab7b25aa481d018165cfbbd90c0d2dad0ed9a7b80b707732497911f4b0",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -65,7 +65,7 @@
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
-    "tools/shell-release.mjs": "b880b19055d09fd2c36af52e90c604f51bdd6521b94462e9715b0c68be4248c0",
+    "tools/shell-release.mjs": "d5e064619c12992cb9f2761f5f5d0d5df5edada44bcb25e12a42a086f537a343",
     "tools/shell-update.mjs": "386e121588fe5292a6fab71f0adb2c489a5274379b952f7dc6e240d556ecf439",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "c267b9f775c06a5e7a51e904fc28737127bc6aa14bf8be466dd1dfa688534624"

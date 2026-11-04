@@ -1,4 +1,4 @@
-# DSH-Protable-Kernel（DSH 便携版 · Hack3rX-Harness）
+# DSH-Portable-Kernel（DSH 便携版 · Hack3rX-Harness）
 
 > 一句话记住：**这个仓库只装"壳"，官方那层（app / desktop / 运行时）第一次运行时自动下载**——所以它小、干净、可以放进 U 盘，也可以直接 clone。
 

@@ -1,4 +1,4 @@
-# DSH-Protable-Kernel 发布说明（RELEASE-NOTES）
+# DSH-Portable-Kernel 发布说明（RELEASE-NOTES）
 
 本文件随壳发布：每个版本一节，`shell-update check` 会把它当成"更新细则"展示给用户，
 `tools\shell-release.mjs prepare` 会把 `## v<版本>` 这一节的六个小节解析成清单里的 `notes`。
@@ -70,7 +70,7 @@
 
 ## v0.1.1 — 2026-11-04
 
-第二个公开版本（产品名：**DSH-Protable-Kernel**）。这一版只做修复与硬化，没有破坏性变更。
+第二个公开版本（产品名：**DSH-Portable-Kernel**）。这一版只做修复与硬化，没有破坏性变更。
 
 ### 新增
 
