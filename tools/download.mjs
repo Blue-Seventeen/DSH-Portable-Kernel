@@ -1,6 +1,11 @@
 import { createWriteStream, existsSync, unlinkSync, renameSync, statSync } from 'node:fs'
 
 const [url, dest] = process.argv.slice(2)
+// 参数缺失时要给人话，而不是 fetch(undefined) 抛 "Failed to parse URL"
+if (!url || !dest) {
+  console.error('用法：node tools\\download.mjs <url> <目标文件>')
+  process.exit(2)
+}
 const part = dest + '.part'
 const t0 = Date.now()
 let lastPrint = 0

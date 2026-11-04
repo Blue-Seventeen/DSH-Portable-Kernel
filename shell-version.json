@@ -6,7 +6,7 @@
   "tag": "v0.3.3",
   "releasedAt": "2026-11-04T14:51:02.519Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T15:31:24.087Z",
+  "generatedAt": "2026-11-04T15:45:08.904Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -32,7 +32,7 @@
     "home/profiles/web/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/web/package.json": "392bd32b0781f8ec3375c2786051ece65b14a8324255dda5a983ae43a5ec4e43",
     "home/profiles/web/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
-    "preflight.cmd": "e6a720b8db00154c80c759c5f24336095f35b5997817b9e67751c89c4b3641dc",
+    "preflight.cmd": "c2b929ad7b5810f57f94a4d45f644f8629d97e2eaad1190f11f2e5137a61aea9",
     "runtime/vcredist/concrt140.dll": "2405355f0a58067b258f8df33c327e3a3d716eaac5a3a5aebb757842d85bd376",
     "runtime/vcredist/msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
     "runtime/vcredist/msvcp140_1.dll": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
@@ -45,7 +45,7 @@
     "tools/7z/7z.dll": "e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812",
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
     "tools/clean-ship.mjs": "5c045ea9182deddc9d0c88c71c69ea0afd4c0d1332fea3f821f8c3742b62853e",
-    "tools/download.mjs": "b24e406b496acfe167f638ee04c9f02dfcf859dacd836ce2f00884a488257c78",
+    "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
     "tools/fix-pnpm-state.mjs": "d6fc2f34bfbe3f3d40696fd2e4535a4815659fbb2163ef6c996f81fd2c132e4c",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",

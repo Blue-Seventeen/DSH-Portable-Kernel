@@ -49,7 +49,17 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1
 choice /C YN /T 30 /D N /N /M " > "
 if errorlevel 2 goto :dsh_skip_upd
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" shell-update apply -Force
-if errorlevel 1 goto :dsh_menu
+set "RC=%ERRORLEVEL%"
+rem A failed or blocked apply must NOT fall back to the menu silently (it used to, and users thought they had updated)
+if not "%RC%"=="0" (
+  echo.
+  if "%RC%"=="3" (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key cmd-blocked -Value %RC%
+  ) else (
+    powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key cmd-failed -Value %RC%
+  )
+  goto :dsh_menu
+)
 echo.
 rem re-run the self-check so the user sees the new shell version right away
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-recheck
