@@ -6,14 +6,14 @@
   "tag": "v0.3.3",
   "releasedAt": "2026-11-04T14:51:02.519Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T15:45:08.904Z",
+  "generatedAt": "2026-11-04T15:59:58.293Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "0459176762534a4d210f4fbb9d1468121ee392437b6c5628c744703038d1a599",
+    "README.md": "f75f77706f437cfda6f9420a41190f0d0d81a6a2d1255017290698fcd9ea8d94",
     "RELEASE-NOTES.md": "37d19e24ffdc18ef6b4c500c64e9a392d98fe23a24eb62d1217035c3d39fdb2f",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
@@ -56,7 +56,7 @@
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
     "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
-    "tools/preflight.mjs": "1c57778adb930e5b67666ab3d242d8a0cfc0fa2a9137aa07bbe1aefb4442de9d",
+    "tools/preflight.mjs": "435dbc4982cf7377616115213f686afad38d6ae614b263d66e86f14cdfbb6789",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
     "tools/say.ps1": "45ad446f810aa32787623876ff694fe159b52f2c7442604e26f51deca440d6c1",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
@@ -69,7 +69,7 @@
     "tools/shell-update.mjs": "772b3c47ada76844b28e1e532ccf0849b8ec3f1ef01afc1e2aa0dc640642d779",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
-    "tools/verify-shell.mjs": "24639c0029cc1a21b2aa980737177ab341d6c86b8026834bf8c933d1dc4fb3a7"
+    "tools/verify-shell.mjs": "82eeb69ae3f1617e9be98b3d4ca776c1344976b917b6f473742b4dc662007ac5"
   },
   "userOwned": [
     "home/cordis.patch.yml",

@@ -610,6 +610,13 @@ check('清单里没有禁止路径', () => {
   add(label, bad.length === 0, bad.length ? bad.length + ' 条命中黑名单：' + bad.slice(0, 4).join(', ') : rels.length + ' 条都没碰 app/desktop/runtime/会话/凭证/版本文件')
 })
 
+check('各 profile 下没有本地 node_modules（共享布局）', () => {
+  const label = '各 profile 下没有本地 node_modules（共享布局）'
+  const bad = ['web', 'desktop'].filter((p) => exists(join(ROOT, 'home/profiles', p, 'node_modules')))
+  add(label, bad.length === 0, bad.length
+    ? '存在本地 node_modules：' + bad.join('、') + '（会形成第二份插件副本）→ 删掉并跑 fix-state'
+    : '只有 home/profiles/node_modules 一份')
+})
 check('pnpm store 与 node_modules 记录一致', () => {
   const label = 'pnpm store 与 node_modules 记录一致'
   // 2026-11-04 事故：升级把三份 pnpm-workspace.yaml 换成"没有 storeDir"的干净版 → pnpm 漂到

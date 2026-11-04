@@ -4,7 +4,7 @@
   "sourceProfile": "(redacted)",
   "dshVersion": "0.2.1-rc.5",
   "nodeVersion": "v24.21.0",
-  "homeFiles": 449,
+  "homeFiles": 448,
   "homeSizeMB": 11.4,
   "appFiles": 17197,
   "appSizeMB": 407.1,
@@ -12,7 +12,7 @@
   "desktopSizeMB": 1044.4,
   "desktopAsarBytes": 182767000,
   "desktopAsarSizeMB": 174.3,
-  "shipTime": "2026-11-04T15:45:08.873Z",
+  "shipTime": "2026-11-04T15:59:58.265Z",
   "bundlesWeb": 6,
   "bundlesDesktop": 13,
   "shipNote": "发布版：仅便携壳 + 主题 + dsh 插件商城 + 会话删除插件；官方 app/desktop/runtime 由 bootstrap 自动下载"

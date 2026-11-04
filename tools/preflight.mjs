@@ -57,27 +57,28 @@ const cmpVersion = (a, b) => {
   return 0
 }
 /**
- * 只读缓存里的"有更新"结论。必须同时满足三条才显示，否则一律不提示：
- *   1) 缓存 24h 内；2) 缓存里的 local == 当前安装版本（升级后旧缓存立刻作废）；
- *   3) 远端版本**确实比本地新**（防止把"上个版本记下的 0.3.1"念给 0.3.2 的用户）。
+ * 读"最近一次真查"的缓存，并判断它是否还能代表现在：
+ *   1) 24h 内；2) 缓存里的 local == 当前安装版本（升级后旧缓存立刻作废）。
+ * 注意：这里只是**取事实**，不同状态怎么展示由调用方决定 —— 之前只返回"有更新"，
+ * 于是 blocked / local-newer / 没查过 都被错误地显示成"没有发现新版本"。
  */
-const readUpdateHint = () => {
+const readCheckCache = () => {
   try {
     const c = JSON.parse(readFileSync(join(root, 'tmp', 'shell-check.json'), 'utf8'))
     const s = c.summary || {}
     const at = Number(c.at || s.at || 0)
-    if (!(at > 0 && Date.now() - at < 24 * 3600 * 1000)) return ''
-    if (s.status !== 'update-available') return ''
     const local = String(s.local || '')
     const remote = String(s.remote || '')
-    if (!local || !remote) return ''
-    if (local !== String(shellInfo.version || '')) return ''
-    if (cmpVersion(remote, local) <= 0) return ''
-    return remote
-  } catch { /* 没检查过就不提示 */ }
-  return ''
+    const fresh = at > 0 && Date.now() - at < 24 * 3600 * 1000
+    const usable = fresh && !!local && local === String(shellInfo.version || '')
+    return { fresh, usable, status: String(s.status || ''), local, remote }
+  } catch { return { fresh: false, usable: false, status: '', local: '', remote: '' } }
 }
-const shellUpdate = readUpdateHint()
+const checkCache = readCheckCache()
+/** 头部只提示"确实有更新"这一种情况（blocked / 旧缓存 / 没查过 都不打扰） */
+const shellUpdate = (checkCache.usable && checkCache.status === 'update-available' && cmpVersion(checkCache.remote, checkCache.local) > 0)
+  ? checkCache.remote
+  : ''
 const RULE = '─'.repeat(60)
 console.log('')
 console.log('  ' + RULE)
@@ -301,8 +302,13 @@ else ok('没有系统 curl：主下载失败时不会兜底（不影响正常运
 console.log('\n[11] 壳版本明细')
 if (shellInfo.version) {
   console.log('  清单 tag  ' + (shellInfo.tag || ('v' + shellInfo.version)))
-  if (shellUpdate) warn('有可用更新：' + shellUpdate + '（启动时可选择更新；不想看到可执行 shell-update snooze）')
-  else ok('24 小时内没有发现新版本（检查结果来自 tmp/shell-check.json）')
+  if (!checkCache.fresh) ok('最近 24 小时还没检查过更新（下次启动会查）')
+  else if (!checkCache.usable) ok('更新检查结论属于旧版本 ' + (checkCache.local || '?') + '，下次启动会重新查')
+  else if (checkCache.status === 'update-available' && shellUpdate) warn('有可用更新：' + shellUpdate + '（启动时可选择更新；不想看到可执行 shell-update snooze）')
+  else if (checkCache.status === 'blocked') warn('有 ' + checkCache.remote + '，但被兼容性挡下（运行 shell-update check 看原因）')
+  else if (checkCache.status === 'local-newer') ok('本地比远端新（本地 ' + checkCache.local + ' / 远端 ' + checkCache.remote + '）')
+  else if (checkCache.status === 'up-to-date') ok('已是最新（' + checkCache.local + '）')
+  else ok('更新检查状态未知（' + (checkCache.status || '空') + '），下次启动会重新查')
 } else {
   warn('读不到 shell-version.json（壳清单缺失：这个目录可能不是完整的壳）')
 }
