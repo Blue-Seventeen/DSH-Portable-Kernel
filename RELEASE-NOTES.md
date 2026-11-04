@@ -439,3 +439,44 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.2 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.3.3.zip` 整包覆盖壳文件。
+---
+
+## v0.3.4 — 2026-11-05
+
+把上一轮排查里发现的"静默失败"和"门禁盲区"补上，并加固发布流程。
+
+### 新增
+
+- `shell-update snooze --clear`：撤销"这次不更新"，让 preflight 立刻恢复更新提示（以前只能等 7 天）。
+- `verify` 新增「各 profile 下没有本地 `node_modules`」（共享布局硬约束，57 项）：插件只能有一份共享副本，profile 下出现本地 `node_modules` 就报红。
+- 本地 `test/` 套件扩到 **72 项**（新增换装引擎单测、健壮性、导入一致性 lint 等，不随壳发布）。
+
+### 修复
+
+- **`snooze --clear` 打印成功但文件还在**：`unlinkSync` 未 import，`ReferenceError` 被空的 `catch {}` 静默吞掉。已补 import，并加**导入一致性 lint**（静态比对 `tools/*.mjs` 里用到的内置函数是否 import/定义）。
+- **`clean-ship refresh` 不幂等**：每次重写 `shipTime` / `generatedAt`，工作区永远脏、无法判断是否真有变化。现在内容未变时保留旧时间戳（连跑两次 diff 逐字节相同）。
+- **`preflight` 升级失败静默回菜单**：`apply` 退出码非 0 时会打印失败原因（`cmd-failed` / `cmd-blocked`）并停住，不再让用户误以为已升级。
+- **`preflight [11]` 把不同状态混成一句"没有新版本"**：现在按 `update-available` / `blocked` / `local-newer` / `up-to-date` / 缓存属于旧版本 / 还没检查过 / 状态未知 分别显示。
+- **`doctor` 的 `shell-upd` 会念旧缓存**：改为"24h 内 + 缓存 local == 当前版本 + 远端确实更新"三条判据，与 `preflight` 一致。
+- **`fix-pnpm-state` 两个问题**：① 会进 `.backup-*` 之类的点目录改 yaml（现在跳过）；② 没有 env.cmd 上下文时把 `packageImportMethod` 写成 `auto`（现在回退读 `tmp\fs-profile.cmd`，exFAT 上仍是 `copy`）。
+- **`download.mjs` 无参时抛 `Failed to parse URL from undefined`**：补参数校验，打印用法并退出 2。
+
+### 优化
+
+- `clean-ship refresh` / `verify` 的幂等性可验证（连跑两次指纹一致），发布前更容易判断"这次到底改了什么"。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`home\` 下的数据一律不碰。
+
+### 升级会做什么
+
+- 替换清单里的壳文件；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。
+- 换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`）。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.3 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.3.4.zip` 整包覆盖壳文件。
