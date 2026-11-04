@@ -6,7 +6,7 @@
   "tag": "v0.3.3",
   "releasedAt": "2026-11-04T14:51:02.519Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-04T15:59:58.293Z",
+  "generatedAt": "2026-11-04T16:13:01.197Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -44,7 +44,7 @@
     "start-web.cmd": "6f94a04942f5d59681b5e54b194fdb6095ea456350742bb47e05666570c38c51",
     "tools/7z/7z.dll": "e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812",
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
-    "tools/clean-ship.mjs": "5c045ea9182deddc9d0c88c71c69ea0afd4c0d1332fea3f821f8c3742b62853e",
+    "tools/clean-ship.mjs": "dadd28bab80f7b864b37b3b677103966079cbd2a31821636fad0439277909048",
     "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
     "tools/fix-pnpm-state.mjs": "d6fc2f34bfbe3f3d40696fd2e4535a4815659fbb2163ef6c996f81fd2c132e4c",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",

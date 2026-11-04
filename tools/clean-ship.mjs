@@ -173,7 +173,15 @@ const refreshVersion = () => {
     v.desktopAsarSizeMB = Math.round((v.desktopAsarBytes / 1048576) * 10) / 10
     v.sourceInstall = '(redacted)'
     v.sourceProfile = '(redacted)'
+    // 内容没变就不要刷新时间戳：否则每次 refresh 都把工作区弄脏（无法判断"这次到底变没变"）
+    const prevText = existsSync(vf) ? readFileSync(vf, 'utf8') : ''
+    let prev = null
+    try { prev = JSON.parse(prevText) } catch { prev = null }
     v.shipTime = new Date().toISOString()
+    if (prev && typeof prev === 'object') {
+      const strip = (o) => { const c = Object.assign({}, o); delete c.shipTime; return JSON.stringify(c) }
+      if (prev.shipTime && strip(prev) === strip(v)) v.shipTime = prev.shipTime
+    }
     const text = JSON.stringify(v, null, 2) + '\n'
     // 明确按 UTF-8 写、无 BOM：审计机副本的 shipNote 曾出现 GBK 误读的乱码
     writeFileSync(vf, Buffer.from(text, 'utf8'))
@@ -233,6 +241,11 @@ const refreshShellManifest = () => {
     out.migrations = SHELL_MIGRATIONS
     // zip 资产由 shell-release 打包后写回；refresh 不生成 zip，但已经存在就原样保住（否则发布后置校验必红）
     if (old.zip && typeof old.zip === 'object' && !Array.isArray(old.zip)) out.zip = old.zip
+    // 内容没变就保留旧 generatedAt，避免 refresh 每次改写时间戳
+    if (typeof old === 'object' && old && old.generatedAt) {
+      const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c.generatedAt; return JSON.stringify(c) }
+      if (strip(old) === strip(out)) out.generatedAt = old.generatedAt
+    }
     const text = JSON.stringify(out, null, 2) + '\n'
     // 明确按 UTF-8 写、无 BOM：tools/shell-update.mjs 会拒绝带 BOM 的清单
     writeFileSync(f, Buffer.from(text, 'utf8'))
