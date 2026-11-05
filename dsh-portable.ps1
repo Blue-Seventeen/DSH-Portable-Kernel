@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
   [Parameter(Position = 0)]
-  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'plugin-stage', 'plugin-stage-remove', 'plugin-stage-list', 'plugin-stage-discard', 'plugin-activate', 'market-history', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
+  [ValidateSet('doctor', 'verify', 'tidy', 'clean-ship', 'sync-home', 'update-app', 'update-desktop', 'update-all', 'check-updates', 'check-quiet', 'repair', 'unblock', 'fix-state', 'reset-shell', 'fix-office', 'fix-market', 'focus-desktop', 'show-desktop', 'close-desktop', 'launch-desktop', 'auto-prepare', 'plugin-list', 'plugin-add', 'plugin-remove', 'plugin-adopt', 'plugin-sync', 'plugin-allow', 'plugin-revoke', 'plugin-repair', 'plugin-stage', 'plugin-stage-remove', 'plugin-stage-list', 'plugin-stage-discard', 'plugin-activate', 'market-history', 'fix-attachment', 'bootstrap', 'shell-update', 'fs-profile', 'migrate-store')]
   [string]$Action = 'doctor',
   [Parameter(Position = 1)]
   [string]$From,
@@ -1841,6 +1841,17 @@ switch ($Action) {
     exit (Plugin-Tool @('stage-discard', $From))
   }
   'plugin-activate' { exit (Plugin-Tool @('activate')) }
+  # 附件库回到便携目录：撤掉 cordis.patch.yml 里的 dshHome 重定向，并把旧附件复制回来。
+  # 先把 tools\patch-attachment.mjs 的补丁打上再执行（没补丁会被拒，退出码 4）。
+  'fix-attachment' {
+    $fa = Join-Path $Root 'tools\fix-attachment.mjs'
+    if (-not (Test-Path -LiteralPath $fa)) { Warn2 '缺少 tools\fix-attachment.mjs'; exit 2 }
+    $faArgs = @()
+    if ($From -eq 'apply') { $faArgs += '--apply' }
+    if ($Force) { $faArgs += '--purge-old' }
+    & $Node $fa @faArgs | Out-Host
+    exit $LASTEXITCODE
+  }
   # 商城"操作历史"清不掉：界面只关当次显示，服务端读的是 <profile>\.dsh-market\drain.ndjson。
   # 这里直接整理那几个文件（默认清已结束记录；-Force 连 log.ndjson 一起清）。
   'market-history' {
@@ -1990,11 +2001,11 @@ switch ($Action) {
     Say ("leftovers : " + (Get-LeftoverCount))
     Say ("auto-upd  : " + $(if (Test-Path (Join-Path $Root 'desktop\resources\app-update.yml')) { 'ENABLED' } else { 'disabled' }))
     Say ("market    : " + (Get-MarketPatchState))
-    # 三族补丁状态：applied / needs-work / failed / n-a。needs-work 通常是官方刚升级、壳还没适配
+    # 四族补丁状态：applied / needs-work / failed / n-a。needs-work 通常是官方刚升级、壳还没适配
     $patchTool = Join-Path $Root 'tools\patch-all.mjs'
     if (Test-Path -LiteralPath $patchTool) {
-      $patchLines = @(& $Node $patchTool --check 2>&1 | Where-Object { $_ -match '^\s+(market|fs|pnpm)\s' })
-      if ($patchLines.Count -eq 0) { Say 'patches   : （三族状态读取失败）' }
+      $patchLines = @(& $Node $patchTool --check 2>&1 | Where-Object { $_ -match '^\s+(market|fs|pnpm|attachment)\s' })
+      if ($patchLines.Count -eq 0) { Say 'patches   : （四族状态读取失败）' }
       foreach ($pl in $patchLines) { Say ('patches   : ' + ([string]$pl).Trim()) }
     }
     Say ("compat    : " + (Get-CompatState))

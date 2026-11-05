@@ -88,7 +88,7 @@ dsh-portable.cmd bootstrap
 | --- | --- |
 | `bootstrap` | 只有壳时补齐官方那层（可反复跑） |
 | `doctor` | 只读体检：残留、7z、Office 补丁、市场补丁、版本豁免 |
-| `verify` | 交付门禁，57 项断言，全过 exit 0 |
+| `verify` | 交付门禁，58 项断言，全过 exit 0 |
 | `tidy` | 清临时残留（桌面程序在跑会拒绝，`-Force` 强来） |
 | `update-all` / `update-app` / `update-desktop` | 更新官方那层。**默认只预演**，加 `-Force` 才真更新（`xxx.next` → 校验 → 换名） |
 | `repair` | 修启动失败：`check-update.cmd` 会自动调用它 |
@@ -100,6 +100,7 @@ dsh-portable.cmd bootstrap
 | `plugin-stage` / `plugin-stage-remove` | **运行期也能装/卸**：下载与校验在影子目录做，退出程序后下次启动自动启用（不冻结正在跑的会话） |
 | `plugin-stage-list` / `plugin-stage-discard` / `plugin-activate` | 看暂存队列 / 丢弃暂存项 / 手工提交（启动器会自动提交） |
 | `plugin-adopt` / `plugin-revoke` | 把插件收进共享目录 / 撤销 |
+| `fix-attachment [check\|apply]` | 附件库回到便携目录：撤掉 `cordis.patch.yml` 里把附件指向 `C:\Users\用户名\.dsh` 的旧绕法，并把旧附件复制回 `home\attachments\v1`（`-Force` 再删旧目录）。需要先有附件库补丁（`repair` 会打） |
 | `market-history [check]` | 清空商城的操作历史（安装/卸载记录）。界面上的“关闭此提示”只关当次显示，记录仍留在 `.dsh-market\drain.ndjson`，重启会再显示；`-Force` 连 `log.ndjson` 一起清 |
 | `plugin-repair` | 修"市场装不上也卸不掉"：pnpm 大版本变了就重建插件依赖（**默认预演**，`-Force` 才真重建） |
 | `shell-update [check\|apply\|rollback\|recover\|notes]` | **更新壳自己**（v2 版本线：只换壳，不动官方层与你的数据；`apply` 默认预演，`-Force` 才真换；`--full` 整包换装、`--to v<版本>` 锁定/降级——这两个高级参数直接传给 `node tools\shell-update.mjs`，`dsh-portable.cmd` 只转 `-Force`；verify 不过自动整体回滚，`rollback` 用最新备份还原，`recover` 恢复中断） |
@@ -184,7 +185,7 @@ dsh-portable.cmd bootstrap
 
 | 项目 | 结果 |
 | --- | --- |
-| `verify`（交付门禁） | **57 项全过**，连跑多次指纹不变 |
+| `verify`（交付门禁） | **58 项全过**，连跑多次指纹不变 |
 | `doctor`（只读体检） | 6–8 s，残留 0、7z 24.08、Office 已打 14 个 DLL、市场补丁 55 处字面、版本豁免一致 |
 | `clean-ship verify` | 11 项全过，0 文件 / 0 MB 残留 |
 | 桌面冷启动 | 4.3–5.3 s 返 `exit 0`，13 s 出现窗口 |
@@ -195,7 +196,7 @@ dsh-portable.cmd bootstrap
 
 | 场景 | 结果 |
 | --- | --- |
-| 全新空壳（只有壳文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 57 项全过 |
+| 全新空壳（只有壳文件）跑 `bootstrap` | 成功补齐 node / pnpm / app / desktop / 插件，随后 `verify` 58 项全过 |
 | 已有官方层再跑 `bootstrap` | 2.8 s 全部跳过，`exit 0`（幂等） |
 | 删掉 `runtime\node`、`runtime\pnpm`、`app` 后重跑 | 418 s 全部重建，五个产物齐全，`exit 0` |
 | **没有任何系统 tar**（`DSH_PORTABLE_NO_SYSTEM_TAR=1`，模拟 Win10 1703） | node 35.9 MB 与 pnpm 5.5 MB 全部由随包 7z 解出，`node -v` 冒烟通过，pnpm 的 tgz 走两趟（gz→tar） |

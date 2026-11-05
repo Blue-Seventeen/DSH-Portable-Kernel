@@ -442,6 +442,27 @@ check('compat 档补丁已打 / native 档无残留补丁', () => {
   else add(label, true, '档位未知，跳过')
 })
 
+check('附件库补丁：link 在 exFAT 上回退为 copy（app + asar）', () => {
+  const label = '附件库补丁：link 在 exFAT 上回退为 copy（app + asar）'
+  const tool = join(ROOT, 'tools', 'patch-attachment.mjs')
+  const node = process.execPath
+  if (!existsSync(tool)) { add(label, false, '缺少 tools/patch-attachment.mjs'); return }
+  const frag = join(ROOT, 'tmp', 'fs-profile.cmd')
+  if (!existsSync(frag)) { add(label, true, '还没有探测片段，跳过'); return }
+  let profile = ''
+  for (const line of read(frag).split(/\r?\n/)) {
+    const m = line.match(/^\s*set\s+"?DSH_FS_PROFILE=(.*?)"?\s*$/i)
+    if (m) profile = m[1].trim().toLowerCase()
+  }
+  const r = spawnSync(node, [tool, '--check'], { stdio: 'ignore', windowsHide: true })
+  const code = r.status
+  if (profile === 'native') { add(label, true, 'NTFS 有硬链接，附件库不需要补丁'); return }
+  if (profile !== 'compat') { add(label, true, '档位未知，跳过'); return }
+  if (code === 0) { add(label, true, 'app 与 asar 都已打'); return }
+  if (code === 3) { add(label, true, 'asar 被运行中的桌面占用；下次启动 patch-all 会补', true); return }
+  add(label, false, '附件库补丁未打全（code ' + code + '），运行 dsh-portable.cmd repair')
+})
+
 check('env.cmd 把 pnpm store / staging 收进便携目录', () => {
   const label = 'env.cmd 把 pnpm store / staging 收进便携目录'
   let text = ''

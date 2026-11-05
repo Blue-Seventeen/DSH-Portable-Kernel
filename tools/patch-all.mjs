@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 三族补丁的统一入口：market（商城路径 + drain 语义）/ fs（exFAT 硬链接回退）/ pnpm（项目注册容错）。
+ * 四族补丁的统一入口：market（商城路径 + drain 语义）/ fs（exFAT 硬链接回退）/ pnpm（项目注册容错）/ attachment（附件库 link 回退）。
  *
  * 为什么要有它：
  *   1) 官方升级（update-app / update-desktop / bootstrap / 商城自更新）会整份替换这些文件，
@@ -36,6 +36,7 @@ const FAMILIES = [
   { family: 'market', file: 'patch-market.mjs', compat: false },
   { family: 'fs', file: 'patch-fs.mjs', compat: true },
   { family: 'pnpm', file: 'patch-pnpm.mjs', compat: true },
+  { family: 'attachment', file: 'patch-attachment.mjs', compat: true },
 ]
 
 const say = (m) => { if (!QUIET && !JSONOUT) console.log(m) }
@@ -64,7 +65,7 @@ if (JSONOUT) {
   const pad = (s, n) => (s + ' '.repeat(n)).slice(0, n)
   for (const r of rows) {
     const cut = r.detail && r.detail.length > 120 ? r.detail.slice(0, 120) + '…' : r.detail
-    console.log('  ' + pad(r.family, 8) + pad(r.state, 12) + (cut ? '  ' + cut : ''))
+    console.log('  ' + pad(r.family, 12) + pad(r.state, 12) + (cut ? '  ' + cut : ''))
   }
 }
 
