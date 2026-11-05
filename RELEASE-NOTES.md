@@ -521,3 +521,37 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.4 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.4.0.zip` 整包覆盖壳文件。
+---
+
+## v0.4.1 — 2026-11-05
+
+修 `fix-attachment` 在真实附件布局下"搬回 0 个文件"的问题。
+
+### 新增
+
+- 无（补丁版只修问题）。
+
+### 修复
+
+- **`fix-attachment` 只处理平铺文件**：附件库真实布局是 `v1/objects/<两位>/<hash>` 嵌套目录 + `v1/tmp` 暂存，旧实现只复制顶层文件，于是"已复制 0 个"、`--purge-old` 也删不掉子目录。现在递归复制（跳过 `v1/tmp`）、递归删除旧根（带"必须以 `.../attachments/v1` 结尾"的安全断言）。
+- 测试夹具同步改成嵌套布局：断言 `objects/aa/aaa`、`objects/bb/bbb` 被搬回，`tmp` 不搬，旧根删干净。
+
+### 优化
+
+- 实机验证：运行实例 0.3.4 → 0.4.0，221 个附件（53.4 MB）搬回 `home\attachments\v1`，C 盘旧根删除；重启后新发一张图片成功落到 `home\attachments\v1\objects\be\…`（内容寻址名与 SHA256 一致），`verify` 58/58。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（61 个）；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。
+- 换装成功后自动跑 `fix-pnpm-state`；`patch-all` 在下次启动/升级收尾时保持四族补丁 applied。
+- 换装前备份到 `cache\shell-backup-<时间戳>`，换完跑换装闸门。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.4.0 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.4.1.zip` 整包覆盖壳文件。

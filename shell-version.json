@@ -6,7 +6,7 @@
   "tag": "v0.4.0",
   "releasedAt": "2026-11-05T02:54:21.616Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T05:44:46.963Z",
+  "generatedAt": "2026-11-05T06:00:19.198Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "c3eac8fda0131dde4d4d63f4555ad8b641429b0174b0db9dbb6477b7ccc6cdf1",
-    "RELEASE-NOTES.md": "a0306906f892e85a57f7594e9fb0d2221a221c2b1f58b7a3b713466afd561c3d",
+    "RELEASE-NOTES.md": "c8a17169691e59721ee4b87ac4944a4a8943e4b6836e5b4892aea13e13e726f8",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
