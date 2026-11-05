@@ -320,7 +320,8 @@ if (shellInfo.version) {
   console.log('  当前版本  ' + shellInfo.version + '  (' + shellInfo.channel + ')')
   const ago = agoText(checkCache.ageMs)
   const latestKnown = (checkCache.ok && checkCache.usable && checkCache.remote) ? checkCache.remote : ''
-  console.log('  最新版本  ' + (latestKnown || '未知（本次没查到）'))
+  // 只在"远端确实不同"时才单独列最新版本；相同就合并进状态行，避免两行同一个号看着像 bug
+  if (latestKnown && latestKnown !== shellInfo.version) console.log('  最新版本  ' + latestKnown)
   const errAgo = agoText(checkErr.ageMs)
   const errNewer = checkErr.ok && (!checkCache.ok || checkErr.ageMs < checkCache.ageMs)
   if (errNewer) {
@@ -335,7 +336,7 @@ if (shellInfo.version) {
   else if (checkCache.status === 'blocked') warn('有 ' + checkCache.remote + '，但被兼容性挡下（运行 shell-update check 看原因）')
   else if (checkCache.status === 'update-available' && checkCache.remote === checkCache.local) ok('版本相同（' + checkCache.local + '），但本地有 ' + checkCache.changed + ' 处改动；要还原成发布版就跑 shell-update apply --force')
   else if (checkCache.status === 'local-newer') ok('本地比远端新（本地 ' + checkCache.local + ' / 远端 ' + checkCache.remote + '）')
-  else if (checkCache.status === 'up-to-date') ok('已是最新（检查于' + ago + '）')
+  else if (checkCache.status === 'up-to-date') ok('已是最新（远端 ' + checkCache.remote + '，检查于' + ago + '）')
   else ok('更新检查状态未知（' + (checkCache.status || '空') + '），下次启动会重查')
 } else {
   warn('读不到 shell-version.json（壳清单缺失：这个目录可能不是完整的壳）')
