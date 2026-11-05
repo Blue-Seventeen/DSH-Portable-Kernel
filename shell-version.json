@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.3.4",
-  "tag": "v0.3.4",
-  "releasedAt": "2026-11-04T16:34:16.780Z",
+  "shellVersion": "0.4.0",
+  "tag": "v0.4.0",
+  "releasedAt": "2026-11-05T02:54:21.616Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T02:54:10.199Z",
+  "generatedAt": "2026-11-05T02:54:59.358Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -86,37 +86,37 @@
   ],
   "notes": {
     "added": [
-      "`shell-update snooze --clear`：撤销\"这次不更新\"，让 preflight 立刻恢复更新提示（以前只能等 7 天）。",
-      "`verify` 新增「各 profile 下没有本地 `node_modules`」（共享布局硬约束，57 项）：插件只能有一份共享副本，profile 下出现本地 `node_modules` 就报红。",
-      "本地 `test/` 套件扩到 **72 项**（新增换装引擎单测、健壮性、导入一致性 lint 等，不随壳发布）。"
+      "**附件库补丁**：`@deepseek-ai/dsh-attachment-local` 发布附件时用硬链接，exFAT 不支持 → 图片附件全挂。现在 `patch-all` 的第四族 `attachment` 会把它的 `link()` 改成\"失败回退 copy\"（app 目录 + `app.asar` 两份），随启动/官方升级自动重打，**不再需要把附件目录指到 C 盘用户目录**。",
+      "**`dsh-portable.cmd fix-attachment`**：撤掉 `cordis.patch.yml` 里旧的 `dshHome` 重定向，并把旧附件复制回 `home\\attachments\\v1`；`apply -Force` 再删旧目录。没有补丁时拒绝执行（退出码 4）。",
+      "`tools\\asar-lite.mjs`：通用 asar 单条目改写（偏移/integrity 重算、其它条目逐字节校验、原子换装与回滚），给后续补丁复用。",
+      "`verify` 新增「附件库补丁」检查（57 → **58 项**）。"
     ],
     "fixed": [
-      "**`snooze --clear` 打印成功但文件还在**：`unlinkSync` 未 import，`ReferenceError` 被空的 `catch {}` 静默吞掉。已补 import，并加**导入一致性 lint**（静态比对 `tools/*.mjs` 里用到的内置函数是否 import/定义）。",
-      "**`clean-ship refresh` 不幂等**：每次重写 `shipTime` / `generatedAt`，工作区永远脏、无法判断是否真有变化。现在内容未变时保留旧时间戳（连跑两次 diff 逐字节相同）。",
-      "**`preflight` 升级失败静默回菜单**：`apply` 退出码非 0 时会打印失败原因（`cmd-failed` / `cmd-blocked`）并停住，不再让用户误以为已升级。",
-      "**`preflight [11]` 把不同状态混成一句\"没有新版本\"**：现在按 `update-available` / `blocked` / `local-newer` / `up-to-date` / 缓存属于旧版本 / 还没检查过 / 状态未知 分别显示。",
-      "**`doctor` 的 `shell-upd` 会念旧缓存**：改为\"24h 内 + 缓存 local == 当前版本 + 远端确实更新\"三条判据，与 `preflight` 一致。",
-      "**`fix-pnpm-state` 两个问题**：① 会进 `.backup-*` 之类的点目录改 yaml（现在跳过）；② 没有 env.cmd 上下文时把 `packageImportMethod` 写成 `auto`（现在回退读 `tmp\\fs-profile.cmd`，exFAT 上仍是 `copy`）。",
-      "**`download.mjs` 无参时抛 `Failed to parse URL from undefined`**：补参数校验，打印用法并退出 2。"
+      "**preflight 不再拿缓存当结论**：启动时 `check --cached 0 --prompt --brief` 每次都真查；离线只打一行提示（4 秒 × 2 次超时），不会卡启动，也不会再出现\"已升级还提示旧版本 / 新版本被旧缓存挡住\"。",
+      "**`[11]` 按状态如实显示**：有更新 / 被兼容性挡下 / 本地比远端新 / 已是最新（检查于 X）/ 缓存属于旧版本 / 还没检查过 / 同版本但本地有 N 处改动。",
+      "**旧桌面/应用树的备份只留 1 份**（`desktop.bak-*` 每份约 1 GB、`app.bak-*` 约 0.5 GB），`tidy` 会一并回收；壳备份仍留 2 份。"
     ],
     "optimized": [
-      "`clean-ship refresh` / `verify` 的幂等性可验证（连跑两次指纹一致），发布前更容易判断\"这次到底改了什么\"。"
+      "`clean-ship refresh` 内容幂等（内容没变就不改 `shipTime` / `generatedAt`），发布前后 `git status` 不再被无谓弄脏。",
+      "`download.mjs` 无参时给用法而不是 `Failed to parse URL from undefined`。",
+      "本地 `test` 套件扩到 **86 项**（新增 asar 改写单测、fix-attachment 场景、附件库补丁夹具等，不随壳发布）。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变；`home\\` 下的数据一律不碰。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变；`home\\` 下的数据一律不碰。附件会从 `C:\\Users\\<用户>\\.dsh` 回到 `home\\attachments\\v1`（用 `fix-attachment` 一次性搬，原目录可保留）。"
     ],
     "upgrade": [
-      "替换清单里的壳文件；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。",
-      "换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`）。",
-      "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完自动跑 `verify-shell` 的换装闸门，不通过整体回滚。"
+      "替换清单里的壳文件（58 → 61 个：多了 3 个工具）。",
+      "换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`），并让 `patch-all` 打上第四族 `attachment`。",
+      "若桌面窗口开着，`app.asar` 会被占用 → 该族标为 locked，**下次启动自动补**（启动器在起 dsh 之前跑 `patch-all`）。",
+      "换装前整份备份到 `cache\\shell-backup-<时间戳>`，换完跑换装闸门，不通过整体回滚。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.3 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.3.4.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.3.4 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.4.0.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.3.4",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.4.0",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -127,8 +127,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.3.4.zip",
-    "sha256": "61f5c7bceee2837b3510d24cc32f4efd22199ad315d7365279b4f57087fd1221",
-    "bytes": 1860293
+    "name": "harness-shell-0.4.0.zip",
+    "sha256": "db6fbd4dbc3adbbf9621a51853933070f4c8c0bb17f6f2aacda528af4f246783",
+    "bytes": 1872519
   }
 }
