@@ -836,7 +836,7 @@ function Install-Desktop([string]$sourceDir, [pscustomobject]$manifest) {
   Swap-Tree 'desktop' 'desktop.next'
   Fix-OfficeRuntime
   Say ("desktop 现在版本：" + (DesktopVersion))
-  RemoveOldBackups 'desktop.bak-' 2
+  RemoveOldBackups 'desktop.bak-' 1
   Remove-Item -LiteralPath (Join-Path $Root 'tmp\update-check.json') -Force -ErrorAction SilentlyContinue
 }
 function Install-App {
@@ -870,7 +870,7 @@ function Install-App {
   Fix-OfficeRuntime
   Fix-OfficeCli
   Say ("app 现在版本：" + (AppVersion))
-  RemoveOldBackups 'app.bak-' 2
+  RemoveOldBackups 'app.bak-' 1
   Remove-Item -LiteralPath (Join-Path $Root 'tmp\update-check.json') -Force -ErrorAction SilentlyContinue
 }
 
@@ -1645,6 +1645,11 @@ switch ($Action) {
     }
     Repair-State
     Clean-TempJunk -Force
+    # 旧树备份很大（desktop 一份约 1 GB、app 约 0.5 GB）：tidy 时只留最新 1 份；
+    # 壳备份很小（<1 MB），留 2 份更安全。
+    RemoveOldBackups 'desktop.bak-' 1
+    RemoveOldBackups 'app.bak-' 1
+    RemoveOldBackups 'shell-backup-' 2 -Dir (Join-Path $Root 'cache')
     if ($PurgeHostStore) {
       $extRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Hack3rX-Harness'
       $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
@@ -1674,8 +1679,8 @@ switch ($Action) {
     }
     # 顺手把"每换一台机器留一份"的登录态备份收敛到 2 份（审计 F.1：原来保留上限是死代码）
     RemoveOldBackups 'shell-login-bak-' 2 -Dir (Join-Path $Root 'cache')
-    RemoveOldBackups 'desktop.bak-' 2
-    RemoveOldBackups 'app.bak-' 2
+    RemoveOldBackups 'desktop.bak-' 1
+    RemoveOldBackups 'app.bak-' 1
     # staging 残留（tmp\build）不是 dsh-* 前缀，Clean-TempJunk 不管，这里显式清
     $stageLeft = Join-Path $Root 'tmp\build'
     if (Test-Path -LiteralPath $stageLeft) { RemoveTree $stageLeft }

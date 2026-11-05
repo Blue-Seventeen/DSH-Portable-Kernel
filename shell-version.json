@@ -6,7 +6,7 @@
   "tag": "v0.3.4",
   "releasedAt": "2026-11-04T16:34:16.780Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T02:04:59.386Z",
+  "generatedAt": "2026-11-05T02:20:24.454Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -19,7 +19,7 @@
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
-    "dsh-portable.ps1": "b7cdddfab4dfa5b5e48bc3d5f9fd1314b98841227006659702f77929549d103c",
+    "dsh-portable.ps1": "8178490df1dc7ec18aaab85acf4d0232678bd3af53af0e424c720028b2a3dde3",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
     "env.cmd": "e85c64c0f2133ff53d8a99215105e5e03194f103bb04fe657db1555f0ee2b7b1",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
