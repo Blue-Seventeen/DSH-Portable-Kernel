@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.4.1",
-  "tag": "v0.4.1",
-  "releasedAt": "2026-11-05T06:02:34.558Z",
+  "shellVersion": "0.4.2",
+  "tag": "v0.4.2",
+  "releasedAt": "2026-11-05T12:26:18.781Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T12:24:02.087Z",
+  "generatedAt": "2026-11-05T12:26:57.589Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -89,27 +89,28 @@
       "无（补丁版只修问题）。"
     ],
     "fixed": [
-      "**`fix-attachment` 只处理平铺文件**：附件库真实布局是 `v1/objects/<两位>/<hash>` 嵌套目录 + `v1/tmp` 暂存，旧实现只复制顶层文件，于是\"已复制 0 个\"、`--purge-old` 也删不掉子目录。现在递归复制（跳过 `v1/tmp`）、递归删除旧根（带\"必须以 `.../attachments/v1` 结尾\"的安全断言）。",
-      "测试夹具同步改成嵌套布局：断言 `objects/aa/aaa`、`objects/bb/bbb` 被搬回，`tmp` 不搬，旧根删干净。"
+      "**启动时误报\"超时（4000ms）\"**：`--brief` 单次超时从 4 秒放宽到 **10 秒 × 2 次**（GitHub 稍慢不再误判失败）；新增 `--quiet-fail`，失败不刷屏，改写 `tmp\\shell-check.err.json`。",
+      "**启动顺序不对**：以前\"先自检、后查更新\"，导致 `[11]` 永远显示上一次的结果；现在**先真查 → 再自检 → 有更新才问 Y/N**（Y/N 用刚写入的缓存回放，不二次联网）。",
+      "**[11] 只有\"清单 tag + 上次检查时间\"**：改成\"当前版本 / 最新版本 / 状态\"三行；已是最新时不再重复同一个版本号，直接写\"已是最新（远端 X，检查于 Y）\"；检查失败时明说\"本次检查失败：<原因>（X 前）；上次成功：Y\"。"
     ],
     "optimized": [
-      "实机验证：运行实例 0.3.4 → 0.4.0，221 个附件（53.4 MB）搬回 `home\\attachments\\v1`，C 盘旧根删除；重启后新发一张图片成功落到 `home\\attachments\\v1\\objects\\be\\…`（内容寻址名与 SHA256 一致），`verify` 58/58。"
+      "本地测试套件 86 → 89 项（新增失败态显示、当前/最新版本行、`--quiet-fail`），并隔离测试之间的错误记录文件。"
     ],
     "breaking": [
       "无。清单 schema 仍是 2、`updaterMin` 不变。"
     ],
     "upgrade": [
-      "替换清单里的壳文件（61 个）；三份 `pnpm-workspace.yaml` 不随壳走、也不会被删。",
-      "换装成功后自动跑 `fix-pnpm-state`；`patch-all` 在下次启动/升级收尾时保持四族补丁 applied。",
+      "替换清单里的壳文件（61 个，本次变更 3 个：`preflight.cmd` / `tools\\preflight.mjs` / `tools\\shell-update.mjs`）。",
+      "三份 `pnpm-workspace.yaml` 不随壳走、也不会被删；换装后自动跑 `fix-pnpm-state`。",
       "换装前备份到 `cache\\shell-backup-<时间戳>`，换完跑换装闸门。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.4.0 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.4.1.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.4.1 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.4.2.zip` 整包覆盖壳文件。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.4.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.4.2",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -120,8 +121,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.4.1.zip",
-    "sha256": "8beaab85305894597291d97ac1f8efc1bd38be519620eb3d1d4e46f096ef62c6",
-    "bytes": 1873427
+    "name": "harness-shell-0.4.2.zip",
+    "sha256": "3ca1cdb6688f9d57077c2b6c868ed5f4bacf5d28e7c01209bd437d42ef7b5a74",
+    "bytes": 1874629
   }
 }
