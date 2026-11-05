@@ -4,7 +4,7 @@
  *
  * 背景：exFAT 不支持硬链接。附件库发布对象时调 `link(staged, target)`（内容寻址、不可变），
  * 失败即抛 ATTACHMENT_WRITE_FAILED —— 界面表现是图片附件全挂（"Unable to persist attachment."）。
- * 以前的绕法是�� `cordis.patch.yml` 里把 attachment-local 的 dshHome 指到 NTFS 的
+ * 以前的绕法是：在 `cordis.patch.yml` 里把 attachment-local 的 dshHome 指到 NTFS 的
  * `C:\Users\<用户>\.dsh`：能用，但数据离开便携目录、写死用户名，换机就失效。
  *
  * 本补丁只改一处 import + 插一个 3 行 shim，覆盖该包全部 `link()` 调用：

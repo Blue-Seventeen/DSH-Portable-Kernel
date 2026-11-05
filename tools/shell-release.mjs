@@ -477,6 +477,7 @@ export const zipFileList = (tag) => listTagFiles(tag).filter(isZipShellPath)
 // ---- 准备阶段（prepare）-----------------------------------------------------
 const GATES = [
   { name: 'clean-ship refresh', script: 'tools/clean-ship.mjs', args: ['refresh'] },
+  { name: 'text-encoding', script: 'tools/check-text-encoding.mjs', args: [] },
   { name: 'verify-shell', script: 'tools/verify-shell.mjs', args: [] },
   { name: 'selftest-shell-update', script: 'tools/selftest-shell-update.mjs', args: [] },
 ]
