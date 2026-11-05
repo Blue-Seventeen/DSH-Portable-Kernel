@@ -1970,7 +1970,8 @@ switch ($Action) {
       $cacheRemote = [string]$chk.summary.remote
       $newerRemote = $false
       try { $newerRemote = ([version]$cacheRemote) -gt ([version]$shVer) } catch { $newerRemote = $true }
-      if ($ageH -lt 0 -or $ageH -gt 24) { $shUpd = '未知（缓存过期）' }
+      if ($ageH -lt 0) { $shUpd = '未知（还没检查过）' }
+      elseif ($ageH -gt 24) { $shUpd = ('上次检查 ' + [math]::Round($ageH / 24, 1) + ' 天前（下次启动会重查）') }
       elseif ($shVer -eq 'MISSING' -or $cacheLocal -ne $shVer) { $shUpd = '未知（缓存属于旧版本 ' + $cacheLocal + '）' }
       elseif ($chk.summary.status -eq 'update-available' -and $newerRemote) { $shUpd = ($cacheRemote + ' 可更新') }
       elseif ($chk.summary.status -eq 'blocked') { $shUpd = ('被兼容性挡下（' + $cacheRemote + '）') }

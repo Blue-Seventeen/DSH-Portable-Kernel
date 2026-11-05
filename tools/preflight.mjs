@@ -57,10 +57,9 @@ const cmpVersion = (a, b) => {
   return 0
 }
 /**
- * 读"最近一次真查"的缓存，并判断它是否还能代表现在：
- *   1) 24h 内；2) 缓存里的 local == 当前安装版本（升级后旧缓存立刻作废）。
- * 注意：这里只是**取事实**，不同状态怎么展示由调用方决定 —— 之前只返回"有更新"，
- * 于是 blocked / local-newer / 没查过 都被错误地显示成"没有发现新版本"。
+ * 读"最近一次真查"的结论（缓存现在**只用于展示**，不再决定要不要提示更新：
+ * 启动流程已经改成每次真查，缓存只负责让 [11] 能显示"上次检查的结果 + 多久以前"）。
+ * 仍然要校验归属：缓存里的 local 必须等于当前安装版本，否则它描述的是上一版的事实。
  */
 const readCheckCache = () => {
   try {
@@ -69,16 +68,24 @@ const readCheckCache = () => {
     const at = Number(c.at || s.at || 0)
     const local = String(s.local || '')
     const remote = String(s.remote || '')
-    const fresh = at > 0 && Date.now() - at < 24 * 3600 * 1000
-    const usable = fresh && !!local && local === String(shellInfo.version || '')
-    return { fresh, usable, status: String(s.status || ''), local, remote }
-  } catch { return { fresh: false, usable: false, status: '', local: '', remote: '' } }
+    const ageMs = at > 0 ? Date.now() - at : -1
+    const usable = at > 0 && !!local && local === String(shellInfo.version || '')
+    const changed = Number(s.changed || 0)
+    return { ok: at > 0, ageMs, usable, status: String(s.status || ''), local, remote, changed }
+  } catch { return { ok: false, ageMs: -1, usable: false, status: '', local: '', remote: '', changed: 0 } }
 }
 const checkCache = readCheckCache()
-/** 头部只提示"确实有更新"这一种情况（blocked / 旧缓存 / 没查过 都不打扰） */
-const shellUpdate = (checkCache.usable && checkCache.status === 'update-available' && cmpVersion(checkCache.remote, checkCache.local) > 0)
-  ? checkCache.remote
-  : ''
+const agoText = (ms) => {
+  if (!(ms >= 0)) return '时间未知'
+  if (ms < 60000) return '刚刚'
+  if (ms < 3600000) return Math.round(ms / 60000) + ' 分钟前'
+  if (ms < 86400000) return Math.round(ms / 3600000) + ' 小时前'
+  return Math.round(ms / 86400000) + ' 天前'
+}
+/** 头部只提示"刚查到的更新"（10 分钟内、且确实比本地新）；更旧的结论只在 [11] 里说明 */
+const CACHE_BANNER_MS = 10 * 60 * 1000
+const cacheNewer = checkCache.usable && checkCache.status === 'update-available' && cmpVersion(checkCache.remote, checkCache.local) > 0
+const shellUpdate = (cacheNewer && checkCache.ageMs >= 0 && checkCache.ageMs <= CACHE_BANNER_MS) ? checkCache.remote : ''
 const RULE = '─'.repeat(60)
 console.log('')
 console.log('  ' + RULE)
@@ -302,13 +309,18 @@ else ok('没有系统 curl：主下载失败时不会兜底（不影响正常运
 console.log('\n[11] 壳版本明细')
 if (shellInfo.version) {
   console.log('  清单 tag  ' + (shellInfo.tag || ('v' + shellInfo.version)))
-  if (!checkCache.fresh) ok('最近 24 小时还没检查过更新（下次启动会查）')
-  else if (!checkCache.usable) ok('更新检查结论属于旧版本 ' + (checkCache.local || '?') + '，下次启动会重新查')
-  else if (checkCache.status === 'update-available' && shellUpdate) warn('有可用更新：' + shellUpdate + '（启动时可选择更新；不想看到可执行 shell-update snooze）')
+  const ago = agoText(checkCache.ageMs)
+  if (!checkCache.ok) ok('还没检查过更新（每次启动都会真查一次）')
+  else if (!checkCache.usable) ok('上次检查是 ' + ago + '，当时版本 ' + (checkCache.local || '?') + '；下次启动会重查')
+  else if (checkCache.status === 'update-available' && cacheNewer) {
+    if (shellUpdate) warn('有可用更新：' + shellUpdate + '（启动时可选择更新；不想看到可执行 shell-update snooze）')
+    else ok('上次检查是 ' + ago + '，当时发现 ' + checkCache.remote + ' 可更新；本次启动会重查')
+  }
   else if (checkCache.status === 'blocked') warn('有 ' + checkCache.remote + '，但被兼容性挡下（运行 shell-update check 看原因）')
+  else if (checkCache.status === 'update-available' && checkCache.remote === checkCache.local) ok('版本相同（' + checkCache.local + '），但本地有 ' + checkCache.changed + ' 处改动；要还原成发布版就跑 shell-update apply --force')
   else if (checkCache.status === 'local-newer') ok('本地比远端新（本地 ' + checkCache.local + ' / 远端 ' + checkCache.remote + '）')
-  else if (checkCache.status === 'up-to-date') ok('已是最新（' + checkCache.local + '）')
-  else ok('更新检查状态未知（' + (checkCache.status || '空') + '），下次启动会重新查')
+  else if (checkCache.status === 'up-to-date') ok('已是最新（检查于' + ago + '）')
+  else ok('更新检查状态未知（' + (checkCache.status || '空') + '），下次启动会重查')
 } else {
   warn('读不到 shell-version.json（壳清单缺失：这个目录可能不是完整的壳）')
 }

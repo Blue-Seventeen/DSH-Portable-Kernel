@@ -109,7 +109,7 @@ dsh-portable.cmd bootstrap
 
 `show-desktop` 的退出码：`0` 窗口可见、`1` 原来在托盘/隐藏态、这次被唤出来了、`2` 进程都没有、`3` 进程在但还没建出窗口。`close-desktop` 只要**确认没有可见窗口**就 `exit 0`——此时进程可能还在托盘里，想彻底退出用任务管理器或先 `focus-desktop` 再关窗。
 
-> **启动时会提示壳更新**：`preflight.cmd` 在自检之后、出菜单之前静默检查一次（24h 缓存、离线静默）。有更新时先打印这个版本的**更新细则**（`RELEASE-NOTES.md` 的六小节：新增 / 修复 / 优化 / 破坏性变更 / 升级会做什么 / 如何回退），再问 Y/N——**只有输 Y 才会换壳**；N 则 7 天内不再提示（菜单 `U` 随时可手动更新）。检查失败或已是最新时什么都不显示，绝不挡启动。
+> **启动时会提示壳更新**：`preflight.cmd` 在自检之后、出菜单之前每次启动都真查一次（失败只提示一行、不挡启动）。有更新时先打印这个版本的**更新细则**（`RELEASE-NOTES.md` 的六小节：新增 / 修复 / 优化 / 破坏性变更 / 升级会做什么 / 如何回退），再问 Y/N——**只有输 Y 才会换壳**；N 则 7 天内不再提示（菜单 `U` 随时可手动更新）。检查失败或已是最新时什么都不显示，绝不挡启动。
 
 壳认的几个环境变量（都在代码注释里，不放心的可以不设）：`DSH_PORTABLE_KEEP_CONSOLE=1` 启动后保留黑框、`DSH_PORTABLE_NO_UPDATE_CHECK=1` 跳过启动前查更新、`DSH_PORTABLE_NO_FOCUS=1` 不自动抢焦点、`DSH_PORTABLE_OFFICE_ALWAYS=1` 强制重装 Office 运行库。
 
@@ -128,7 +128,7 @@ dsh-portable.cmd bootstrap
 
 - **版本豁免必须是精确版本**。`compatibility.json` 里写 `"*"` 会让整条记录被忽略（日志里就是 `dsh: skipping profile bundle "@huanlin/…"`）。换版本由 `compat-heal` 在启动前把精确版本改写掉；没有任何插件需要豁免时，官方语义是**删掉这个文件**（缺失 = 无豁免），所以干净交付里两份 `compatibility.json` 都不存在。
 - **exFAT / 移动盘不支持软链、也不支持硬链接**，所以 `pnpm-workspace.yaml` 里固定 `nodeLinker: hoisted`，compat 档再用 `packageImportMethod: copy` 导入（不用硬链接）。
-- `storeDir` 与机器用户名有关：`tools\fix-pnpm-state.mjs` 会在每次启动时把本机的绝对路径写进三份 `pnpm-workspace.yaml`（这三个文件是入库的），所以**跑过之后 `git status` 会显示它们被改动、diff 里带本机路径**。发布前用 `git checkout -- home/profiles` 清掉即可，仓库里的版本本身不含 `storeDir`。
+- `storeDir` 与机器用户名有关：`tools\fix-pnpm-state.mjs` 会在每次启动时把本机的绝对路径写进三份 `pnpm-workspace.yaml`。这三个文件是**机器状态，不入库**（`.gitignore` 里有 `/home/profiles/**/pnpm-workspace.yaml`），由 `fix-pnpm-state` 生成，壳清单也不含它们，所以 `git status` 不会因为 `storeDir` 变脏。
 
 ---
 

@@ -37,9 +37,10 @@ echo.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key bootstrap-done
 :dsh_ready
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\preflight.mjs"
-rem --- shell self-update: silent check (24h cache), show update details, only update on Y ---
+rem --- shell self-update: always do a REAL check on launch (no cache replay: a stale cache
+rem     used to show an old version / hide a new one). --brief keeps it fast when offline. ---
 if not exist "%ROOT%tools\shell-update.mjs" goto :dsh_menu
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 1440 --prompt
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 0 --prompt --brief
 if errorlevel 4 goto :dsh_menu
 if errorlevel 3 goto :dsh_menu
 if errorlevel 2 goto :dsh_menu

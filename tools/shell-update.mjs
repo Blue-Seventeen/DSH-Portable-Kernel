@@ -48,8 +48,8 @@ export const EXIT_FAIL = 1
 export const EXIT_USAGE = 2
 export const EXIT_BLOCKED = 3
 export const EXIT_UP_TO_DATE = 4
-const FETCH_TIMEOUT_MS = 8000
-const RETRIES = 3
+let FETCH_TIMEOUT_MS = 8000
+let RETRIES = 3
 const CONCURRENCY = 2
 const CACHE_FILE = 'tmp/shell-check.json'
 const SNOOZE_FILE = 'tmp/shell-snooze.json'
@@ -1231,10 +1231,10 @@ const runDefaults = (opts) => {
 
 // ---- CLI --------------------------------------------------------------------
 const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached' }
-const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--help': 'help', '-h': 'help' }
+const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--brief': 'brief', '--help': 'help', '-h': 'help' }
 
 const parseArgs = (argv) => {
-  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, help: false, bad: '' }
+  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, help: false, bad: '' }
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i]
     if (BOOL_FLAGS[t]) { a[BOOL_FLAGS[t]] = true; continue }
@@ -1254,6 +1254,8 @@ const parseArgs = (argv) => {
   }
   a.cached = Number(a.cached) || 0
   if (a.dryRun) a.force = false
+  // 启动路径（preflight）用 --brief：离线时不要卡 25 秒，4 秒 x 2 次就够判断"查不到"
+  if (a.brief) { FETCH_TIMEOUT_MS = 4000; RETRIES = 2 }
   return a
 }
 
