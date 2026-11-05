@@ -6,7 +6,7 @@
   "tag": "v0.4.0",
   "releasedAt": "2026-11-05T02:54:21.616Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T02:54:59.358Z",
+  "generatedAt": "2026-11-05T05:44:46.963Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -47,7 +47,7 @@
     "tools/asar-lite.mjs": "4747f0e5923842a705760c632b202b03888c4cf8085677005a6aeb09f374ee41",
     "tools/clean-ship.mjs": "dadd28bab80f7b864b37b3b677103966079cbd2a31821636fad0439277909048",
     "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
-    "tools/fix-attachment.mjs": "89a5ebac1cfd7c5168a77f5a4ea50fd691cee5e5c29d8a296ce355c3996a76a2",
+    "tools/fix-attachment.mjs": "8dc4288f18ab7aabd45f36c9ba2abcf2361c80eb53570838a6640e5189617785",
     "tools/fix-pnpm-state.mjs": "d6fc2f34bfbe3f3d40696fd2e4535a4815659fbb2163ef6c996f81fd2c132e4c",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",

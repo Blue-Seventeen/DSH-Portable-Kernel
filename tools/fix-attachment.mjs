@@ -19,9 +19,9 @@
  *
  * 退出码：0 成功 / 1 失败 / 4 需要处理（没补丁就撤重定向会被拒）
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, relative } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 
@@ -91,20 +91,32 @@ const stripBlocks = () => {
   return touched
 }
 
+/** 递归复制旧附件（真实布局是 v1/objects/<两位>/<哈希> + v1/tmp，不是平铺文件） */
 const copyBack = () => {
   const src = legacyDir()
   if (!existsSync(src)) return { copied: 0, skipped: 0 }
   mkdirSync(targetDir(), { recursive: true })
   let copied = 0
   let skipped = 0
-  for (const name of readdirSync(src)) {
-    const from = join(src, name)
-    if (!statSync(from).isFile()) continue
-    const to = join(targetDir(), name)
-    if (existsSync(to)) { skipped++; continue }
-    copyFileSync(from, to)
-    copied++
+  const walk = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const from = join(dir, name)
+      const rel = relative(src, from)
+      // tmp 是暂存目录（半成品/锁文件），不搬
+      if (rel.split(/[\\/]/)[0] === 'tmp') continue
+      const to = join(targetDir(), rel)
+      if (statSync(from).isDirectory()) {
+        mkdirSync(to, { recursive: true })
+        walk(from)
+        continue
+      }
+      if (existsSync(to)) { skipped++; continue }
+      mkdirSync(dirname(to), { recursive: true })
+      copyFileSync(from, to)
+      copied++
+    }
   }
+  walk(src)
   return { copied, skipped }
 }
 
@@ -150,8 +162,17 @@ console.log('\n已撤掉重定向：' + touched.length + ' 个文件')
 console.log('已复制回便携目录：' + moved.copied + ' 个（跳过已存在 ' + moved.skipped + ' 个）')
 if (purgeOld) {
   try {
-    for (const name of readdirSync(legacyDir())) unlinkSync(join(legacyDir(), name))
-    rmdirSync(legacyDir())
+    // 递归删（含 objects/<两位>/ 子目录）。安全断言：必须是 .../attachments/v1 结尾
+    // （测试用 H3RX_LEGACY_ATTACHMENTS 覆盖时放宽，但仍要求有足够深度、不是盘根）
+    const victim = legacyDir();
+    const norm = String(victim).replace(/\\/g, '/').replace(/\/+$/, '');
+    const standard = /\/attachments\/v1$/i.test(norm);
+    const depthOk = norm.split('/').filter(Boolean).length >= 3;
+    const notDrive = !/^[a-z]:$/i.test(norm);
+    if (!depthOk || !notDrive || (!standard && !process.env.H3RX_LEGACY_ATTACHMENTS)) {
+      throw new Error('拒绝删除非标准路径: ' + victim);
+    }
+    rmSync(victim, { recursive: true, force: true });
     console.log('已删除旧目录：' + legacyDir())
   } catch (e) { console.warn('删旧目录失败（可手动删）：' + String(e.message || e)) }
 } else if (st.legacy.files) {
