@@ -555,3 +555,38 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.4.0 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.4.1.zip` 整包覆盖壳文件。
+---
+
+## v0.4.2 — 2026-11-05
+
+修启动自检里的更新检查：超时误报 + [11] 展示不像"结论"。
+
+### 新增
+
+- 无（补丁版只修问题）。
+
+### 修复
+
+- **启动时误报"超时（4000ms）"**：`--brief` 单次超时从 4 秒放宽到 **10 秒 × 2 次**（GitHub 稍慢不再误判失败）；新增 `--quiet-fail`，失败不刷屏，改写 `tmp\shell-check.err.json`。
+- **启动顺序不对**：以前"先自检、后查更新"，导致 `[11]` 永远显示上一次的结果；现在**先真查 → 再自检 → 有更新才问 Y/N**（Y/N 用刚写入的缓存回放，不二次联网）。
+- **[11] 只有"清单 tag + 上次检查时间"**：改成"当前版本 / 最新版本 / 状态"三行；已是最新时不再重复同一个版本号，直接写"已是最新（远端 X，检查于 Y）"；检查失败时明说"本次检查失败：<原因>（X 前）；上次成功：Y"。
+
+### 优化
+
+- 本地测试套件 86 → 89 项（新增失败态显示、当前/最新版本行、`--quiet-fail`），并隔离测试之间的错误记录文件。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（61 个，本次变更 3 个：`preflight.cmd` / `tools\preflight.mjs` / `tools\shell-update.mjs`）。
+- 三份 `pnpm-workspace.yaml` 不随壳走、也不会被删；换装后自动跑 `fix-pnpm-state`。
+- 换装前备份到 `cache\shell-backup-<时间戳>`，换完跑换装闸门。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.4.1 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.4.2.zip` 整包覆盖壳文件。
