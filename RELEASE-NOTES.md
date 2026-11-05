@@ -590,3 +590,38 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.4.1 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.4.2.zip` 整包覆盖壳文件。
+---
+
+## v0.4.3 — 2026-11-05
+
+补上发布流程里缺失的"文本编码"闸门（0.4.2 提交信息曾出现乱码）。
+
+### 新增
+
+- `tools\check-text-encoding.mjs`：审计提交标题、tag 注释、已跟踪文本文件（`md/json/mjs/ps1/cmd`）是否有连续问号或 `U+FFFD`；默认只查最近 `v*` tag 之后（历史旧账用 `--all`）。
+- `shell-release prepare` 的发布闸门新增 **text-encoding**（过不了不许打 tag）。
+
+### 修复
+
+- `tools\patch-attachment.mjs` 注释里的一个 `U+FFFD` 坏字符（之前写文件时留下的）。
+- 发布 skill 的缺口：`hack3rx-software-ship` 增加 G6 文本编码闸门；`hack3rx-agent-lessons` R7 明确"提交信息文件必须 UTF-8、禁止 `Set-Content -Encoding ascii`"。
+
+### 优化
+
+- 本地测试套件 89 → 91 项（编码审计默认范围、`--all` 反向验证）。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（62 个，本次变更 4 个：`RELEASE-NOTES.md`、`tools\patch-attachment.mjs`、`tools\shell-release.mjs`、新增 `tools\check-text-encoding.mjs`）。
+- 三份 `pnpm-workspace.yaml` 不随壳走、也不会被删；换装后自动跑 `fix-pnpm-state`。
+- 换装前备份到 `cache\shell-backup-<时间戳>`，换完跑换装闸门。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.4.2 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.4.3.zip` 整包覆盖壳文件。
