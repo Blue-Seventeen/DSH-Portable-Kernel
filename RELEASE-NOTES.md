@@ -480,3 +480,44 @@
 - 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
 - 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.3 --force`。
 - 网页兜底：从 Release 页下载 `harness-shell-0.3.4.zip` 整包覆盖壳文件。
+---
+
+## v0.4.0 — 2026-11-05
+
+让附件在 exFAT 上原生可用（不再把数据写到 C 盘），并给"每次启动真查更新"与"备份只留 1 份"收尾。
+
+### 新增
+
+- **附件库补丁**：`@deepseek-ai/dsh-attachment-local` 发布附件时用硬链接，exFAT 不支持 → 图片附件全挂。现在 `patch-all` 的第四族 `attachment` 会把它的 `link()` 改成"失败回退 copy"（app 目录 + `app.asar` 两份），随启动/官方升级自动重打，**不再需要把附件目录指到 C 盘用户目录**。
+- **`dsh-portable.cmd fix-attachment`**：撤掉 `cordis.patch.yml` 里旧的 `dshHome` 重定向，并把旧附件复制回 `home\attachments\v1`；`apply -Force` 再删旧目录。没有补丁时拒绝执行（退出码 4）。
+- `tools\asar-lite.mjs`：通用 asar 单条目改写（偏移/integrity 重算、其它条目逐字节校验、原子换装与回滚），给后续补丁复用。
+- `verify` 新增「附件库补丁」检查（57 → **58 项**）。
+
+### 修复
+
+- **preflight 不再拿缓存当结论**：启动时 `check --cached 0 --prompt --brief` 每次都真查；离线只打一行提示（4 秒 × 2 次超时），不会卡启动，也不会再出现"已升级还提示旧版本 / 新版本被旧缓存挡住"。
+- **`[11]` 按状态如实显示**：有更新 / 被兼容性挡下 / 本地比远端新 / 已是最新（检查于 X）/ 缓存属于旧版本 / 还没检查过 / 同版本但本地有 N 处改动。
+- **旧桌面/应用树的备份只留 1 份**（`desktop.bak-*` 每份约 1 GB、`app.bak-*` 约 0.5 GB），`tidy` 会一并回收；壳备份仍留 2 份。
+
+### 优化
+
+- `clean-ship refresh` 内容幂等（内容没变就不改 `shipTime` / `generatedAt`），发布前后 `git status` 不再被无谓弄脏。
+- `download.mjs` 无参时给用法而不是 `Failed to parse URL from undefined`。
+- 本地 `test` 套件扩到 **86 项**（新增 asar 改写单测、fix-attachment 场景、附件库补丁夹具等，不随壳发布）。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`home\` 下的数据一律不碰。附件会从 `C:\Users\<用户>\.dsh` 回到 `home\attachments\v1`（用 `fix-attachment` 一次性搬，原目录可保留）。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（58 → 61 个：多了 3 个工具）。
+- 换装成功后自动跑一次 `fix-pnpm-state`（清单里的 `migrations`），并让 `patch-all` 打上第四族 `attachment`。
+- 若桌面窗口开着，`app.asar` 会被占用 → 该族标为 locked，**下次启动自动补**（启动器在起 dsh 之前跑 `patch-all`）。
+- 换装前整份备份到 `cache\shell-backup-<时间戳>`，换完跑换装闸门，不通过整体回滚。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`（按最新备份整体还原，还原后同样跑 verify）。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.3.4 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.4.0.zip` 整包覆盖壳文件。

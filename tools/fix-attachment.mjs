@@ -34,7 +34,8 @@ const purgeOld = argv.includes('--purge-old')
 
 const PROFILES = ['desktop', 'web']
 const patchFile = (p) => join(ROOT, 'home', 'profiles', p, 'cordis.patch.yml')
-const legacyDir = () => join(homedir(), '.dsh', 'attachments', 'v1')
+// 环境变量只给测试/演练用（真实场景永远是当前用户的 ~/.dsh）
+const legacyDir = () => process.env.H3RX_LEGACY_ATTACHMENTS || join(homedir(), '.dsh', 'attachments', 'v1')
 const targetDir = () => join(ROOT, 'home', 'attachments', 'v1')
 
 // 需要删掉的那一段：从"附件存储修复"注释块开始，到 dshHome 那一行结束
@@ -66,7 +67,11 @@ const redirected = () => PROFILES.map(patchFile).filter((f) => {
 const patchState = () => {
   const tool = join(ROOT, 'tools', 'patch-attachment.mjs')
   if (!existsSync(tool)) return 'missing-tool'
-  const r = spawnSync(process.execPath, [tool, '--check'], { stdio: 'ignore', windowsHide: true })
+  // 没有桌面层（纯壳/演练目录）时只看 app 目录那份：否则会因 asar 不存在而永远判"未打全"
+  const hasAsar = existsSync(join(ROOT, 'desktop', 'resources', 'app.asar'))
+  const args = [tool, '--check', '--root', ROOT]
+  if (!hasAsar) args.push('--app-only')
+  const r = spawnSync(process.execPath, args, { stdio: 'ignore', windowsHide: true })
   return r.status === 0 ? 'applied' : 'not-patched'
 }
 

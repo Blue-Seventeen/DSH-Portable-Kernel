@@ -6,7 +6,7 @@
   "tag": "v0.3.4",
   "releasedAt": "2026-11-04T16:34:16.780Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T02:44:48.016Z",
+  "generatedAt": "2026-11-05T02:54:10.199Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "c3eac8fda0131dde4d4d63f4555ad8b641429b0174b0db9dbb6477b7ccc6cdf1",
-    "RELEASE-NOTES.md": "08d508c5e49759f1898f36e08c7a291017b95fbe36762a7efe5b8e58ecd47785",
+    "RELEASE-NOTES.md": "a0306906f892e85a57f7594e9fb0d2221a221c2b1f58b7a3b713466afd561c3d",
     "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -47,7 +47,7 @@
     "tools/asar-lite.mjs": "4747f0e5923842a705760c632b202b03888c4cf8085677005a6aeb09f374ee41",
     "tools/clean-ship.mjs": "dadd28bab80f7b864b37b3b677103966079cbd2a31821636fad0439277909048",
     "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
-    "tools/fix-attachment.mjs": "1543dd544104716fd7e7dd61b118ccd9d914fff7ec8e502250b3385ada2c1737",
+    "tools/fix-attachment.mjs": "89a5ebac1cfd7c5168a77f5a4ea50fd691cee5e5c29d8a296ce355c3996a76a2",
     "tools/fix-pnpm-state.mjs": "d6fc2f34bfbe3f3d40696fd2e4535a4815659fbb2163ef6c996f81fd2c132e4c",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",
