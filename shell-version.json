@@ -6,7 +6,7 @@
   "tag": "v0.4.1",
   "releasedAt": "2026-11-05T06:02:34.558Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-05T06:03:14.959Z",
+  "generatedAt": "2026-11-05T11:57:16.648Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5",
     "node": ">=24.0.0"
@@ -32,7 +32,7 @@
     "home/profiles/web/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/web/package.json": "392bd32b0781f8ec3375c2786051ece65b14a8324255dda5a983ae43a5ec4e43",
     "home/profiles/web/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
-    "preflight.cmd": "1994a927a1da92e0ad05d1a6e5000a1480d3c41574891dc723d8c8d63e7828f2",
+    "preflight.cmd": "e94da5a4f070248c195087e29fb99e57eeb7a4c4d4490e06bec47a4f2dbc3778",
     "runtime/vcredist/concrt140.dll": "2405355f0a58067b258f8df33c327e3a3d716eaac5a3a5aebb757842d85bd376",
     "runtime/vcredist/msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
     "runtime/vcredist/msvcp140_1.dll": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
@@ -59,7 +59,7 @@
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
     "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
-    "tools/preflight.mjs": "f92631c075e9fb386e7fc4e4acdb40ef61e88018c39e652a7e55375029bf5768",
+    "tools/preflight.mjs": "59921344d8300fac10c29a2790e50ce5d035430183ff538f96c0e3e02b4054b0",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
     "tools/say.ps1": "45ad446f810aa32787623876ff694fe159b52f2c7442604e26f51deca440d6c1",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
@@ -69,7 +69,7 @@
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "f24ccf7a6ccd5e2740f428df8bfef369010456d6ea83d6189ee91dd0e25682f1",
-    "tools/shell-update.mjs": "626bf2dcafad53121ab090aaab865bad52bde14d2139126b54719dbb0c068794",
+    "tools/shell-update.mjs": "f7f12ab357d224a7217749db9b0baaef7aee04777290c1bb7c46a5ea2b63f8f5",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
     "tools/verify-shell.mjs": "e26966f62ae61b56200f63149b9363ddb37c8db72b56ab57b1a32c84f8fc09b2"

@@ -36,14 +36,19 @@ if errorlevel 1 (
 echo.
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key bootstrap-done
 :dsh_ready
+rem --- update check FIRST, so the self-check below can show "current version / latest version / status".
+rem     Real check every launch (no cache replay). --brief: 10s x 2. --quiet-fail: failure is recorded
+rem     for [11] instead of printing a scary line before the self-check. ---
+set "UPD="
+if not exist "%ROOT%tools\shell-update.mjs" goto :dsh_selfcheck
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 0 --brief --quiet-fail
+set "UPD=%ERRORLEVEL%"
+:dsh_selfcheck
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\preflight.mjs"
-rem --- shell self-update: always do a REAL check on launch (no cache replay: a stale cache
-rem     used to show an old version / hide a new one). --brief keeps it fast when offline. ---
-if not exist "%ROOT%tools\shell-update.mjs" goto :dsh_menu
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 0 --prompt --brief
-if errorlevel 4 goto :dsh_menu
-if errorlevel 3 goto :dsh_menu
-if errorlevel 2 goto :dsh_menu
+rem only ask Y/N when the check just said "update available" (exit 0)
+if not "%UPD%"=="0" goto :dsh_menu
+rem print update details from the cache written a moment ago (instant, no second network call)
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 1440 --prompt
 if errorlevel 1 goto :dsh_menu
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-update-prompt
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-update-hint

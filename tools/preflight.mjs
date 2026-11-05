@@ -75,6 +75,15 @@ const readCheckCache = () => {
   } catch { return { ok: false, ageMs: -1, usable: false, status: '', local: '', remote: '', changed: 0 } }
 }
 const checkCache = readCheckCache()
+/** 上一次"真查失败"的记录（shell-update --quiet-fail 写的），用来区分"没查到"和"已是最新" */
+const readCheckErr = () => {
+  try {
+    const e = JSON.parse(readFileSync(join(root, 'tmp', 'shell-check.err.json'), 'utf8'))
+    const at = Number(e.at || 0)
+    return { ok: at > 0, ageMs: at > 0 ? Date.now() - at : -1, error: String(e.error || '') }
+  } catch { return { ok: false, ageMs: -1, error: '' } }
+}
+const checkErr = readCheckErr()
 const agoText = (ms) => {
   if (!(ms >= 0)) return '时间未知'
   if (ms < 60000) return '刚刚'
@@ -305,15 +314,22 @@ else warn('没有 robocopy.exe：升级时的大目录搬运会失败（Windows 
 if (existsSync(join(sysRoot, 'System32', 'curl.exe'))) ok('系统 curl 就位（主下载失败时自动兜底）')
 else ok('没有系统 curl：主下载失败时不会兜底（不影响正常运行）')
 
-// 壳版本与更新状态：只读（不下载、不写任何文件；真正的检查由启动流程里的 shell-update check 负责）
-console.log('\n[11] 壳版本明细')
+// 壳版本与更新状态：只读（不写盘；真正的检查由启动流程里的 shell-update check 负责，跑在本文件之前）
+console.log('\n[11] 壳版本与更新')
 if (shellInfo.version) {
-  console.log('  清单 tag  ' + (shellInfo.tag || ('v' + shellInfo.version)))
+  console.log('  当前版本  ' + shellInfo.version + '  (' + shellInfo.channel + ')')
   const ago = agoText(checkCache.ageMs)
-  if (!checkCache.ok) ok('还没检查过更新（每次启动都会真查一次）')
+  const latestKnown = (checkCache.ok && checkCache.usable && checkCache.remote) ? checkCache.remote : ''
+  console.log('  最新版本  ' + (latestKnown || '未知（本次没查到）'))
+  const errAgo = agoText(checkErr.ageMs)
+  const errNewer = checkErr.ok && (!checkCache.ok || checkErr.ageMs < checkCache.ageMs)
+  if (errNewer) {
+    // 本次检查失败：直接说清楚，而不是假装"已是最新"
+    warn('本次检查失败：' + (checkErr.error || '未知原因').slice(0, 80) + '（' + errAgo + '）；上次成功：' + (checkCache.ok ? ago : '无'))
+  } else if (!checkCache.ok) ok('还没检查过更新（每次启动都会真查一次）')
   else if (!checkCache.usable) ok('上次检查是 ' + ago + '，当时版本 ' + (checkCache.local || '?') + '；下次启动会重查')
   else if (checkCache.status === 'update-available' && cacheNewer) {
-    if (shellUpdate) warn('有可用更新：' + shellUpdate + '（启动时可选择更新；不想看到可执行 shell-update snooze）')
+    if (shellUpdate) warn('有可用更新：' + shellUpdate + '（当前 ' + checkCache.local + '；启动时可选择更新，不想看到可执行 shell-update snooze）')
     else ok('上次检查是 ' + ago + '，当时发现 ' + checkCache.remote + ' 可更新；本次启动会重查')
   }
   else if (checkCache.status === 'blocked') warn('有 ' + checkCache.remote + '，但被兼容性挡下（运行 shell-update check 看原因）')

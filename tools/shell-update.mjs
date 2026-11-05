@@ -669,10 +669,17 @@ const finish = (code) => {
   if (t.unref) t.unref()
 }
 
+let QUIET_FAIL = false
+// 启动路径（preflight）失败时不刷屏：把错误记一笔，由 preflight 的 [11] 显示"检查失败：…"
+const CHECK_ERR = 'tmp/shell-check.err.json'
+const recordCheckError = (error) => {
+  try { writeJsonFile(CHECK_ERR, { at: Date.now(), error: String(error || '').slice(0, 300) }) } catch { }
+}
 const fail = (jsonMode, action, errorCode, error, extra) => {
   const code = extra && Number.isInteger(extra.exitCode) ? extra.exitCode : (errorCode === 'blocked' ? EXIT_BLOCKED : EXIT_FAIL)
+  if (action === 'check') recordCheckError(error)
   if (jsonMode) emitJson(Object.assign({ ok: false, action, errorCode, error, exitCode: code }, extra || {}))
-  else process.stderr.write('shell-update: ' + error + '\n')
+  else if (!(QUIET_FAIL && action === 'check')) process.stderr.write('shell-update: ' + error + '\n')
   finish(code)
 }
 
@@ -752,7 +759,11 @@ const runCheck = async (opts) => {
   const blockers = compatBlockers(m, installed, opts)
   const summary = buildSummary(m, installed, rows, removed, blockers, opts)
   // 只有"从网络真查到"的结果才写缓存（本地清单测试不落盘）；这样 doctor/preflight 读到的永远是最近一次真实结论
-  if (m.kind === 'url') writeJsonFile(CACHE_FILE, { at: Date.now(), source: sourceKey, version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
+  if (m.kind === 'url') {
+    writeJsonFile(CACHE_FILE, { at: Date.now(), source: sourceKey, version: m.shellVersion, summary: Object.assign({}, summary, { _rows: undefined, _removed: undefined }) })
+    // 这次真查成功了：清掉上一次的失败记录
+    try { unlinkSync(join(ROOT, CHECK_ERR)) } catch { }
+  }
   const { _rows, _removed, ...clean } = summary
 
   if (opts.json) {
@@ -1231,10 +1242,10 @@ const runDefaults = (opts) => {
 
 // ---- CLI --------------------------------------------------------------------
 const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached' }
-const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--brief': 'brief', '--help': 'help', '-h': 'help' }
+const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--brief': 'brief', '--quiet-fail': 'quietFail', '--help': 'help', '-h': 'help' }
 
 const parseArgs = (argv) => {
-  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, help: false, bad: '' }
+  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, quietFail: false, help: false, bad: '' }
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i]
     if (BOOL_FLAGS[t]) { a[BOOL_FLAGS[t]] = true; continue }
@@ -1254,8 +1265,9 @@ const parseArgs = (argv) => {
   }
   a.cached = Number(a.cached) || 0
   if (a.dryRun) a.force = false
-  // 启动路径（preflight）用 --brief：离线时不要卡 25 秒，4 秒 x 2 次就够判断"查不到"
-  if (a.brief) { FETCH_TIMEOUT_MS = 4000; RETRIES = 2 }
+  // 启动路径（preflight）用 --brief：单次 10 秒、2 次尝试（4 秒太激进：GitHub 稍慢就误报"超时"）
+  if (a.brief) { FETCH_TIMEOUT_MS = 10000; RETRIES = 2 }
+  if (a.quietFail) QUIET_FAIL = true
   return a
 }
 
