@@ -633,7 +633,14 @@ check('清单里没有禁止路径', () => {
 
 check('各 profile 下没有本地 node_modules（共享布局）', () => {
   const label = '各 profile 下没有本地 node_modules（共享布局）'
-  const bad = ['web', 'desktop'].filter((p) => exists(join(ROOT, 'home/profiles', p, 'node_modules')))
+  // pnpm 会往 profile 自己的 node_modules 写 .pnpm-workspace-state-v1.json 这类状态文件；
+  // 只有出现真实依赖条目（非点开头）才算「第二份插件副本」。
+  const hasRealModules = (p) => {
+    const dir = join(ROOT, 'home/profiles', p, 'node_modules')
+    if (!exists(dir)) return false
+    try { return readdirSync(dir).some((n) => !n.startsWith('.')) } catch { return false }
+  }
+  const bad = ['web', 'desktop'].filter(hasRealModules)
   add(label, bad.length === 0, bad.length
     ? '存在本地 node_modules：' + bad.join('、') + '（会形成第二份插件副本）→ 删掉并跑 fix-state'
     : '只有 home/profiles/node_modules 一份')
