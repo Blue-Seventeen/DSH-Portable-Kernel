@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 // 壳自更新清单的口径只有一份（白名单 + sha256 + 清单 schema 版本），这里直接复用，免得两边各写一套后漂移
 import {
   MANIFEST_SCHEMA, REPO, SHELL_MANIFEST, UPDATER_MIN, USER_OWNED,
-  listLocalShellFiles, readLocalManifest, sha256File,
+  countProfileBundles, listLocalShellFiles, localDshVersion, readLocalManifest, sha256File,
 } from './shell-update.mjs'
 import { SHELL_MIGRATIONS } from './shell-migrations.mjs'
 
@@ -171,6 +171,14 @@ const refreshVersion = () => {
     v.desktopSizeMB = sizeMB(deskDir)
     v.homeSizeMB = sizeMB(homeDir)
     v.desktopAsarSizeMB = Math.round((v.desktopAsarBytes / 1048576) * 10) / 10
+    // 引擎版本与 bundle 计数一律由脚本算。用户升级走的是 shell-update apply（不经过这里），
+    // 若只有发版流程才刷，这两个字段在用户机器上会一直停在出厂值，最后逼人去手改 JSON。
+    const dv = localDshVersion()
+    if (dv) v.dshVersion = dv
+    const bw = countProfileBundles('web')
+    const bd = countProfileBundles('desktop')
+    if (bw !== null) v.bundlesWeb = bw
+    if (bd !== null) v.bundlesDesktop = bd
     v.sourceInstall = '(redacted)'
     v.sourceProfile = '(redacted)'
     // 内容没变就不要刷新时间戳：否则每次 refresh 都把工作区弄脏（无法判断"这次到底变没变"）

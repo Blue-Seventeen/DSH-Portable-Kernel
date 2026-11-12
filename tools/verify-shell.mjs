@@ -114,7 +114,12 @@ check('bundles 数量与 version.json 声明一致', () => {
   const v = exists(join(ROOT, 'version.json')) ? JSON.parse(read(join(ROOT, 'version.json'))) : {}
   const wantW = Number(v.bundlesWeb || 7)
   const wantD = Number(v.bundlesDesktop || 14)
-  add('bundles: web=' + wantW + ' / desktop=' + wantD + '（version.json 声明）', bw.length === wantW && bd.length === wantD, 'web=' + bw.length + ' desktop=' + bd.length)
+  const same = bw.length === wantW && bd.length === wantD
+  // 不一致 = 有人绕过插件工具直接改了 profile，version.json 的计数因此没同步。
+  // 这不是"声明过时"，不要反过来改 version.json 去迁就现状（那等于把报警器拆了）：
+  // 要么跑 refresh 重算，要么先 git diff 确认 profile 是不是被误改的。
+  add('bundles: web=' + wantW + ' / desktop=' + wantD + '（version.json 声明）', same,
+    'web=' + bw.length + ' desktop=' + bd.length + (same ? '' : '  ← node tools\\clean-ship.mjs refresh 同步计数；若 profile 是被误改的，先 git diff 还原'))
   add('两边都含 dshmarket（商城必备）', bw.includes('dshmarket') && bd.includes('dshmarket'))
   const skins = (a) => a.filter((n) => /skin/.test(n)).sort().join()
   add('两个模式的主题集合一致', skins(bw) === skins(bd), bw.filter((n) => /skin/.test(n)).length + ' 个主题')

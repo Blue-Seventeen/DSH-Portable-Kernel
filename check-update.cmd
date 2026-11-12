@@ -16,10 +16,16 @@ if exist "%MSGFILE%" del "%MSGFILE%" >nul 2>nul
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\update-check.mjs" > "%MSGFILE%" 2> "%ROOT%logs\update-check.err"
 if not exist "%MSGFILE%" goto :eof
 for %%F in ("%MSGFILE%") do if %%~zF EQU 0 goto :eof
-rem non-empty file = newer version; print it verbatim (version text may contain | > etc.)
+rem non-empty file = something to say; print it verbatim (version text may contain | > etc.)
 echo.
 type "%MSGFILE%"
 echo.
+rem Only the UPD prefix (kernel update inside the shell compat range) asks Y/N.
+rem KERN (kernel beyond the shell range) and FROZEN lines are display-only: answering Y there
+rem would push update-all onto a kernel the shell is not adapted for (2026-11-12 compat report).
+set "UPDLINE="
+for /f "usebackq tokens=1 delims=" %%A in ("%MSGFILE%") do if not defined UPDLINE set "UPDLINE=%%A"
+if /i not "%UPDLINE:~0,4%"=="UPD " goto :eof
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-prompt -NoNewline
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-hint
 choice /C YN /T 15 /D N /N /M " > "

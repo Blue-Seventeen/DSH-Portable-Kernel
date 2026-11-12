@@ -101,6 +101,11 @@ console.log('  ' + RULE)
 console.log('  DSH-Portable-Kernel · 便携版自检')
 console.log('  壳版本  ' + (shellInfo.version || '（读不到 shell-version.json）') + (shellInfo.version ? '  (' + shellInfo.channel + ')' : '') + (shellUpdate ? '    →  ' + shellUpdate + ' 可更新' : ''))
 console.log('  安装位置  ' + root)
+// 工作区既是"发布源码"又是"能跑的实例"，很容易在这里日常使用：
+// 一跑插件操作就会改掉出厂默认的 profiles / version.json，事后很难看出是哪儿动的。
+if (existsSync(join(root, '.git'))) {
+  warn('这是源码目录（含 .git）：在此日常使用会改动出厂默认的 profiles / version.json；日常请用复制出来的便携副本')
+}
 console.log('  ' + RULE)
 
 console.log('\n[01] 系统')

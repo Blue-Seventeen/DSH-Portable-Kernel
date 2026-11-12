@@ -273,6 +273,11 @@ const resolveStore = () => {
   const refresh = argv.includes('--refresh')
   let dshVersion = ''
   try { dshVersion = JSON.parse(readFileSync(join(root, 'app', 'package.json'), 'utf8')).version || '' } catch { }
+  // app\package.json 由 pnpm 生成，升级后只剩 dependencies；回退到真正装进来的官方包。
+  // 读不到就永远是空串，缓存里的 dshVersion 也就永远对得上，换引擎后不会重算 store。
+  if (!dshVersion) {
+    try { dshVersion = JSON.parse(readFileSync(join(root, 'app', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'), 'utf8')).version || '' } catch { }
+  }
   if (!refresh) {
     try {
       const c = JSON.parse(readFileSync(cacheFile, 'utf8'))

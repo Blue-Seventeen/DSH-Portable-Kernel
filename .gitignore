@@ -71,3 +71,5 @@ desktop.ini
 /home/profiles/desktop/pnpm-workspace.yaml
 # 本地校验套件：只在工作区用，不进 GitHub、不随壳发布
 /test/
+# .graph：本地插件（图数据产物）的工作目录，不属于壳，也不随壳发布
+/.graph/

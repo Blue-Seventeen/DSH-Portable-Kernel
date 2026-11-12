@@ -2,20 +2,20 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.4.3",
-  "tag": "v0.4.3",
-  "releasedAt": "2026-11-05T14:21:20.493Z",
+  "shellVersion": "0.5.0",
+  "tag": "v0.5.0",
+  "releasedAt": "2026-11-12T07:51:50.774Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-06T07:50:23.391Z",
+  "generatedAt": "2026-11-12T07:52:39.710Z",
   "requires": {
-    "dsh": ">=0.2.1-rc.5",
+    "dsh": ">=0.2.1-rc.5,<0.2.2-rc.2",
     "node": ">=24.0.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "c3eac8fda0131dde4d4d63f4555ad8b641429b0174b0db9dbb6477b7ccc6cdf1",
-    "RELEASE-NOTES.md": "ef42a9e29d537f29fbd4c121cb9044d47bac7b75a71f27c9e46719d8cb848fe0",
-    "check-update.cmd": "fabe493152976ed531153ba883d417ad4ef156e4529f1379722b17e4821ab9e7",
+    "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
+    "RELEASE-NOTES.md": "1648d88b9b46c8f8c9dd739bbf6286e43a1cc9447b8409a6ae6d33ec1026f2b3",
+    "check-update.cmd": "0403f75299cd60607aac4f273379538c81d53b25f8390aee7516e827d0303c92",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
@@ -46,10 +46,10 @@
     "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
     "tools/asar-lite.mjs": "4747f0e5923842a705760c632b202b03888c4cf8085677005a6aeb09f374ee41",
     "tools/check-text-encoding.mjs": "7c8853f141bbd88a4a5ae138ac6499fa37b2162e450a9e159c295e5b8fc8a75e",
-    "tools/clean-ship.mjs": "dadd28bab80f7b864b37b3b677103966079cbd2a31821636fad0439277909048",
+    "tools/clean-ship.mjs": "410bea0288c50d61d1b7ad7e324926ef5b035b2dacd8dce2358cebb683ed63ce",
     "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
     "tools/fix-attachment.mjs": "8dc4288f18ab7aabd45f36c9ba2abcf2361c80eb53570838a6640e5189617785",
-    "tools/fix-pnpm-state.mjs": "d6fc2f34bfbe3f3d40696fd2e4535a4815659fbb2163ef6c996f81fd2c132e4c",
+    "tools/fix-pnpm-state.mjs": "50c9b8c252d74a1f858c7d534e29004c7d2031034860efd22f4ea51468cce86a",
     "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
     "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",
     "tools/mask-log.mjs": "e4b43a4d79ce0dc624b828fe281df364f601c3e0990b27cffaca6369cb722778",
@@ -60,7 +60,7 @@
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
     "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
-    "tools/preflight.mjs": "94480c0368f817683f905353d5478cfcf08a52286380034f88284e4176f0eed3",
+    "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
     "tools/say.ps1": "45ad446f810aa32787623876ff694fe159b52f2c7442604e26f51deca440d6c1",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
@@ -70,10 +70,11 @@
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "d54aa0b2f9b743c6f3d6491257b577443569c56289cbb8f62415ecfcdd32d9c5",
-    "tools/shell-update.mjs": "f7f12ab357d224a7217749db9b0baaef7aee04777290c1bb7c46a5ea2b63f8f5",
+    "tools/shell-update.mjs": "743cfc92757ea6c2fe4121c91e2dae2794ffce147fe9a69658a243349be7b405",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
-    "tools/update-check.mjs": "7bc6833027013a320a31d326d7a158af231276c3223642e0a60b99ddd988c306",
-    "tools/verify-shell.mjs": "8a1740b28fedd0a7b1f2cb7f3c5dde32a0f4c95baf67da070d00d5af17c441a4"
+    "tools/update-check.mjs": "3cd55c74ef4511dbaa2b7cb7745bf43498c3ebd447c547e0d665b27f339f1418",
+    "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
+    "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff"
   },
   "userOwned": [
     "home/cordis.patch.yml",
@@ -87,31 +88,40 @@
   ],
   "notes": {
     "added": [
-      "`tools\\check-text-encoding.mjs`：审计提交标题、tag 注释、已跟踪文本文件（`md/json/mjs/ps1/cmd`）是否有连续问号或 `U+FFFD`；默认只查最近 `v*` tag 之后（历史旧账用 `--all`）。",
-      "`shell-release prepare` 的发布闸门新增 **text-encoding**（过不了不许打 tag）。"
+      "**内核-壳适配闸门**：清单的 `requires.dsh` 升级为区间声明（本次 `>=0.2.1-rc.5,<0.2.2-rc.2`）——官方内核跃出区间时，启动提示不再诱导你按 Y 升级，改为给出三条路：升壳适配 / 冻结当前组合 / 显式改上界。",
+      "`node tools\\shell-update.mjs compat [--json] [--dsh <版本>]`：唯一的适配判定入口（本地清单、零网络），退出码 0=在区间内 / 3=出界。",
+      "冻结模式：壳根目录放 `frozen.json`（`{\"dsh\":\"<版本>\",\"reason\":\"...\"}`）后内核更新提示静默；壳更新通道不受影响（升壳是解冻的正规通道）。",
+      "`version.json` 的 `dshVersion` / `bundlesWeb` / `bundlesDesktop` / `desktopAsarBytes` 全部改为脚本自动算（发版 `clean-ship refresh` + 升级收尾自动刷新），不再人工维护。",
+      "`preflight` 在源码目录（含 `.git`）运行时提醒：日常使用请用便携副本，避免改掉出厂默认。",
+      "README「必须守住的不变式」从四条扩到六条（三层边界 + 元数据全自动）。"
     ],
     "fixed": [
-      "`tools\\patch-attachment.mjs` 注释里的一个 `U+FFFD` 坏字符（之前写文件时留下的）。",
-      "发布 skill 的缺口：`hack3rx-software-ship` 增加 G6 文本编码闸门；`hack3rx-agent-lessons` R7 明确\"提交信息文件必须 UTF-8、禁止 `Set-Content -Encoding ascii`\"。"
+      "**app 更新检测失效**：`app\\package.json` 是 pnpm 生成的（没有 version 字段），旧检测器读空后永远不提示 app 更新。现在回退到已装官方包（`app\\node_modules\\@deepseek-ai\\dsh`）。",
+      "**desktop 版本读歪**：0.2.2 起官方 asar 的 JSON 段带 3 字节对齐 padding，旧代码按 `16+jsonLen` 算数据起点直接读歪。现按 `8+headerSize` 规范解析（且只读头部，208MB 的 asar 从 107ms 降到 6ms）。",
+      "**升完还提示升级**：更新检查缓存里记下\"当时的本地版本\"，升级成功后旧缓存自动作废重查，不再 6 小时内反复问同一句。",
+      "desktop 版本回退链：`version.dsh` 是官方从不写的死文件，改为回退读 `DeepSeek Harness.exe` 的版本资源。"
     ],
     "optimized": [
-      "本地测试套件 89 → 91 项（编码审计默认范围、`--all` 反向验证）。"
+      "版本区间语法：逗号与空格等价（`\">=X,<Y\"` ≡ `\">=X <Y\"`）；旧实现空格写法会把上界静默吞掉。",
+      "版本比较/区间判定抽到 `tools\\version-range.mjs`（零依赖纯函数，测试可单独拷贝运行）。",
+      "本地测试套件 91 → 101 项（update-check 五个回归用例 + 快照刷新五个用例，均做过\"破坏必须变红\"的反向验证）。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变；`requires.dsh` 从单边改区间对老更新器透明（读到的还是字符串）。"
     ],
     "upgrade": [
-      "替换清单里的壳文件（62 个，本次变更 4 个：`RELEASE-NOTES.md`、`tools\\patch-attachment.mjs`、`tools\\shell-release.mjs`、新增 `tools\\check-text-encoding.mjs`）。",
-      "三份 `pnpm-workspace.yaml` 不随壳走、也不会被删；换装后自动跑 `fix-pnpm-state`。",
-      "换装前备份到 `cache\\shell-backup-<时间戳>`，换完跑换装闸门。"
+      "替换清单里的壳文件（63 个，本次变更 9 个：`check-update.cmd`、`shell-version.json`、`tools\\clean-ship.mjs`、`tools\\fix-pnpm-state.mjs`、`tools\\preflight.mjs`、`tools\\shell-update.mjs`、`tools\\update-check.mjs`、`tools\\verify-shell.mjs`、新增 `tools\\version-range.mjs`；`README.md`/`RELEASE-NOTES.md`/`version.json` 属随包快照）。",
+      "换装收尾自动对齐 pnpm 状态并刷新 `version.json` 快照。",
+      "三份 `pnpm-workspace.yaml` 不随壳走、也不会被删；换装前备份到 `cache\\shell-backup-<时间戳>`。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.4.2 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.4.3.zip` 整包覆盖壳文件。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.4.3 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.5.0.zip` 整包覆盖壳文件。",
+      "---"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.4.3",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.5.0",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -122,8 +132,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.4.3.zip",
-    "sha256": "72d6d7f48eddb8f15d082be3515a63af910e6c941bcacb32888a99cbbfbbc75d",
-    "bytes": 1877058
+    "name": "harness-shell-0.5.0.zip",
+    "sha256": "032399014d4be0a072bbc9acdd7188593e1cb2757f53f87c7e9d1613adf03324",
+    "bytes": 1886477
   }
 }

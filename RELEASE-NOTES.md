@@ -13,6 +13,50 @@
 
 ---
 
+## v0.5.0 — 2026-11-12
+
+双向兼容闸门：壳从此对官方内核的"太新"方向也有闸（调研报告见仓库 `doc/compat-report-2026-11-12.md`）。
+
+### 新增
+
+- **内核-壳适配闸门**：清单的 `requires.dsh` 升级为区间声明（本次 `>=0.2.1-rc.5,<0.2.2-rc.2`）——官方内核跃出区间时，启动提示不再诱导你按 Y 升级，改为给出三条路：升壳适配 / 冻结当前组合 / 显式改上界。
+- `node tools\shell-update.mjs compat [--json] [--dsh <版本>]`：唯一的适配判定入口（本地清单、零网络），退出码 0=在区间内 / 3=出界。
+- 冻结模式：壳根目录放 `frozen.json`（`{"dsh":"<版本>","reason":"..."}`）后内核更新提示静默；壳更新通道不受影响（升壳是解冻的正规通道）。
+- `version.json` 的 `dshVersion` / `bundlesWeb` / `bundlesDesktop` / `desktopAsarBytes` 全部改为脚本自动算（发版 `clean-ship refresh` + 升级收尾自动刷新），不再人工维护。
+- `preflight` 在源码目录（含 `.git`）运行时提醒：日常使用请用便携副本，避免改掉出厂默认。
+- README「必须守住的不变式」从四条扩到六条（三层边界 + 元数据全自动）。
+
+### 修复
+
+- **app 更新检测失效**：`app\package.json` 是 pnpm 生成的（没有 version 字段），旧检测器读空后永远不提示 app 更新。现在回退到已装官方包（`app\node_modules\@deepseek-ai\dsh`）。
+- **desktop 版本读歪**：0.2.2 起官方 asar 的 JSON 段带 3 字节对齐 padding，旧代码按 `16+jsonLen` 算数据起点直接读歪。现按 `8+headerSize` 规范解析（且只读头部，208MB 的 asar 从 107ms 降到 6ms）。
+- **升完还提示升级**：更新检查缓存里记下"当时的本地版本"，升级成功后旧缓存自动作废重查，不再 6 小时内反复问同一句。
+- desktop 版本回退链：`version.dsh` 是官方从不写的死文件，改为回退读 `DeepSeek Harness.exe` 的版本资源。
+
+### 优化
+
+- 版本区间语法：逗号与空格等价（`">=X,<Y"` ≡ `">=X <Y"`）；旧实现空格写法会把上界静默吞掉。
+- 版本比较/区间判定抽到 `tools\version-range.mjs`（零依赖纯函数，测试可单独拷贝运行）。
+- 本地测试套件 91 → 101 项（update-check 五个回归用例 + 快照刷新五个用例，均做过"破坏必须变红"的反向验证）。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变；`requires.dsh` 从单边改区间对老更新器透明（读到的还是字符串）。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（63 个，本次变更 9 个：`check-update.cmd`、`shell-version.json`、`tools\clean-ship.mjs`、`tools\fix-pnpm-state.mjs`、`tools\preflight.mjs`、`tools\shell-update.mjs`、`tools\update-check.mjs`、`tools\verify-shell.mjs`、新增 `tools\version-range.mjs`；`README.md`/`RELEASE-NOTES.md`/`version.json` 属随包快照）。
+- 换装收尾自动对齐 pnpm 状态并刷新 `version.json` 快照。
+- 三份 `pnpm-workspace.yaml` 不随壳走、也不会被删；换装前备份到 `cache\shell-backup-<时间戳>`。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.4.3 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.5.0.zip` 整包覆盖壳文件。
+
+---
+
 ## v0.1.0 — 2026-11-03
 
 第一个按 GitHub Release 版本线发布的壳。

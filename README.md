@@ -116,14 +116,21 @@ dsh-portable.cmd bootstrap
 
 ---
 
-## 四、四条必须守住的不变式
+## 四、必须守住的不变式
 
-改壳的时候这四条最容易踩，`tools\verify-shell.mjs` 会逐条查：
+改壳的时候这几条最容易踩，`tools\verify-shell.mjs` 会逐条查：
 
 1. **`.cmd` 只能是纯 ASCII + CRLF**。cmd.exe 按字节解析 UTF-8 中文会错位（曾把一行注释当命令执行），中文一律走 `tools\say.ps1`；只写 LF 会报 `The system cannot find the batch label specified - dsh_done`。`.gitattributes` 里这三类文件是 `-text`（按字节存，任何机器 clone 都不会被转成 LF）。
 2. **`dsh-portable.ps1` 与 `tools\say.ps1` 必须 UTF-8 BOM，而且只能有一个**。PS 5.1 不带 BOM 会按 ANSI 读中文，字符串全变乱码；写脚本时用 `.NET` 读回再写会把 BOM 当字符保留、于是变成两个 BOM，PowerShell 直接报 `An expression was expected after '('`。`README.md` / `version.json` 反过来：**不要 BOM**。
 3. **插件只有一份共享副本**。`home\profiles\node_modules` 是共享目录，两个 profile 的 `pnpm-workspace.yaml` 都写 `modulesDir: ../node_modules`，三份 `package.json` 的 `dependencies` 必须逐字符一致；`home\profiles\{web,desktop}\node_modules\dshmarket` 不允许存在（否则同一个插件会有两份，升级后一份新一份旧）。
 4. **只允许一个 pnpm 大版本**。`runtime\pnpm\bin\pnpm.cmd` 这个 62 字节垫片必须存在——dsh 的插件操作是**从 PATH 上找 pnpm** 的，没有垫片时 `env.cmd` 的 PATH 置顶等于没写，dsh 会抓到机器上装的另一代 pnpm。两代 pnpm 的 store 布局目录不同（`…\pnpm-store\v10` vs `v11`），pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`，**市场里连卸载都做不了**。`runtime\` 不进 git，所以垫片由 `tools\fix-pnpm-state.mjs` 每次启动自动补；真的错配了用 `dsh-portable.cmd plugin-repair -Force` 重建。
+5. **壳只加壳：不碰用户配置、不篡改官方内核**。三层边界写死：
+   - **官方内核层**（`app\`、`desktop\`、`runtime\`）：只允许 `tools\patch-*.mjs` 做"便携适配"（exFAT 无软链、store 路径、商城查找、附件 link→copy）。补丁必须幂等、有 `--check`、官方升级后自动重打；**禁止**改版本号、改功能语义、改网络端点、整体替换官方包。
+   - **用户配置层**（`home\` 下 `USER_OWNED` 那 8 个文件、两份 `cordis.patch.yml`、会话/凭证/附件）：**只读不写**。升级时 `computePlan` 对它们一律 `preserved`；用户删掉的不会自动装回来（`test\selftest-shell-update.mjs` 有对应用例）。
+   - **壳层**（根 10 个脚本 + `tools\`）：壳自己的地盘，随壳更新。
+
+   2026-11-12 事故：工作区的 `home\profiles\desktop\package.json` 被绕过插件工具直接删了一个 bundle，`verify` 报「bundles 12 ≠ 13」。那句报错是**报警**，不是噪音——为了让它变绿去改 `version.json` 的声明，等于把报警器拆了。正确处置是先 `git diff` 确认是不是误改，是就还原。
+6. **`version.json` 的字段一律由脚本算，不许人工维护**。`bundlesWeb` / `bundlesDesktop` / `dshVersion` / `desktopAsarBytes` 由发版时的 `clean-ship refresh` 与**升级收尾的 `refreshVersionSnapshot()`** 自动重算（前者全量遍历，后者只读几个小 JSON，挂在 `shell-update apply` 末尾）。用户永远只跑 `dsh-portable.cmd shell-update`，不需要打开任何 JSON。
 
 另外三条官方规则，改不了只能顺着：
 

@@ -239,63 +239,10 @@ export const validateShellBytes = (relPath, buf) => {
 }
 
 // ---- 版本比较（与 tools\update-check.mjs 同一套语义：只在"远端更新"时才算更新） -----
-export const parseVer = (v) => {
-  const s = String(v == null ? '' : v).trim().replace(/^v/i, '')
-  const dash = s.indexOf('-')
-  const core = dash === -1 ? s : s.slice(0, dash)
-  const pre = dash === -1 ? '' : s.slice(dash + 1)
-  return { nums: core.split('.').map((x) => parseInt(x, 10) || 0), pre: pre ? pre.split('.') : [] }
-}
-const cmpPre = (a, b) => {
-  const n = Math.max(a.length, b.length)
-  for (let i = 0; i < n; i++) {
-    const x = a[i], y = b[i]
-    if (x === undefined) return -1
-    if (y === undefined) return 1
-    const nx = /^\d+$/.test(x) ? Number(x) : null
-    const ny = /^\d+$/.test(y) ? Number(y) : null
-    if (nx !== null && ny !== null) { if (nx !== ny) return nx - ny }
-    else { const c = String(x).localeCompare(String(y)); if (c) return c }
-  }
-  return 0
-}
-export const isNewer = (latest, cur) => {
-  const a = parseVer(latest), b = parseVer(cur)
-  const n = Math.max(a.nums.length, b.nums.length, 3)
-  for (let i = 0; i < n; i++) {
-    const x = a.nums[i] || 0, y = b.nums[i] || 0
-    if (x !== y) return x > y
-  }
-  if (!a.pre.length && b.pre.length) return true
-  if (a.pre.length && !b.pre.length) return false
-  return cmpPre(a.pre, b.pre) > 0
-}
-
-/** 极简范围判定：支持 ">=x" ">x" "<=x" "<x" "=x" 与逗号组合；解析不了返回 null（= 不判） */
-export const satisfiesRange = (ver, range) => {
-  const cur = String(ver || '').trim()
-  if (!cur || !range) return null
-  const conds = String(range).split(',').map((s) => s.trim()).filter(Boolean)
-  for (const c of conds) {
-    const m = /^(>=|<=|>|<|=)?\s*v?(.+)$/.exec(c)
-    if (!m) return null
-    const op = m[1] || '='
-    const target = m[2].trim()
-    if (op === '>=') { if (isNewer(target, cur) && !equalVer(target, cur)) return false }
-    else if (op === '>') { if (!isNewer(cur, target)) return false }
-    else if (op === '<=') { if (isNewer(cur, target)) return false }
-    else if (op === '<') { if (!isNewer(target, cur)) return false }
-    else if (!equalVer(cur, target)) return false
-  }
-  return true
-}
-const equalVer = (a, b) => {
-  const x = parseVer(a), y = parseVer(b)
-  const n = Math.max(x.nums.length, y.nums.length, 3)
-  for (let i = 0; i < n; i++) if ((x.nums[i] || 0) !== (y.nums[i] || 0)) return false
-  if (x.pre.length !== y.pre.length) return false
-  return cmpPre(x.pre, y.pre) === 0
-}
+// 实现抽在 tools\version-range.mjs（零依赖纯函数）：update-check 会被测试单独拷进隔离目录，
+// 不能 import 本文件（CLI 全家桶会被拖进去 → MODULE_NOT_FOUND）。这里 re-export 保持兼容。
+import { equalVer, isNewer, satisfiesRange } from './version-range.mjs'
+export { parseVer, isNewer, satisfiesRange } from './version-range.mjs'
 
 // ---- IO ---------------------------------------------------------------------
 const isUrl = (s) => /^https?:\/\//i.test(String(s == null ? '' : s))
@@ -487,16 +434,65 @@ const loadManifest = async (opts) => {
   }
 }
 
-/** 本地官方层版本（用于 requires.dsh） */
-const localDshVersion = () => {
+/**
+ * 本地官方层版本（用于 requires.dsh，也用于刷新 version.json 的 dshVersion）。
+ * `app\package.json` 是 pnpm 生成的清单，升级后只剩 dependencies（没有 version），
+ * 所以先看真正装进来的官方包，再看它 —— 这个顺序不能反。
+ */
+export const localDshVersion = (rootDir = ROOT) => {
   const paths = ['app/node_modules/@deepseek-ai/dsh/package.json', 'app/package.json']
   for (const rel of paths) {
     try {
-      const j = JSON.parse(readFileSync(join(ROOT, rel), 'utf8'))
+      const j = JSON.parse(readFileSync(join(rootDir, rel), 'utf8'))
       if (j && j.version) return String(j.version)
     } catch { }
   }
   return ''
+}
+
+/** 某份 profile 的 bundle 数量；profile 清单不存在时返回 null（调用方据此决定要不要覆盖） */
+export const countProfileBundles = (name, rootDir = ROOT) => {
+  const f = join(rootDir, 'home', 'profiles', name, 'package.json')
+  if (!existsSync(f)) return null
+  try {
+    const j = JSON.parse(readFileSync(f, 'utf8'))
+    const arr = j && j.dsh && j.dsh.profile && j.dsh.profile.bundles
+    return Array.isArray(arr) ? arr.length : 0
+  } catch { return null }
+}
+
+/**
+ * 轻量刷新 version.json 里"会随升级漂移"的字段：dshVersion / desktopAsarBytes / 两份 bundle 计数。
+ * 只读 3 个小 JSON + 1 个 stat，不做目录遍历（全量 clean-ship refresh 在 exFAT 上太慢，不能挂在升级路径上）。
+ *
+ * 为什么必须自动：clean-ship refresh 只在发版流程（shell-release prepare）里跑，
+ * 用户升级走的是 shell-update apply，从不跑它。结果是用户机器上的 version.json 永远停在出厂值，
+ * verify 随后误报"与出厂快照不一致"，而要修就得人工去改 JSON —— 这正是要消灭的人工维护。
+ */
+export const refreshVersionSnapshot = (rootDir = ROOT) => {
+  const vf = join(rootDir, 'version.json')
+  if (!existsSync(vf)) return { ok: false, changed: [] }
+  let v
+  try { v = JSON.parse(readFileSync(vf, 'utf8')) } catch { return { ok: false, changed: [] } }
+  const before = JSON.stringify(v)
+  const changed = []
+  const dv = localDshVersion(rootDir)
+  if (dv && v.dshVersion !== dv) { v.dshVersion = dv; changed.push('dshVersion') }
+  try {
+    const st = statSync(join(rootDir, 'desktop', 'resources', 'app.asar'))
+    if (v.desktopAsarBytes !== st.size) { v.desktopAsarBytes = st.size; changed.push('desktopAsarBytes') }
+    const mb = Math.round((st.size / 1048576) * 10) / 10
+    if (v.desktopAsarSizeMB !== mb) { v.desktopAsarSizeMB = mb; changed.push('desktopAsarSizeMB') }
+  } catch { /* 桌面层还没装，跳过 */ }
+  for (const pair of [['bundlesWeb', 'web'], ['bundlesDesktop', 'desktop']]) {
+    const n = countProfileBundles(pair[1], rootDir)
+    if (n !== null && v[pair[0]] !== n) { v[pair[0]] = n; changed.push(pair[0]) }
+  }
+  if (!changed.length) return { ok: true, changed }
+  try {
+    writeFileSync(vf, JSON.stringify(v, null, 2) + '\n', 'utf8')
+  } catch { return { ok: false, changed: [] } }
+  return { ok: true, changed }
 }
 
 /** 兼容性闸门：schema / updater / minShellVersion / requires */
@@ -516,7 +512,26 @@ const compatBlockers = (m, installed, opts) => {
     const have = localDshVersion()
     if (have) {
       const ok = satisfiesRange(have, wantDsh)
-      if (ok === false) blockers.push({ code: 'requires-dsh', message: '这份壳要求官方层 dsh ' + wantDsh + '，本机是 ' + have, fix: '先 dsh-portable.cmd update-app -Force / update-desktop -Force' })
+      if (ok === false) {
+        // 区间分两个方向给文案：too-old（本机内核太旧）与 too-new（内核跃出壳的适配上界）。
+        // too-new 是 2026-11-12 调研定下的方向：出界时给"升壳 / 冻结 / 显式改上界"三条路，
+        // 冻结合法且安全（doc/compat-report-2026-11-12.md §0/§5）。
+        const conds = String(wantDsh).split(/[,\s]+/).map((s) => s.trim()).filter(Boolean)
+        let upper = ''
+        for (const c of conds) {
+          const mm = /^<=?\s*v?(.+)$/.exec(c)
+          if (mm) {
+            const t = mm[2] || mm[1]
+            if (!upper || isNewer(t, upper)) upper = t
+          }
+        }
+        const tooNew = upper ? isNewer(have, upper) || equalVer(have, upper) && !/=$/.test(conds[conds.length - 1] || '') : false
+        if (tooNew) {
+          blockers.push({ code: 'requires-dsh-too-new', message: '这份壳的适配区间是 dsh ' + wantDsh + '，本机内核 ' + have + ' 已超出上界', fix: '三选一：① dsh-portable.cmd shell-update check（有适配新内核的壳就 apply -Force）② dsh-portable.cmd freeze "原因"（冻结当前组合，合法且安全）③ 确要装请显式改 shell-version.json 的 requires.dsh 上界' })
+        } else {
+          blockers.push({ code: 'requires-dsh', message: '这份壳要求官方层 dsh ' + wantDsh + '，本机是 ' + have, fix: '先 dsh-portable.cmd update-app -Force / update-desktop -Force' })
+        }
+      }
     }
   }
   const wantNode = m.requires && typeof m.requires.node === 'string' ? m.requires.node : ''
@@ -1101,6 +1116,12 @@ const runApply = async (opts) => {
         if (r.status !== 0 && !opts.json) line('  提示：换装后的 pnpm 状态对齐退出码 ' + r.status + '（不影响换装结果，下次启动会再跑一次）')
       }
     } catch { /* 对齐失败不影响换装结论 */ }
+    // 换装后把 version.json 的易漂移字段就地刷新：用户只跑这一个命令，
+    // 不该再被要求手工去跟 dshVersion / asar 字节 / bundle 计数。
+    try {
+      const snap = refreshVersionSnapshot()
+      if (snap.changed.length && !opts.json) line('  快照已刷新：' + snap.changed.join(', '))
+    } catch { /* 刷不快照不影响换装结论 */ }
   }
   if (opts.json) {
     emitJson(Object.assign({ action: 'apply', from: installed.shellVersion, to: m.shellVersion }, res, { exitCode: res.ok ? EXIT_OK : EXIT_FAIL }))
@@ -1241,11 +1262,11 @@ const runDefaults = (opts) => {
 }
 
 // ---- CLI --------------------------------------------------------------------
-const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached' }
+const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached', '--dsh': 'dsh' }
 const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--brief': 'brief', '--quiet-fail': 'quietFail', '--help': 'help', '-h': 'help' }
 
 const parseArgs = (argv) => {
-  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, quietFail: false, help: false, bad: '' }
+  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, dsh: '', json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, quietFail: false, help: false, bad: '' }
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i]
     if (BOOL_FLAGS[t]) { a[BOOL_FLAGS[t]] = true; continue }
@@ -1271,6 +1292,41 @@ const parseArgs = (argv) => {
   return a
 }
 
+/**
+ * compat：唯一的"内核-壳适配"判定入口（读本地清单，零网络）。
+ * 退出码即结论：0 = 区间内/无法判定（按通过），3 = 出界（EXIT_BLOCKED）。
+ * doctor / verify / update-check / Install-* 硬门都只调这一个，避免各写一套判定漂移。
+ * --dsh <版本> 可显式指定被测内核版本（默认读本机实装），供 Install-App 装前预判。
+ */
+const runCompat = async (opts) => {
+  const mf = join(ROOT, SHELL_MANIFEST)
+  let range = ''
+  try {
+    const j = JSON.parse(readFileSync(mf, 'utf8'))
+    if (j && j.requires && typeof j.requires.dsh === 'string') range = j.requires.dsh
+  } catch { /* 清单缺失/损坏：range 空 → 按无法判定处理 */ }
+  const have = opts.dsh || localDshVersion()
+  const verdict = range && have ? satisfiesRange(have, range) : null
+  let frozen = null
+  try {
+    const f = JSON.parse(readFileSync(join(ROOT, 'frozen.json'), 'utf8'))
+    if (f && f.dsh) frozen = f
+  } catch { /* 没冻结 */ }
+  if (opts.json) {
+    emitJson({ ok: true, action: 'compat', range, dsh: have, verdict, frozen })
+    return finish(verdict === false ? EXIT_BLOCKED : EXIT_OK)
+  }
+  line('适配区间 : ' + (range || '（未声明——闸门不生效）'))
+  line('本机内核 : ' + (have || '（读不到）'))
+  if (frozen) line('冻结状态 : dsh ' + frozen.dsh + (frozen.reason ? '（' + frozen.reason + '）' : '') + '，自 ' + (frozen.since || '?'))
+  if (verdict === false) {
+    line('结论     : 出界' + (frozen ? '（已冻结，属预期）' : '——先 shell-update check 升壳，或 freeze 冻结'))
+    return finish(EXIT_BLOCKED)
+  }
+  line('结论     : ' + (verdict === true ? '在区间内' : '区间/版本不可解析（按通过，仅警告级别）'))
+  return finish(EXIT_OK)
+}
+
 const main = async () => {
   const opts = parseArgs(process.argv.slice(2))
   if (opts.help) { line(USAGE); return finish(EXIT_OK) }
@@ -1285,6 +1341,7 @@ const main = async () => {
       case 'snooze': return await runSnooze(opts)
       case 'notes': return await runNotes(opts)
       case 'defaults': return runDefaults(opts)
+      case 'compat': return await runCompat(opts)
       case 'backups': {
         const list = listBackups(join(ROOT, 'cache'))
         if (opts.json) { emitJson({ ok: true, action: 'backups', backups: list, exitCode: EXIT_OK }); return finish(EXIT_OK) }
