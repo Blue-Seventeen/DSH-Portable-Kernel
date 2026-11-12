@@ -13,6 +13,41 @@
 
 ---
 
+## v0.5.1 — 2026-11-12
+
+补丁状态的退出码映射修复：官方换内置 pnpm 后，补丁失配不再被误报成"已打上"。
+
+### 新增
+
+- `patch-all --check --json` 新增状态 `env-blocked`（聚合退出码 5）：子进程根本没启动（受限会话/安全拦截）时不再伪装成"失败"，与真实锚点失配明确区分（此前表现为"4 个补丁全 failed 且 detail 为空"的伪红，2026-11-12 曾因此误诊）。
+
+### 修复
+
+- **pnpm 补丁失配被静默吞掉**：旧逻辑把退出码 2 一律当"已打上"，但 patch-pnpm 的 2 = "锚点失配（pnpm 可能改版）"。官方升级换内置 pnpm 后，商城装/卸插件会静默失败且无任何警告。现在 pnpm 的失配判为 needs-work，启动器的"补丁需要适配"提示能正常触发。
+- 退出码 2 按模式门控：check 模式下的 2（attachment 半打状态）不再误报"已打"。
+- `patch-all.mjs` 被测试导入时不再有副作用（执行体加 isMain 守卫；此前 import 会立刻跑补丁并退出进程）。
+
+### 优化
+
+- 无。
+
+### 破坏性变更
+
+- 无。`--json` 输出新增 `env-blocked` 状态值与聚合退出码 5；按 state 字符串过滤的消费方（doctor / verify / 启动器）不受影响。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（本次变更 2 个：`tools\patch-all.mjs`、`shell-version.json`）。
+- 三份 `pnpm-workspace.yaml` 不随壳走；换装前备份到 `cache\shell-backup-<时间戳>`。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.5.0 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.5.1.zip` 整包覆盖壳文件。
+
+---
+
 ## v0.5.0 — 2026-11-12
 
 双向兼容闸门：壳从此对官方内核的"太新"方向也有闸（调研报告见仓库 `doc/compat-report-2026-11-12.md`）。
