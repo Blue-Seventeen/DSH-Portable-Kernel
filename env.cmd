@@ -33,7 +33,8 @@ set "FSSER="
 if exist "%ROOT%tmp\fs-drive.txt" for /f "usebackq tokens=1,2 delims=|" %%A in ("%ROOT%tmp\fs-drive.txt") do (set "FSDRV=%%A" & set "FSSER=%%B")
 if not exist "%ROOT%tmp\fs-profile.cmd" goto dsh_fs_need_detect
 if /i not "%FSDRV%"=="%ROOT:~0,1%" goto dsh_fs_need_detect
-rem ????????????/??????????????????????????????
+rem volume serial check: catches a copied folder landing on a different drive
+rem (cmd prints REM help text when a rem line contains slash-question-mark, so no such pair here)
 set "CURSER="
 if "%ROOT:~1,1%"==":" for /f "tokens=5" %%S in ('fsutil fsinfo volumeinfo "%ROOT:~0,1%:" 2^>nul ^| findstr /i "Serial"') do set "CURSER=%%S"
 if defined FSSER if defined CURSER if /i not "%FSSER%"=="%CURSER%" goto dsh_fs_need_detect

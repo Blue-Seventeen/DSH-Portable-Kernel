@@ -161,7 +161,17 @@ const force = process.argv.includes('--force')
 const stamp = join(root, 'tmp', 'update-check.json')
 const TTL = 6 * 60 * 60 * 1000
 const cur = { app: appVersion(), desktop: desktopVersion() }
+// 缓存身份 = 内核版本 + 壳声明的适配区间 + 冻结状态。
+// 只看内核版本是不够的：壳升级会改 requires.dsh（放宽/收紧区间），也可能让 frozen.json 失效——
+// 那时内核版本没变、旧结论却被 6 小时 TTL 原样回放，用户刚换壳还看到"内核出界"（2026-11-26 复测发现）。
+// 区间来自本地壳清单 requires.dsh（缓存身份的一部分，见下）
+const manifest = (() => { try { return JSON.parse(stripBom(read(join(root, 'shell-version.json')))) } catch { return null } })()
+const range = manifest && manifest.requires && typeof manifest.requires.dsh === 'string' ? manifest.requires.dsh : ''
+// frozen.json 是用户手写的文件：可能带 BOM（记事本默认 UTF-8 BOM），JSON.parse 会直接抛——剥掉再解析
+const frozen = (() => { try { const j = JSON.parse(stripBom(read(join(root, 'frozen.json')))); return j && j.dsh ? j : null } catch { return null } })()
+const shape = range + '|' + (frozen ? frozen.dsh : '')
 const sameLocal = (a, b) => Boolean(a) && Boolean(b) && a.app === b.app && a.desktop === b.desktop
+const sameShape = (s) => !s || String(s.shape || '') === shape
 
 if (!force) {
   try {
@@ -172,7 +182,7 @@ if (!force) {
     // 缓存里同时记着"当时本地是什么版本"。本地版本一变（最典型的就是刚升级完），
     // 旧结论立刻作废重查 —— 否则升级成功后 6 小时内每次启动都会把同一句
     // "有新版本"再问一遍，用户只能反复按 Y、反复重装。
-    if (s && s.ts && Date.now() - s.ts < ttl && sameLocal(s.local, cur)) {
+    if (s && s.ts && Date.now() - s.ts < ttl && sameLocal(s.local, cur) && sameShape(s)) {
       if (process.argv.includes('--verbose')) console.log(`cached ${Math.round((Date.now() - s.ts) / 60000)} min ago`)
       if (s.out) console.log(s.out)
       process.exit(0)
@@ -185,10 +195,6 @@ const latest = await remote()
 // ---- 内核-壳适配闸门（doc/compat-report-2026-11-12.md §4.2）------------------
 // 区间来自本地壳清单 requires.dsh；出界时不推 UPD（不诱导 update-all），改给 KERN 提示：
 // 升壳 / 冻结 / 维持现状三选一——冻结合法且安全。frozen.json 存在则内核提示全静默。
-const manifest = (() => { try { return JSON.parse(stripBom(read(join(root, 'shell-version.json')))) } catch { return null } })()
-const range = manifest && manifest.requires && typeof manifest.requires.dsh === 'string' ? manifest.requires.dsh : ''
-// frozen.json 是用户手写的文件：可能带 BOM（记事本默认 UTF-8 BOM），JSON.parse 会直接抛——剥掉再解析
-const frozen = (() => { try { const j = JSON.parse(stripBom(read(join(root, 'frozen.json')))); return j && j.dsh ? j : null } catch { return null } })()
 const fits = (v) => (range && v ? satisfiesRange(v, range) !== false : true)
 const lines = []
 if (frozen) {
@@ -219,7 +225,7 @@ const done = { app: Boolean(latest.app), desktop: Boolean(latest.desktop) }
 if (done.app || done.desktop) {
   try {
     mkdirSync(join(root, 'tmp'), { recursive: true })
-    writeFileSync(stamp, JSON.stringify({ ts: Date.now(), out: line, done, local: cur }), 'utf8')
+    writeFileSync(stamp, JSON.stringify({ ts: Date.now(), out: line, done, local: cur, shape }), 'utf8')
   } catch {}
 }
 if (process.argv.includes('--verbose')) {

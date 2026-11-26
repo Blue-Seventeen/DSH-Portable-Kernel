@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.5.2",
-  "tag": "v0.5.2",
-  "releasedAt": "2026-11-26T14:08:34.694Z",
+  "shellVersion": "0.6.0",
+  "tag": "v0.6.0",
+  "releasedAt": "2026-11-26T15:46:49.642Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-26T14:09:43.077Z",
+  "generatedAt": "2026-11-26T15:47:49.459Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<0.2.2-rc.2",
     "node": ">=24.0.0"
@@ -14,14 +14,14 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
-    "RELEASE-NOTES.md": "e9b6db23875d662e30c2312e3e444cdf666034b52a4080427e3ba91f71817fcc",
-    "check-update.cmd": "4202d6a24c800de7ff89c1af9686a40f050e3e8bdcc0cca81106841051dc79b6",
+    "RELEASE-NOTES.md": "3c310428dc0035288a9217acf9d8f7e37966cda8081652d76aac2ec61d08cc4f",
+    "check-update.cmd": "49644c6f2378eaab834db874e41bc59c89a2221508becea707eb22613c146651",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
     "dsh-portable.ps1": "af105541e9dded7b1888663e2078358cb985dd2bb1e83074d9094c5971b7c81f",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
-    "env.cmd": "e85c64c0f2133ff53d8a99215105e5e03194f103bb04fe657db1555f0ee2b7b1",
+    "env.cmd": "6096995b80beec9de3008f067c74b057acf5175b4d7e2eb522ca73ccc81ea751",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
     "home/profiles/desktop/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/desktop/package.json": "a8754342c50d77f213dc9078c1adc40d79a4f470b050fba09e93d61f22f1678a",
@@ -59,10 +59,10 @@
     "tools/patch-fs.mjs": "0cb3f0d1939dda16fe1b9cd67c55ea954a7df88b9d4c0b82e743d3fa5adbb84f",
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
-    "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
+    "tools/plugin-shared.mjs": "6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7",
     "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
-    "tools/say.ps1": "0956cdc8e1fb1d65d0d269ef977579a479fa9f629fdc7e6e57f3a249ac259069",
+    "tools/say.ps1": "9632c9cdfcb8c52019783d4721e209ee85f3c323330fe0bfcaf5b45e6ccbe886",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
@@ -70,9 +70,9 @@
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "d54aa0b2f9b743c6f3d6491257b577443569c56289cbb8f62415ecfcdd32d9c5",
-    "tools/shell-update.mjs": "743cfc92757ea6c2fe4121c91e2dae2794ffce147fe9a69658a243349be7b405",
+    "tools/shell-update.mjs": "080319037cfaca4961c9eff1dd784226662c395002c2d15f68babd4603ce3d4d",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
-    "tools/update-check.mjs": "3cd55c74ef4511dbaa2b7cb7745bf43498c3ebd447c547e0d665b27f339f1418",
+    "tools/update-check.mjs": "26900602fdb1db76c6f0ace990e249d658d1a0e008c2cf02e341597d8a90734f",
     "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
     "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff"
   },
@@ -87,28 +87,38 @@
     "home/profiles/desktop/pnpm-lock.yaml"
   ],
   "notes": {
-    "added": [],
+    "added": [
+      "**`start-desktop.cmd` 启动路径也提示壳更新**：只出一行（`SHELL 壳 0.5.1 -> 0.6.0 可用（N 个文件变更）`），不自动安装——壳换装会替换正在使用的文件，必须由你在菜单里显式选 U 才做。查到有更新时窗口停 5 秒，并告诉你怎么升。",
+      "`shell-update.mjs check --notice`：新增\"启动提示\"模式，只输出一行结论，不打印文件清单和更新细则；被兼容性挡下时明说\"挡下\"。供启动脚本调用。",
+      "检查结果缓存 180 分钟：反复双击启动不会每次都走网络，也不会因为一时断网就反复报错。"
+    ],
     "fixed": [
-      "**内核更新提示一闪而过**：`start-desktop.cmd` 在启动桌面之前调 `check-update.cmd`，提示打印完不到 1 秒控制台就随启动关闭——内核出界那条 KERN 提示（含\"升壳/冻结/维持现状\"三条路）实际从没被人看到过（2026-11-26 用户反馈：十几天里一直以为没有更新提示）。现在这类提示会停 5 秒再继续。",
-      "停 5 秒用 `timeout`，在 stdin 被重定向（从别的脚本/终端拉起）时自动退化为 `ping -n 6` 等待，保证任何启动方式都能看到。"
+      "**`env.cmd` 每次启动都刷三行英文 REM 帮助**：一行注释写成了 `rem ???/???`，cmd.exe 看到注释里的 \"/\"+\"?\" 组合会当成 `rem /?`，于是打印 \"Records comments (remarks) in a batch file or CONFIG.SYS.\"。这是从首版就带的老毛病，每次启动都出现，只是没人当成问题报过。",
+      "该行注释同时改成有意义的说明（它守着\"整份拷贝换了盘符要重新探测文件系统\"这条判断）。",
+      "**换壳后启动仍提示\"内核出界\"**：内核检查的 6 小时缓存只认内核版本，不认壳声明的适配区间。壳升级换了区间，内核版本没变，旧结论就被原样回放——刚换成支持新内核的壳，看到的还是\"出界\"。缓存现在同时认\"适配区间 + 冻结状态\"，区间变了立刻重查。",
+      "**插件暂存自测会洗掉真实插件清单**（发布流程内部问题，普通使用碰不到）：`plugin-shared.mjs stage-selftest` 原本直接往当前目录的 `home\\profiles\\*.json` 写夹具（包名改成 selftest-web、依赖清空），不传 `--root` 就等于改真实清单。本版让自测自己先快照、跑完还原，并加了一条用例盯着「跑完真实清单必须原样」。",
+      "**启动时多出一行 `The syntax of the command is incorrect.`**：判断内核提示类型时，变量在\"内核检查什么都没输出\"的情况下是空的，空值做子串展开会让 cmd 把整条 if 判为语法错误。这是本版新开出来的路径（旧版内核检查永远有话说，走不到），已用哨兵值兜住，并顺手保证\"官方内核有更新就问 Y/N\"这条判断不被带偏。"
     ],
     "optimized": [
-      "冻结状态（`frozen.json`）不占用这 5 秒：那是你自己选定的稳定组合，每次启动都停反而烦；它照旧只打印一行。",
-      "顺带在官方 `0.2.2-rc.5` 上做了一次适配验证：四族补丁锚点、asar 版本解析、`dsh plugin` 用法、profile 清单结构全部成立，壳本身不需要为新内核改动。本版支持的区间仍是 `>=0.2.1-rc.5,<0.2.2-rc.2`（保持\"内核不高于壳已验证的上限\"这条纪律），所以升级内核的提示会继续出现——这次它停 5 秒，你能看见。"
+      "启动路径的两类提示（壳 / 内核）共用同一个停留逻辑：有提示才停，没提示立刻继续，双击到桌面出现的手感不变。",
+      "本地测试套件 107 → 118 项（壳提示、缓存作废、启动路径语法安全三组，每条硬约束都做过反向验证：故意改坏必须变红）。",
+      "启动路径的壳检查用 4 秒单次超时（交互式检查仍用 10 秒两次）：网络抽风时宁可这次不提示，也不能把启动拖住——复测中真撞到过一次 91 秒的卡顿。"
     ],
-    "breaking": [],
+    "breaking": [
+      "无。清单 schema 仍是 2、`updaterMin` 不变、`requires.dsh` 不变。"
+    ],
     "upgrade": [
-      "替换清单里的壳文件（本次变更 2 个：`check-update.cmd`、`tools\\say.ps1`）。",
-      "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。"
+      "替换清单里的壳文件（本次变更 4 个：`check-update.cmd`、`env.cmd`、`tools\\say.ps1`、`tools\\shell-update.mjs`）。",
+      "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置；换装前备份到 `cache\\shell-backup-<时间戳>`。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.5.1 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.5.2.zip` 整包覆盖壳文件。",
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.5.2 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.6.0.zip` 整包覆盖壳文件。",
       "---"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.5.2",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.0",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -119,8 +129,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.5.2.zip",
-    "sha256": "e9cc2cb4e967bffad8f1a9b76382ced111991a07fed0f8fda48953616a9110a5",
-    "bytes": 1889470
+    "name": "harness-shell-0.6.0.zip",
+    "sha256": "50486dd999648891f8f6a04342b691505e43932c54949fe76a90a9d7b0be0440",
+    "bytes": 1892718
   }
 }

@@ -765,6 +765,32 @@ const takeStageLock = () => {
 const dropStageLock = () => { try { rmSync(stageLockFile, { force: true }) } catch { /* 忽略 */ } }
 
 /** 提交前要能整体回滚的那几份文件（清单 + 锁 + 发布计数） */
+/** 递归列出目录下的所有文件（绝对路径）；目录不存在返回空数组 */
+const listFilesUnder = (dir) => {
+  const acc = []
+  const walk = (d) => {
+    let ents = []
+    try { ents = readdirSync(d, { withFileTypes: true }) } catch { return }
+    for (const e of ents) {
+      const full = join(d, e.name)
+      if (e.isDirectory()) walk(full)
+      else acc.push(full)
+    }
+  }
+  walk(dir)
+  return acc
+}
+/** 自底向上删掉空目录（保留顶层） */
+const removeEmptyDirs = (dir) => {
+  let ents = []
+  try { ents = readdirSync(dir, { withFileTypes: true }) } catch { return }
+  for (const e of ents) {
+    if (!e.isDirectory()) continue
+    const full = join(dir, e.name)
+    removeEmptyDirs(full)
+    try { if (!readdirSync(full).length) rmSync(full, { recursive: true, force: true }) } catch { }
+  }
+}
 const snapshotTargets = () => [
   sharedManifestFile,
   profileManifestFile('web'),
@@ -1126,6 +1152,17 @@ const cmdActivate = () => {
 
 /** 无网络、无 pnpm 的密封自测：只验队列/快照这些纯逻辑 */
 const cmdStageSelftest = () => {
+  // 自我保护：这个自测会往真实清单里写夹具内容（name 改成 selftest-xxx、dependencies 清空），
+  // 跑在真实便携目录上就等于把用户的插件清单洗掉。2026-11-26 就发生过一次：发布前的
+  // 门禁里手跑了 `plugin-shared.mjs stage-selftest`，结果 prepare 把 home\profiles\*.json
+  // 的依赖清空一起提交了。现在无论 --root 指向哪里，先把清单快照到 tmp，跑完在 finally 里还原。
+  const guardSnap = join(root, 'tmp', 'stage-selftest-guard')
+  let guardOk = true
+  try { rmSync(guardSnap, { recursive: true, force: true }); snapshotTo(guardSnap) } catch { guardOk = false }
+  // 队列/快照/坏文件也写在这个目录里：跑完要按「开跑前的样子」清回去，
+  // 否则每个自测都会往便携目录的 home\plugin-stage 里留一堆 queue.json.corrupt-* 和 snapshots。
+  const stageRootExisted = existsSync(stageRoot)
+  const stageBefore = stageRootExisted ? listFilesUnder(stageRoot) : []
   const results = []
   const check = (name, fn) => {
     try { fn(); results.push({ name, ok: true }); console.log('  OK   ' + name) }
@@ -1179,6 +1216,21 @@ const cmdStageSelftest = () => {
     cmdStageDiscard(['all'])
     assert(readQueue().operations.length === 0, '丢弃后仍有残留')
   })
+  if (guardOk) {
+    try { restoreFrom(guardSnap) } catch (e) { console.error('  FAIL 自测后还原真实清单失败：' + e.message) }
+    try { rmSync(guardSnap, { recursive: true, force: true }) } catch { }
+  }
+  // 暂存目录回到开跑前的状态：原来没有就整个删掉，原来有就只留原有的文件
+  try {
+    if (!stageRootExisted) {
+      rmSync(stageRoot, { recursive: true, force: true })
+    } else {
+      for (const f of listFilesUnder(stageRoot)) {
+        if (!stageBefore.includes(f)) { try { rmSync(f, { force: true }) } catch { } }
+      }
+      removeEmptyDirs(stageRoot)
+    }
+  } catch (e) { console.error('  FAIL 自测后清理暂存目录失败：' + e.message) }
   const bad = results.filter((r) => !r.ok)
   if (bad.length) { console.error('  暂存自测失败 ' + bad.length + '/' + results.length); return 1 }
   say('暂存自测通过：' + results.length + '/' + results.length)

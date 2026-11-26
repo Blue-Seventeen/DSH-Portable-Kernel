@@ -757,6 +757,12 @@ const runCheck = async (opts) => {
     && String(cache.summary.local || '') === String(installedNow.shellVersion || '')
   if (cache && cacheLocalOk && cache.at && cache.source === sourceKey && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
     const s = cache.summary
+    if (opts.notice) {
+      const sn = snoozedFor(s.remote) || snoozedFor(s.shellVersion || '')
+      if (s.status === 'update-available' && !sn && s.local && isNewer(s.remote, s.local)) line('SHELL 壳有新版 ' + s.local + ' -> ' + s.remote + '（' + s.changed + ' 个文件变更）')
+      else if (s.status === 'blocked' && !sn) line('SHELL 壳有新版 ' + (s.local || '?') + ' -> ' + s.remote + '，但被兼容性挡下（dsh-portable.cmd shell-update check 看原因）')
+      return finish(s.exitCode)
+    }
     if (opts.prompt && snoozedFor(s.remote)) return finish(EXIT_UP_TO_DATE)
     if (opts.json) { emitJson(Object.assign({}, s, { cached: true, exitCode: s.exitCode, _rows: undefined, _removed: undefined })); return finish(s.exitCode) }
     if (opts.prompt) { printPrompt(s); return finish(s.exitCode) }
@@ -781,6 +787,12 @@ const runCheck = async (opts) => {
   }
   const { _rows, _removed, ...clean } = summary
 
+  if (opts.notice) {
+    const sn = snoozedFor(m.shellVersion) || snoozedFor(clean.remote)
+    if (clean.status === 'update-available' && !sn && clean.local && isNewer(clean.remote, clean.local)) line('SHELL 壳有新版 ' + clean.local + ' -> ' + clean.remote + '（' + clean.changed + ' 个文件变更）')
+    else if (clean.status === 'blocked' && !sn) line('SHELL 壳有新版 ' + (clean.local || '?') + ' -> ' + clean.remote + '，但被兼容性挡下（dsh-portable.cmd shell-update check 看原因）')
+    return finish(clean.exitCode)
+  }
   if (opts.json) {
     if (opts.prompt && snoozedFor(m.shellVersion)) return finish(EXIT_UP_TO_DATE)
     emitJson(clean)
@@ -1263,10 +1275,10 @@ const runDefaults = (opts) => {
 
 // ---- CLI --------------------------------------------------------------------
 const VALUE_FLAGS = { '--manifest': 'manifest', '--base': 'base', '--stage': 'stage', '--to': 'to', '--channel': 'channel', '--cached': 'cached', '--dsh': 'dsh' }
-const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--brief': 'brief', '--quiet-fail': 'quietFail', '--help': 'help', '-h': 'help' }
+const BOOL_FLAGS = { '--json': 'json', '--force': 'force', '--full': 'full', '--prompt': 'prompt', '--dry-run': 'dryRun', '--no-verify': 'noVerify', '--allow-untrusted': 'allowUntrusted', '--clear': 'clear', '--brief': 'brief', '--quiet-fail': 'quietFail', '--notice': 'notice', '--help': 'help', '-h': 'help' }
 
 const parseArgs = (argv) => {
-  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, dsh: '', json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, quietFail: false, help: false, bad: '' }
+  const a = { cmd: '', manifest: '', base: '', stage: '', to: '', channel: 'stable', cached: 0, dsh: '', json: false, force: false, full: false, prompt: false, dryRun: false, noVerify: false, allowUntrusted: false, clear: false, brief: false, quietFail: false, notice: false, help: false, bad: '' }
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i]
     if (BOOL_FLAGS[t]) { a[BOOL_FLAGS[t]] = true; continue }
@@ -1288,6 +1300,10 @@ const parseArgs = (argv) => {
   if (a.dryRun) a.force = false
   // 启动路径（preflight）用 --brief：单次 10 秒、2 次尝试（4 秒太激进：GitHub 稍慢就误报"超时"）
   if (a.brief) { FETCH_TIMEOUT_MS = 10000; RETRIES = 2 }
+// --notice 跑在启动路径上（每 switch 双击）: 网络抽风时不能把启动拖住。
+// 4 秒、单次尝试即可——漏报一次不要紧，下次启动还会查（--quiet-fail 保证失败不出噪音）。
+// 2026-11-26 复测实测过一次性网络卡顿把一次启动拖到 91 秒。
+if (a.notice) { FETCH_TIMEOUT_MS = 4000; RETRIES = 1 }
   if (a.quietFail) QUIET_FAIL = true
   return a
 }
