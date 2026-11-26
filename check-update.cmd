@@ -23,9 +23,21 @@ echo.
 rem Only the UPD prefix (kernel update inside the shell compat range) asks Y/N.
 rem KERN (kernel beyond the shell range) and FROZEN lines are display-only: answering Y there
 rem would push update-all onto a kernel the shell is not adapted for (2026-11-12 compat report).
+rem A display-only notice still has to be READABLE: start-desktop.cmd launches the app right after
+rem this script, so the console closes about a second later. Without a hold, 13 days of KERN notices
+rem went by unseen (2026-11-26 report). KERN now holds the window for 5s; FROZEN is the user's own
+rem deliberate state and repeats every launch, so it stays quiet.
 set "UPDLINE="
 for /f "usebackq tokens=1 delims=" %%A in ("%MSGFILE%") do if not defined UPDLINE set "UPDLINE=%%A"
-if /i not "%UPDLINE:~0,4%"=="UPD " goto :eof
+if /i "%UPDLINE:~0,4%"=="UPD " goto upd_ask
+if /i "%UPDLINE:~0,6%"=="FROZEN" goto :eof
+rem Hold exactly ~5s so the notice can be read. timeout is the canonical waiter but fails when
+rem stdin is redirected (launched from another script/terminal); ping -n 6 covers that case.
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key kernel-hold
+timeout /t 5 /nobreak >nul 2>nul
+if errorlevel 1 ping -n 6 127.0.0.1 >nul 2>nul
+goto :eof
+:upd_ask
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-prompt -NoNewline
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-hint
 choice /C YN /T 15 /D N /N /M " > "

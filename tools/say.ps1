@@ -24,6 +24,7 @@ $texts = @{
   'update-interrupted'  = '  检测到上次更新中断，正在自动修复……'
   'update-prompt'       = '  现在更新吗？'
   'update-hint'         = '  [Y=更新 / N=直接启动，15 秒后默认 N]'
+  'kernel-hold'         = "  内核比本壳新（见上）：补丁对新内核不负责，5 秒后自动继续。升壳：dsh-portable.cmd 菜单选 U，或 dsh-portable.cmd shell-update check"
   'update-failed'       = "  更新没完成，已经保留原来能用的版本；下面继续启动旧版本。`n  详细原因见 logs\ 目录，或手动运行 dsh-portable.cmd update-all -Force"
   'cmd-blocked'         = '  这个动作被拦下了（退出码 {0}）：壳更新被兼容性挡下或需要 --full；上面有具体原因和补救做法。'
   'cmd-failed'          = '  命令失败（退出码 {0}）。'

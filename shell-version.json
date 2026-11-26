@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.5.1",
-  "tag": "v0.5.1",
-  "releasedAt": "2026-11-12T08:54:37.732Z",
+  "shellVersion": "0.5.2",
+  "tag": "v0.5.2",
+  "releasedAt": "2026-11-26T14:08:34.694Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-12T08:55:34.177Z",
+  "generatedAt": "2026-11-26T14:09:43.077Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<0.2.2-rc.2",
     "node": ">=24.0.0"
@@ -14,8 +14,8 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
-    "RELEASE-NOTES.md": "f67dcb755000d05be10689988c7f1f1e579d684d07bddb2e03bcb856444452b3",
-    "check-update.cmd": "0403f75299cd60607aac4f273379538c81d53b25f8390aee7516e827d0303c92",
+    "RELEASE-NOTES.md": "e9b6db23875d662e30c2312e3e444cdf666034b52a4080427e3ba91f71817fcc",
+    "check-update.cmd": "4202d6a24c800de7ff89c1af9686a40f050e3e8bdcc0cca81106841051dc79b6",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
@@ -62,7 +62,7 @@
     "tools/plugin-shared.mjs": "0321c2b5e49c7c0c4829552f09c42bc4aaa2c62e2c0bb959512d6ce80f95a20d",
     "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
-    "tools/say.ps1": "45ad446f810aa32787623876ff694fe159b52f2c7442604e26f51deca440d6c1",
+    "tools/say.ps1": "0956cdc8e1fb1d65d0d269ef977579a479fa9f629fdc7e6e57f3a249ac259069",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
@@ -87,30 +87,28 @@
     "home/profiles/desktop/pnpm-lock.yaml"
   ],
   "notes": {
-    "added": [
-      "`patch-all --check --json` 新增状态 `env-blocked`（聚合退出码 5）：子进程根本没启动（受限会话/安全拦截）时不再伪装成\"失败\"，与真实锚点失配明确区分（此前表现为\"4 个补丁全 failed 且 detail 为空\"的伪红，2026-11-12 曾因此误诊）。"
-    ],
+    "added": [],
     "fixed": [
-      "**pnpm 补丁失配被静默吞掉**：旧逻辑把退出码 2 一律当\"已打上\"，但 patch-pnpm 的 2 = \"锚点失配（pnpm 可能改版）\"。官方升级换内置 pnpm 后，商城装/卸插件会静默失败且无任何警告。现在 pnpm 的失配判为 needs-work，启动器的\"补丁需要适配\"提示能正常触发。",
-      "退出码 2 按模式门控：check 模式下的 2（attachment 半打状态）不再误报\"已打\"。",
-      "`patch-all.mjs` 被测试导入时不再有副作用（执行体加 isMain 守卫；此前 import 会立刻跑补丁并退出进程）。"
+      "**内核更新提示一闪而过**：`start-desktop.cmd` 在启动桌面之前调 `check-update.cmd`，提示打印完不到 1 秒控制台就随启动关闭——内核出界那条 KERN 提示（含\"升壳/冻结/维持现状\"三条路）实际从没被人看到过（2026-11-26 用户反馈：十几天里一直以为没有更新提示）。现在这类提示会停 5 秒再继续。",
+      "停 5 秒用 `timeout`，在 stdin 被重定向（从别的脚本/终端拉起）时自动退化为 `ping -n 6` 等待，保证任何启动方式都能看到。"
     ],
-    "optimized": [],
-    "breaking": [
-      "无。`--json` 输出新增 `env-blocked` 状态值与聚合退出码 5；按 state 字符串过滤的消费方（doctor / verify / 启动器）不受影响。"
+    "optimized": [
+      "冻结状态（`frozen.json`）不占用这 5 秒：那是你自己选定的稳定组合，每次启动都停反而烦；它照旧只打印一行。",
+      "顺带在官方 `0.2.2-rc.5` 上做了一次适配验证：四族补丁锚点、asar 版本解析、`dsh plugin` 用法、profile 清单结构全部成立，壳本身不需要为新内核改动。本版支持的区间仍是 `>=0.2.1-rc.5,<0.2.2-rc.2`（保持\"内核不高于壳已验证的上限\"这条纪律），所以升级内核的提示会继续出现——这次它停 5 秒，你能看见。"
     ],
+    "breaking": [],
     "upgrade": [
-      "替换清单里的壳文件（本次变更 2 个：`tools\\patch-all.mjs`、`shell-version.json`）。",
-      "三份 `pnpm-workspace.yaml` 不随壳走；换装前备份到 `cache\\shell-backup-<时间戳>`。"
+      "替换清单里的壳文件（本次变更 2 个：`check-update.cmd`、`tools\\say.ps1`）。",
+      "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.5.0 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.5.1.zip` 整包覆盖壳文件。",
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.5.1 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.5.2.zip` 整包覆盖壳文件。",
       "---"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.5.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.5.2",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -121,8 +119,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.5.1.zip",
-    "sha256": "d7f3b11f3fcb7e7f90c0c9b896749baa629f1998df8cdd1843e1c263535a7e54",
-    "bytes": 1888480
+    "name": "harness-shell-0.5.2.zip",
+    "sha256": "e9cc2cb4e967bffad8f1a9b76382ced111991a07fed0f8fda48953616a9110a5",
+    "bytes": 1889470
   }
 }
