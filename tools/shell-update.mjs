@@ -505,8 +505,19 @@ export const refreshVersionSnapshot = (rootDir = ROOT) => {
 }
 
 /** 兼容性闸门：schema / updater / minShellVersion / requires */
+/**
+ * 兼容性闸门。分两类：
+ *   blockers   = 硬拦（装了会坏：schema 读不懂 / 更新器太老 / 跨版本太大 / 内核低于下界）
+ *   advisories = 只警告（装了不会坏，但某族补丁可能还没适配：内核高于上界）
+ *
+ * 为什么"内核比壳新"不能硬拦（2026-11-27 修）：壳的职责是便携化+启动，跟内核版本无关；
+ * 跟内核强绑定的只有三族补丁，而补丁本来就会自己报 needs-adapt。把内核太新当阻断会死锁——
+ * npm 上 latest 一旦超过壳的适配区间，所有新装用户就再也收不到壳更新。实测：0.6.x 出厂内核
+ * 0.2.2-rc.5 vs 壳声明 <0.2.2-rc.2 → 出厂组合自己"不支持"自己，壳永远升不了级。
+ */
 const compatBlockers = (m, installed, opts) => {
   const blockers = []
+  const advisories = []
   if (m.schemaVersion > MANIFEST_SCHEMA) {
     blockers.push({ code: 'schema-too-new', message: '这份清单是 schema v' + m.schemaVersion + '，本壳只读得懂 v' + MANIFEST_SCHEMA, fix: '从 Release 页下载 harness-shell-' + m.shellVersion + '.zip 手工覆盖壳文件后再升级' })
   }
@@ -536,7 +547,8 @@ const compatBlockers = (m, installed, opts) => {
         }
         const tooNew = upper ? isNewer(have, upper) || equalVer(have, upper) && !/=$/.test(conds[conds.length - 1] || '') : false
         if (tooNew) {
-          blockers.push({ code: 'requires-dsh-too-new', message: '这份壳的适配区间是 dsh ' + wantDsh + '，本机内核 ' + have + ' 已超出上界', fix: '三选一：① dsh-portable.cmd shell-update check（有适配新内核的壳就 apply -Force）② dsh-portable.cmd freeze "原因"（冻结当前组合，合法且安全）③ 确要装请显式改 shell-version.json 的 requires.dsh 上界' })
+          // 只警告：壳照装，但要讲清哪些功能可能还没适配（三族补丁都按内核锚点打）。
+          advisories.push({ code: 'requires-dsh-too-new', advisory: true, message: '本机内核 ' + have + ' 高于本壳补丁的适配区间 dsh ' + wantDsh + '：壳可以装，但商城装卸 / exFAT 新建文件 / 附件这三族补丁可能需要适配', fix: '装完看 dsh-portable.cmd 体检的 patches 那一行，显示 needs-adapt 就是补丁还没跟上这个内核' })
         } else {
           blockers.push({ code: 'requires-dsh', message: '这份壳要求官方层 dsh ' + wantDsh + '，本机是 ' + have, fix: '先 dsh-portable.cmd update-app -Force / update-desktop -Force' })
         }
@@ -549,9 +561,9 @@ const compatBlockers = (m, installed, opts) => {
     const ok = satisfiesRange(have, wantNode)
     if (ok === false) blockers.push({ code: 'requires-node', message: '这份壳要求 node ' + wantNode + '，本机是 ' + have, fix: '先 dsh-portable.cmd bootstrap 更新运行时' })
   }
-  if (!(opts && opts.force)) return blockers
+  if (!(opts && opts.force)) return { blockers, advisories }
   // --force 只越过"官方层/运行时版本"这类软要求；schema 太新、更新器太旧、跨版本太大永远硬挡
-  return blockers.map((b) => (/^requires-/.test(b.code) ? Object.assign({}, b, { ignoredByForce: true }) : b))
+  return { blockers: blockers.map((b) => (/^requires-/.test(b.code) ? Object.assign({}, b, { ignoredByForce: true }) : b)), advisories }
 }
 
 /** 远端清单 vs 本地实物：code/update、user-owned 保留、add、skip。userOwned 以清单为准（缺省回退到代码常量） */
@@ -790,7 +802,7 @@ const runCheck = async (opts) => {
   const installed = readLocalManifest()
   const rows = computePlan(m, installed)
   const removed = computeRemoved(m, installed)
-  const blockers = compatBlockers(m, installed, opts)
+  const { blockers, advisories } = compatBlockers(m, installed, opts)
   const summary = buildSummary(m, installed, rows, removed, blockers, opts)
   // 只有"从网络真查到"的结果才写缓存（本地清单测试不落盘）；这样 doctor/preflight 读到的永远是最近一次真实结论
   if (m.kind === 'url') {
@@ -799,6 +811,8 @@ const runCheck = async (opts) => {
     try { unlinkSync(join(ROOT, CHECK_ERR)) } catch { }
   }
   const { _rows, _removed, ...clean } = summary
+  // 只警告不阻断的那类（内核比壳新）要跟着结论一起给出，否则用户装完才发现补丁没适配
+  if (advisories.length) clean.advisories = advisories
 
   if (opts.notice) {
     const sn = snoozedFor(m.shellVersion) || snoozedFor(clean.remote)
@@ -815,6 +829,7 @@ const runCheck = async (opts) => {
     // "这次不更新"：7 天内不再提醒（preflight 会调 snooze 写入），静默退出 4
     if (snoozedFor(m.shellVersion)) return finish(EXIT_UP_TO_DATE)
     printPrompt(clean)
+    for (const a of advisories) line('  ! ' + a.message)
     return finish(clean.exitCode)
   }
   if (snoozedFor(m.shellVersion) && clean.status === 'update-available') {
@@ -831,6 +846,7 @@ const runCheck = async (opts) => {
     printBlockers(clean.blockers)
   } else {
     line('SHELL ' + (clean.local || '(未知)') + ' -> ' + clean.remote + '（' + clean.changed + ' 个文件变更）')
+    for (const a of advisories) line('  注意：' + a.message)
     printPlan(m, rows, removed, installed)
     printNotes(m, false)
   }
@@ -971,9 +987,10 @@ const stageFull = async (m, stageDir, log) => {
 const runStage = async (opts) => {
   const m = await loadManifest(opts)
   if (!m.ok) return fail(opts.json, 'stage', m.errorCode, m.error)
-  const blockers = compatBlockers(m, readLocalManifest(), opts)
+  const { blockers, advisories } = compatBlockers(m, readLocalManifest(), opts)
   const hard = blockers.filter((b) => !b.ignoredByForce)
   if (hard.length) return fail(opts.json, 'stage', 'blocked', hard.map((b) => b.message).join('；'), { blockers: hard, exitCode: EXIT_BLOCKED })
+  for (const a of advisories) line('  ! ' + a.message)
   const installed = readLocalManifest()
   const rows = computePlan(m, installed)
   const targets = rows.filter((r) => r.action === 'add' || r.action === 'update')
@@ -1082,9 +1099,10 @@ const runApply = async (opts) => {
     line('已是最新（' + installed.shellVersion + '），没有需要更新的文件')
     return finish(EXIT_OK)
   }
-  const blockers = compatBlockers(m, installed, opts)
+  const { blockers, advisories } = compatBlockers(m, installed, opts)
   const hard = blockers.filter((b) => !b.ignoredByForce)
   if (hard.length) return fail(opts.json, 'apply', 'blocked', hard.map((b) => b.message).join('；'), { blockers: hard, exitCode: EXIT_BLOCKED })
+  for (const a of advisories) line('  ! ' + a.message)
   const rows = computePlan(m, installed)
   const targets = rows.filter((r) => r.action === 'add' || r.action === 'update')
 

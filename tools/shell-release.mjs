@@ -138,7 +138,11 @@ export const DEFAULT_USER_OWNED = [
   'home/profiles/desktop/pnpm-lock.yaml',
 ]
 
-const DEFAULT_REQUIRES = { dsh: '>=0.2.1-rc.5', node: '>=24.0.0' }
+// 上界 = 我们真正适配并验证过的最高内核（2026-11-27：0.2.2-rc.1/rc.2）。
+// 规矩（用户 2026-11-27 明确）：每次发壳都要问一句"npm 上最新内核还是不是我写的这个上界"，
+// 适配到新内核就把上界往右推；不许一直写着不变（之前连续 6 个版本都没动，导致出厂组合
+// 内核 0.2.2-rc.5 落在自己声明的区间之外）。prepare 会自动比对 npm dist-tags 并大声提醒。
+const DEFAULT_REQUIRES = { dsh: '>=0.2.1-rc.5,<=0.2.2-rc.2', node: '>=24.0.0' }
 const DEFAULT_UPDATER_MIN = 2
 const VALID_CHANNELS = ['stable', 'beta', 'rc', 'alpha']
 const GIT = process.env.SHELL_RELEASE_GIT || 'git'
@@ -600,7 +604,36 @@ const guessZipPathsForDryRun = (currentFiles) => {
   return { paths, source: 'git ls-files（清单里还没有 files，用工作树估算）' }
 }
 
-const prepare = (opts) => {
+/**
+ * 拿 npm 上最新的官方内核，跟本次要写的 requires.dsh 对一次。
+ * 返回 null 有两种情况：最新内核在区间内，或者拿不到 registry（网络问题不该卡发布）。
+ * 存在的意义：这个上界以前是每次发版手工重复传参数，于是连着好几个版本没人动过，
+ * 直到出厂内核跑到自己声明的区间外面（2026-11-27 发现）。现在每次 prepare 都会查一次。
+ */
+const checkRangeStale = async (range) => {
+  if (!range) return null
+  try {
+    const res = await fetch('https://registry.npmjs.org/@deepseek-ai%2Fdsh', {
+      headers: { accept: 'application/vnd.npm.install-v1+json' },
+    })
+    if (!res.ok) return null
+    const j = await res.json()
+    const tags = j['dist-tags'] || {}
+    const { satisfiesRange } = await import('./version-range.mjs')
+    const outside = []
+    for (const tag of ['latest', 'next']) {
+      const ver = tags[tag]
+      if (!ver) continue
+      if (satisfiesRange(ver, range) === false && !outside.includes(ver)) outside.push(ver)
+    }
+    if (!outside.length) return null
+    return { latest: tags.latest || tags.next, tag: tags.latest ? 'latest' : 'next', outside }
+  } catch {
+    return null
+  }
+}
+
+const prepare = async (opts) => {
   const version = String(opts.version || '').trim().replace(/^v/i, '')
   if (!version) throw new ReleaseError('prepare 缺少 --version', '例：node tools\\shell-release.mjs prepare --version 0.1.0')
   if (!validSemver(version)) throw new ReleaseError('版本号不是合法 semver：' + JSON.stringify(opts.version), '例：0.1.0 / 1.2.3-rc.1')
@@ -634,6 +667,26 @@ const prepare = (opts) => {
   const requires = {
     dsh: String(opts.dshRange || (curJson.requires && curJson.requires.dsh) || DEFAULT_REQUIRES.dsh).trim(),
     node: String(opts.nodeRange || (curJson.requires && curJson.requires.node) || DEFAULT_REQUIRES.node).trim(),
+  }
+
+  // 上界过期检查（2026-11-27 用户要求）：壳更新本来就是为了兼容新内核，
+  // 所以每次发版都要拿 npm 上的最新内核跟我们的上界对一次。只警告不阻断 ——
+  // 上游发版不该卡住我们的发布，但绝不能像之前那样"一直写着不变"还没人发现。
+  const rangeStale = await checkRangeStale(requires.dsh)
+  if (rangeStale) {
+    log('')
+    log('！！！ requires.dsh 上界可能过期 ！！！')
+    log('  我们的上界 : ' + requires.dsh)
+    log('  npm 最新   : ' + rangeStale.latest + '（dist-tag: ' + rangeStale.tag + '）')
+    log('  出界版本   : ' + rangeStale.outside.join(', '))
+    log('  处理：先适配三族补丁（patch-all --check 要全绿），再把上界推到这个内核，然后重发。')
+    log('  临时跳过（不建议）：--allow-stale-range')
+    log('')
+    if (!opts.allowStaleRange && !opts.dryRun) {
+      throw new Error('requires.dsh 上界落后于 npm 上的最新内核（' + rangeStale.latest + '）。' +
+        '要么适配后推上界，要么显式加 --allow-stale-range 承担"补丁未适配"的风险。')
+    }
+    log(opts.dryRun ? '  （dry-run：只是预演，不中断）' : '  （已用 --allow-stale-range 继续）')
   }
 
   let userOwned
@@ -1729,6 +1782,7 @@ const USAGE = [
 const BOOL_FLAGS = new Set([
   '--dry-run', '--skip-gates', '--json', '--push', '--no-push', '--no-zip', '--approved',
   '--no-postcheck', '--sync-notes', '--skip-asset-verify', '--keep', '--help',
+  '--allow-stale-range',
 ])
 const VALUE_FLAGS = new Set([
   '--version', '--channel', '--token-env', '--repo', '--updater-min', '--min-shell-version',
@@ -1778,7 +1832,7 @@ const main = async () => {
   const repo = v('--repo')
   switch (a.cmd) {
     case 'prepare':
-      return prepare({
+      return await prepare({
         version: v('--version'),
         channel: v('--channel'),
         dryRun: f('--dry-run'),
@@ -1787,6 +1841,7 @@ const main = async () => {
         minShellVersion: v('--min-shell-version'),
         date: v('--date'),
         dshRange: v('--dsh-range'),
+        allowStaleRange: f('--allow-stale-range'),
         nodeRange: v('--node-range'),
         noPostcheck: f('--no-postcheck'),
         repo,
