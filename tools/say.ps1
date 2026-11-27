@@ -11,14 +11,14 @@ $texts = @{
   # ---- update.cmd（永久升级入口）用到的文案 ----------------------------------
   'update-shell-header' = '  壳自身更新（只换壳文件：cmd / ps1 / tools\*.mjs；不动 app、desktop、运行时和你的配置）'
   'update-shell-checking' = '  正在检查更新…（网络慢时最多约 15 秒，别关窗口）'
-  'update-shell-ask'    = '  现在就升级？（20 秒后自动开始；按 N 跳过，7 天内不再提醒）'
+  'update-shell-ask'    = '  现在就升级？（按 Y 开始；20 秒内不选就跳过，7 天内不再提醒）'
   'update-shell-close-first' = '  检测到 DeepSeek 还开着：请关掉窗口并右键托盘图标退出，关掉后会自动继续……'
   'update-shell-ok'     = '  升级完成。上面的版本号就是当前壳版本。'
   'update-shell-uptodate' = '  壳已经是最新版本，不需要升级。'
-  'update-shell-blocked' = '  这次不能自动升级（被兼容性挡下，原因见上）。可以到 Release 页下载 harness-shell-*.zip 手工覆盖壳文件。'
-  'update-shell-netfail' = '  检查更新失败：网络不通或被挡。稍后重试即可，不影响继续使用。'
+  'update-shell-blocked' = '  这次不能自动升级（被兼容性挡下，原因见上）。如果你是 0.6.1 或更早：先执行 node tools\shell-update.mjs apply --to 0.6.2 --force，再回来双击 update.cmd。整包 zip 兜底会重置 home\profiles，覆盖前请先备份。'
+  'update-shell-netfail' = '  检查更新失败：可能是网络不通/被挡，也可能你的壳太旧、读不了新清单。① 稍后重试；② 若你是 0.6.1 或更早：先执行 node tools\shell-update.mjs apply --to 0.6.2 --force（这一步能走通），再回来双击 update.cmd；③ 实在不行才用整包兜底——但 zip 里含 home\profiles 的出厂配置，覆盖前务必先备份 home\profiles，否则你的插件清单会被重置。'
   'update-shell-declined' = '  已跳过，7 天内不再提醒（想立刻升就再双击 update.cmd）。'
-  'update-shell-gaveup' = '  等了 3 分钟 DeepSeek 还开着，先不升级了。关掉它之后重新双击 update.cmd 即可。'
+  'update-shell-gaveup' = '  等了约 4 分钟 DeepSeek 还开着，先不升级了。关掉它之后重新双击 update.cmd 即可。'
   'preflight-menu'      = '  选择启动方式：'
   'preflight-hint'      = '  [W=浏览器模式 / D=桌面窗口 / U=更新壳 / N=只看自检，30 秒后默认 N]'
   'store-mismatch'      = "  插件依赖环境和当前 pnpm 大版本不一致：市场里会装不上也卸不掉（pnpm 报 UNEXPECTED_STORE）。`n  先彻底退出 DeepSeek Harness，再运行：dsh-portable.cmd plugin-repair -Force"

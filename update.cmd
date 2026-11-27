@@ -25,7 +25,7 @@ rem Flow: check -> one-line verdict -> ask Y/N -> wait for the desktop to exit
 rem -> apply -> done. Never touches app/desktop/runtime or user data.
 rem ===========================================================================
 chcp 65001 >nul 2>nul
-setlocal
+setlocal enabledelayedexpansion
 set "ROOT=%~dp0"
 if not exist "%ROOT%env.cmd" goto no_env
 call "%ROOT%env.cmd"
@@ -37,13 +37,15 @@ if not exist "%ROOT%tmp" mkdir "%ROOT%tmp" >nul 2>nul
 set "VERDICT=%ROOT%tmp\update-entry.txt"
 
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-header
+call :say update-shell-header
+if not defined SAYOK echo   [shell self-update] replaces shell files only (cmd / ps1 / tools). App, desktop, runtime and your settings are untouched.
 echo.
 
 rem --- capability probe: --notice (compact, one line) only exists from 0.6.0 ---
 rem an old shell answers "usage error" (2); then fall back to the verbose --brief
 if exist "%VERDICT%" del "%VERDICT%" >nul 2>nul
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-checking
+call :say update-shell-checking
+if not defined SAYOK echo   Checking for updates... (up to ~15s on a slow link, do not close this window)
 "%NODE%" "%SU%" check --cached 0 --notice --quiet-fail > "%VERDICT%" 2>nul
 set "CHK=%ERRORLEVEL%"
 if "%CHK%"=="2" goto legacy
@@ -60,8 +62,11 @@ goto net_fail
 rem When local shell files were hand-edited, --notice prints nothing (that is a
 rem repair case, not an upgrade) - treat it as up to date instead of showing
 rem a confusing "x.y.z -> x.y.z".
+rem Delayed expansion (!LINE!) is REQUIRED here: --notice prints "SHELL x -> y", and with
+rem plain %LINE% cmd parses that ">" as a redirect - the version line vanishes AND a junk
+rem file named like "0.6.3(3" appears in the portable folder (measured 2026-11-27).
 if not defined LINE goto up_to_date
-echo   %LINE%
+echo   !LINE!
 goto ask
 
 :legacy
@@ -76,8 +81,11 @@ if not "%CHK%"=="0" goto net_fail
 
 :ask
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-ask
-choice /C YN /T 20 /D Y /N /M " > "
+call :say update-shell-ask
+if not defined SAYOK echo   Upgrade now? Press Y to start; press N or wait 20s to skip (no reminder for 7 days).
+rem Default MUST be N: with stdin redirected (script / scheduled task) choice returns the
+rem default immediately instead of waiting 20 s, so a Y default would silently auto-upgrade.
+choice /C YN /T 20 /D N /N /M " > "
 if errorlevel 2 goto declined
 
 rem --- shell files can only be replaced while the desktop is closed ----------
@@ -86,7 +94,10 @@ set /a TRIES=0
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" show-desktop >nul 2>&1
 if "%ERRORLEVEL%"=="2" goto do_apply
 set /a TRIES+=1
-if %TRIES% GEQ 1 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-close-first
+rem Say it only once: this line used to sit inside the loop and printed the same
+rem sentence 60 times in a row (measured 2026-11-27).
+call :say update-shell-close-first
+if not defined SAYOK echo   DeepSeek is still running: close its window AND quit the tray icon. Continuing automatically once it is gone...
 if %TRIES% GEQ 60 goto gave_up
 timeout /t 3 /nobreak >nul 2>nul
 if errorlevel 1 ping -n 4 127.0.0.1 >nul 2>nul
@@ -98,14 +109,16 @@ powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" goto apply_failed
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-ok
+call :say update-shell-ok
+if not defined SAYOK echo   Upgrade finished. The version line above is what you are running now.
 echo.
 pause
 endlocal & exit /b 0
 
 :up_to_date
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-uptodate
+call :say update-shell-uptodate
+if not defined SAYOK echo   The shell is already up to date. Nothing to do.
 echo.
 timeout /t 6 /nobreak >nul 2>nul
 if errorlevel 1 ping -n 7 127.0.0.1 >nul 2>nul
@@ -113,14 +126,16 @@ endlocal & exit /b 0
 
 :blocked
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-blocked
+call :say update-shell-blocked
+if not defined SAYOK echo   This upgrade cannot be applied automatically (compatibility check failed, see above). On 0.6.1 or older: run node tools\shell-update.mjs apply --to 0.6.2 --force first, then double-click update.cmd again. The full zip contains factory home\profiles defaults - back that folder up before overlaying it.
 echo.
 pause
 endlocal & exit /b 3
 
 :net_fail
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-netfail
+call :say update-shell-netfail
+if not defined SAYOK echo   Update check failed: no network/blocked, OR your shell is too old to read the new manifest. (1) retry later; (2) on 0.6.1 or older run: node tools\shell-update.mjs apply --to 0.6.2 --force, then double-click update.cmd again; (3) only as a last resort unpack harness-shell-*.zip over this folder - BUT it contains factory home\profiles defaults, so back up home\profiles first or your plugin list gets reset.
 echo.
 pause
 endlocal & exit /b 1
@@ -128,7 +143,8 @@ endlocal & exit /b 1
 :declined
 "%NODE%" "%SU%" snooze >nul 2>nul
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-declined
+call :say update-shell-declined
+if not defined SAYOK echo   Skipped. No reminder for 7 days (double-click update.cmd whenever you want it).
 echo.
 timeout /t 4 /nobreak >nul 2>nul
 if errorlevel 1 ping -n 5 127.0.0.1 >nul 2>nul
@@ -136,7 +152,8 @@ endlocal & exit /b 0
 
 :gave_up
 echo.
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-shell-gaveup
+call :say update-shell-gaveup
+if not defined SAYOK echo   Waited ~4 minutes and DeepSeek is still running, so nothing was changed. Close it and double-click update.cmd again.
 echo.
 pause
 endlocal & exit /b 1
@@ -152,6 +169,20 @@ echo.
 pause
 endlocal & exit /b %RC%
 
+
+rem ---------------------------------------------------------------------------
+rem :say <key> - print one Chinese line through tools\say.ps1, and remember whether
+rem that key exists. An OLD shell ships an OLD say.ps1 without the update-shell-*
+rem keys; say.ps1 then prints nothing and still exits 0, so errorlevel cannot be
+rem used. Probing the OUTPUT is the only reliable signal - and the caller prints a
+rem plain ASCII fallback when SAYOK stays unset (measured 2026-11-27: without this
+rem an old shell answered a double-click with a blank screen and exit code 1).
+:say
+if not exist "%ROOT%tmp" mkdir "%ROOT%tmp" >nul 2>nul
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key %~1 > "%ROOT%tmp\say-line.txt" 2>nul
+for %%A in ("%ROOT%tmp\say-line.txt") do if %%~zA GTR 0 set "SAYOK=1"
+if exist "%ROOT%tmp\say-line.txt" type "%ROOT%tmp\say-line.txt"
+goto :eof
 :no_env
 echo.
 echo   [X] env.cmd is missing next to this file. Run this from the portable folder.

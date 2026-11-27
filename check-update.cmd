@@ -1,8 +1,11 @@
 @echo off
 chcp 65001 >nul 2>nul
 rem NOTE: keep this file pure ASCII; Chinese text is printed by tools\say.ps1
-if not defined ROOT set "ROOT=%~dp0"
-if not defined DSH_HOME call "%ROOT%env.cmd"
+rem NEVER trust an inherited ROOT/DSH_HOME: a leftover ROOT in the calling shell made this
+rem script check (and write cache files into) a DIFFERENT installation (2026-11-27). Always
+rem derive from this file's own location, like every other .cmd here does.
+set "ROOT=%~dp0"
+call "%ROOT%env.cmd"
 if not exist "%ROOT%logs" mkdir "%ROOT%logs" >nul 2>nul
 rem shared pre-launch check: finish an interrupted update, then look for a newer version
 if exist "%ROOT%tmp\update-journal.json" (

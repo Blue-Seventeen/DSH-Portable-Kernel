@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.6.3",
-  "tag": "v0.6.3",
-  "releasedAt": "2026-11-27T03:21:30.322Z",
+  "shellVersion": "0.6.4",
+  "tag": "v0.6.4",
+  "releasedAt": "2026-11-27T03:57:19.158Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T03:22:32.616Z",
+  "generatedAt": "2026-11-27T03:58:12.757Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<0.2.2-rc.2",
     "node": ">=24.0.0"
@@ -14,8 +14,8 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
-    "RELEASE-NOTES.md": "a45cf972f5ae61e21d4ec395d23a9873521b8710510e3765167d32ab50ae103e",
-    "check-update.cmd": "49644c6f2378eaab834db874e41bc59c89a2221508becea707eb22613c146651",
+    "RELEASE-NOTES.md": "9cd22515cd42c3a03693d90593da178dc95562f138d9a88b351f7b654111f4f7",
+    "check-update.cmd": "7b992939f7c9cb7c983e3a9d426a3c1da241f4b0c14d644046717a4e99cda0db",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
@@ -62,7 +62,7 @@
     "tools/plugin-shared.mjs": "6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7",
     "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
-    "tools/say.ps1": "dbc94bbf69bf6fdac2bab9f5eed89ef4bfb702cce831bbabaaf66a22b7d3faa7",
+    "tools/say.ps1": "6962c3c27b0468bc8b7b61b1619ad9e4494436fbb8f08baa1ea43d7ca226c940",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
@@ -75,7 +75,7 @@
     "tools/update-check.mjs": "26900602fdb1db76c6f0ace990e249d658d1a0e008c2cf02e341597d8a90734f",
     "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
     "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
-    "update.cmd": "f3963eb47539509cb2bfbface9cac89437fcf9d22fde2bf112f07b0f83185808"
+    "update.cmd": "255f91dca5555e7b49d90e25082348ec4eca7023221a5f969142d71088aacb13"
   },
   "userOwned": [
     "home/cordis.patch.yml",
@@ -89,28 +89,34 @@
   ],
   "notes": {
     "added": [
-      "`update.cmd` 进入壳清单（第 64 个文件），从此随升级自动到达每一台机器——包括从 0.6.2 及以后版本升上来的机器。"
+      "无。这是纯修复版本，`update.cmd` 的名字、参数、依赖面一律不变（它已冻结）。"
     ],
     "fixed": [
-      "**发一个新文件曾经等于掐断所有人的升级路**（本次发布前实测）：清单读取用的是同一份白名单，而读清单的是**已经装出去的旧版本**。旧版本看到清单里有它不认识的文件，就把整份清单判为非法（`whitelist-violation`），于是谁都升不了级。现在根目录下的壳脚本（`.cmd`/`.bat`/`.ps1`）不再要求逐个登记；`app/`、`desktop/`、`runtime/`、`home/` 以及显式禁止清单照样拒绝，安全边界没变。"
+      "**版本行不显示，反而在便携目录里生成垃圾文件**（用户模拟实测，稳定复现两次）：`--notice` 打印的是 `SHELL 0.6.2 -> 0.6.3`，而 `update.cmd` 用 `echo %LINE%` 输出——cmd 在展开变量**之前**就解析重定向符，于是 `>` 被当成写文件：屏幕上没有版本号，根目录多出一个名为 `0.6.3（3` 的文件。改用延迟展开（`echo !LINE!`），展开发生在解析之后，`>` 就只是普通字符。",
+      "**旧壳上双击 update.cmd 是一片空白然后退出**（0.5.x/0.6.0/0.6.1 实测）：那些版本的 `tools\\say.ps1` 没有 `update-shell-*` 文案键，遇到未知键**不报错、直接退出 0**，所以任何兜底都看不见。现在每次打印文案都会探测输出是否为空，为空就用纯 ASCII 兜底，老壳至少能读到\"为什么没升\"和\"下一步做什么\"。",
+      "**失败提示不再只说\"网络问题\"**：检查失败可能有两个原因（网络不通 / 壳太旧读不了新清单）。现在会直接给出旧壳的两步升级指令：`node tools\\shell-update.mjs apply --to 0.6.2 --force`，再双击 `update.cmd`。",
+      "**整包 zip 兜底会重置用户配置，以前没人警告**：`harness-shell-*.zip` 里含 `home\\profiles` 的出厂配置，直接覆盖会把用户改过的插件清单洗掉（用户模拟里用一行 marker 实测到）。现在所有提到整包兜底的文案都要求先备份 `home\\profiles`。",
+      "**`check-update.cmd` 会信任从调用者继承来的 `ROOT`**：别的 `.cmd` 都用 `set \"ROOT=%~dp0\"` 强制定位，只有它写 `if not defined ROOT`。结果是调用方环境里残留一个 `ROOT`（例如指向另一套安装），它就对**另一个安装**做检查、往那边写缓存。现在无条件用自身目录。"
     ],
     "optimized": [
-      "为了让这条修复真正到达用户，v0.6.2 先把\"能容忍新文件的读取器\"发出去、清单仍保持 63 个文件；v0.6.3 才把 `update.cmd` 加进清单。这就是升级器类改动的标准两步走：先让旧版本学会读，再发新东西。"
+      "升级询问的默认值从 Y 改成 **N**：stdin 被重定向时（脚本、计划任务）`choice` 会立刻取默认值而不是等 20 秒，默认 Y 等于\"无人值守时静默自动升级\"。",
+      "等桌面关闭的提示只打印一次（原来写在循环体内，会连刷 60 遍同一句话，实测时长 232 秒）。",
+      "超时文案从\"3 分钟\"改成\"约 4 分钟\"，与实测一致。"
     ],
     "breaking": [
       "无。清单 schema 仍是 2、`updaterMin` 不变、`requires.dsh` 不变。"
     ],
     "upgrade": [
-      "新增 `update.cmd`，其余壳文件不变。只换壳，不动 app / desktop / 运行时和你的数据。"
+      "替换清单里的壳文件（本次变更 4 个：`update.cmd`、`check-update.cmd`、`tools\\say.ps1`、`RELEASE-NOTES.md`）。",
+      "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.6.2 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.6.3.zip` 整包覆盖壳文件。",
-      "---"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.6.3 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.6.4.zip` 整包覆盖壳文件（**先备份 `home\\profiles`**，zip 里含出厂配置）。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.3",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.4",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -121,8 +127,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.6.3.zip",
-    "sha256": "20f5f2738d0d49930c7aefb7fbb7467ae243b687f4898824578046e3d671ee21",
-    "bytes": 1898899
+    "name": "harness-shell-0.6.4.zip",
+    "sha256": "c01abef8e7ecea63d7e51bc448f124e191b1cb555f50cf8bafd65b711f079c9a",
+    "bytes": 1901547
   }
 }
