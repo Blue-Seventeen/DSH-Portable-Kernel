@@ -82,6 +82,7 @@ const USAGE = [
 export const ROOT_SHELL_FILES = [
   'dsh-portable.ps1', 'preflight.cmd', 'start-web.cmd', 'start-desktop.cmd', 'dsh-portable.cmd',
   'dsh.cmd', 'dsh-plugin.cmd', 'dsh-plugin-shared.cmd', 'check-update.cmd', 'env.cmd',
+  'update.cmd',
 ]
 /**
  * 用户可变文件：正常使用中会被插件市场 / fix-pnpm-state / 用户自己改写。
