@@ -340,6 +340,35 @@ export const deriveBase = (source, tag) => {
  * 拉远端清单并逐条校验（schema / 路径白名单 / sha256 / 大小写重名 / 编码）。
  * @returns {{ok: boolean, errorCode?: string, error?: string, blockers?: array, ...}}
  */
+/**
+ * 大版本迁移声明（2026-11-27 引入，为 1.0.0 的结构重排铺路）。
+ *
+ * 清单可带：migration: { url, sha256, entry, note }
+ *
+ * 语义：目标版本与当前版本之间有一次**结构级**变更（目录分组、入口合并），逐文件替换做不到——
+ * 旧客户端的路径白名单会把整份新清单拒掉。于是改成：下载一次性迁移脚本 → 校验 sha256 →
+ * 执行 → 脚本自己删除。脚本负责备份旧壳、只覆写壳路径、失败自动还原。
+ *
+ * 校验从严：只接受 **https + 可信主机**、只接受 64 位 sha256、只接受 .cmd/.bat/.ps1 入口。
+ * 任何一项不满足就当没写这个字段（退回逐文件升级，行为与旧版一致）。
+ */
+const normalizeMigration = (raw) => {
+  if (!raw || typeof raw !== 'object') return null
+  const url = typeof raw.url === 'string' ? raw.url.trim() : ''
+  const sha = typeof raw.sha256 === 'string' ? raw.sha256.trim().toLowerCase() : ''
+  const entry = typeof raw.entry === 'string' ? raw.entry.trim() : ''
+  if (!isUrl(url)) return null
+  // 必须 https：迁移脚本是要被执行的代码，明文 HTTP 等于把执行权交给中间人。
+  if (!/^https:\/\//i.test(url)) return null
+  const host = hostOf(url)
+  if (!host || !ALLOWED_HOSTS.includes(host)) return null
+  if (!/^[a-f0-9]{64}$/.test(sha)) return null
+  if (!/^[A-Za-z0-9._-]+\.(cmd|bat|ps1)$/i.test(entry)) return null
+  return { url, sha256: sha, entry, note: typeof raw.note === 'string' ? raw.note.slice(0, 200) : '' }
+}
+/** 测试接缝：只测校验逻辑，不发网络请求 */
+export const normalizeMigrationForTest = (raw) => normalizeMigration(raw)
+
 const loadManifest = async (opts) => {
   const tagHint = opts.to ? tagFor(opts.to) : ''
   const source = opts.manifest || (tagHint ? RAW_BASE + '/refs/tags/' + tagHint + '/' + SHELL_MANIFEST : DEFAULT_MANIFEST)
@@ -438,6 +467,7 @@ const loadManifest = async (opts) => {
     notes: json.notes && typeof json.notes === 'object' ? json.notes : {},
     notesUrl: typeof json.notesUrl === 'string' ? json.notesUrl : '',
     migrations,
+    migration: normalizeMigration(json.migration),
     zip,
     files,
     userOwned,
@@ -1106,6 +1136,59 @@ const verifyCmd = (opts) => {
   return { cmd: [process.execPath, vp, '--update-gate'], enabled: true, quiet: !!opts.json }
 }
 
+/**
+ * 执行大版本迁移：下载 → 校验 → 执行 → 复核版本。
+ *
+ * 关键安全点：
+ *   - 脚本本体必须与清单里的 sha256 一致，否则一个字节都不执行
+ *   - 用 `cmd /c <脚本> --yes` 执行，stdio inherit：迁移过程中的进度用户能直接看到
+ *   - 复核只说"版本对不对"：脚本自己负责备份与失败还原，我们不再插手它的文件操作
+ *   - 脚本成功后删除自己（脚本内部实现），这里只删我们下载的那份临时副本
+ */
+const runMigrationApply = async (m, installed, opts) => {
+  const mig = m.migration
+  const from = installed.shellVersion || ''
+  const dir = join(ROOT, 'tmp', 'major-upgrade')
+  const file = join(dir, mig.entry)
+  if (opts.json && !opts.force) {
+    emitJson({ ok: true, action: 'apply', dryRun: true, migration: { entry: mig.entry, to: m.shellVersion }, from, exitCode: EXIT_OK })
+    return finish(EXIT_OK)
+  }
+  if (!opts.force) {
+    line('MIGRATE ' + (from || '(未知)') + ' -> ' + m.shellVersion + '（大版本迁移）')
+    line('  目标版本换了壳的目录结构，逐文件替换做不到。')
+    line('  将下载一次性迁移脚本并执行，成功后脚本会自己删除：' + mig.entry)
+    if (mig.note) line('  ' + mig.note)
+    line('')
+    line('这是预演，加 --force 才真的执行（脚本会先备份旧壳，失败自动还原）')
+    return finish(EXIT_OK)
+  }
+  progress('正在下载迁移脚本…')
+  try { mkdirSync(dir, { recursive: true }) } catch { }
+  const r = await fetchBytes(mig.url)
+  if (!r.ok) return fail(opts.json, 'apply', 'migration-download', '取不到迁移脚本 ' + mig.url + '：' + r.error)
+  const got = sha256(r.buf)
+  if (got !== mig.sha256) {
+    return fail(opts.json, 'apply', 'migration-integrity', '迁移脚本校验失败：期望 ' + mig.sha256 + '，实际 ' + got + '（未执行任何内容）')
+  }
+  try { writeFileSync(file, r.buf) } catch (e) { return fail(opts.json, 'apply', 'migration-write', '写不下迁移脚本：' + e.message) }
+  progressEnd()
+  progress('正在执行迁移（会先备份旧壳，失败自动还原）…')
+  const cp = spawnSync(process.env.ComSpec || 'cmd.exe', ['/c', file, '--yes'], { cwd: ROOT, stdio: 'inherit' })
+  progressEnd()
+  try { rmSync(file, { force: true }) } catch { }
+  if (cp.status !== 0) {
+    return fail(opts.json, 'apply', 'migration-failed', '迁移脚本退出码 ' + cp.status + '（旧壳应由脚本还原；日志见 logs\\，备份见 cache\\major-upgrade-*）')
+  }
+  const after = readLocalManifest()
+  if (String(after.shellVersion || '') !== String(m.shellVersion)) {
+    return fail(opts.json, 'apply', 'migration-incomplete', '迁移脚本报告成功，但本地清单版本是 ' + (after.shellVersion || '(未知)') + '，期望 ' + m.shellVersion)
+  }
+  if (opts.json) { emitJson({ ok: true, action: 'apply', migrated: true, from, to: after.shellVersion, exitCode: EXIT_OK }); return finish(EXIT_OK) }
+  line('已迁移到 ' + after.shellVersion + '（迁移脚本已自删）')
+  return finish(EXIT_OK)
+}
+
 const runApply = async (opts) => {
   const m = await loadManifest(opts)
   if (!m.ok) return fail(opts.json, 'apply', m.errorCode, m.error)
@@ -1125,6 +1208,8 @@ const runApply = async (opts) => {
     line('已是最新（' + installed.shellVersion + '），没有需要更新的文件')
     return finish(EXIT_OK)
   }
+  // 大版本（清单声明了 migration）：逐文件替换做不到，交给一次性迁移脚本
+  if (m.migration) return await runMigrationApply(m, installed, opts)
   const { blockers, advisories } = compatBlockers(m, installed, opts)
   const hard = blockers.filter((b) => !b.ignoredByForce)
   if (hard.length) return fail(opts.json, 'apply', 'blocked', hard.map((b) => b.message).join('；'), { blockers: hard, exitCode: EXIT_BLOCKED })
