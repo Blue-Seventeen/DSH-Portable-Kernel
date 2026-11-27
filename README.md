@@ -219,3 +219,46 @@ dsh-portable.cmd bootstrap
 - 本仓库的 `master` 曾经是官方源码的镜像分支，2026-11-03 起换成只装壳。覆盖前那一个提交是 `ce7073d51254c26cd63b22a60835b8f948deb447`（20,233 个文件，属于官方 DeepSeek Harness 源码，可在 GitHub 提交页按此 SHA 直接查看）。为了不让 clone 拖上 357 MB 的旧对象，没有给它留 tag。
 
 > 一句话记住：**壳进仓库，官方那层靠 `bootstrap` 现拉；改壳先跑 `verify`。**
+
+## 内核兼容面（compat.json）
+
+**为什么要这个东西**：以前"这个壳支持哪些内核版本"写在壳清单里，而清单是版本化制品的一部分——
+官方发一个新 rc，我们就得打一个新壳、发一个 Release，所有用户重下一遍。可实际上大多数 rc
+根本没动我们打补丁的那几个文件（实测 `0.2.2-rc.2` → `rc.5` 的 `dsh-fs-local` 与
+`dsh-attachment-local` 的 `lib/index.js` 逐字节相同）。
+
+所以把两件事拆开：
+
+| | 是什么 | 什么时候变 |
+|---|---|---|
+| **壳代码** | 版本化制品，走 Release | 真的有代码改动时 |
+| **compat.json** | 一个不进版本号的 JSON，走 master 分支裸文件 | 官方发新内核、而我们核实补丁没受影响时 |
+
+壳每次联网会拉一次（最多 6 小时一次），拿不到就静默跳过。
+
+### 三条安全不变量
+
+1. **只放宽，不收紧**：远端声明与本壳清单取并集。即使远端文件被改坏，最坏结果是"多认几个内核版本"，
+   绝不会把用户已经能用的内核判成不支持。
+2. **拿不到就跳过**：无网 / 超时 / JSON 坏 / schema 太新 → 一律退回本壳清单，不卡启动、不改结论。
+3. **体积上限 64 KB**。
+
+### 官方发了新内核，我们怎么放开（不用发壳）
+
+```bat
+node tools\compat-declare.mjs --check                     :: 看 npm 上最新内核，差几个版本
+node tools\compat-declare.mjs --verify 0.2.2-rc.6         :: 只下两个被打补丁的包，比对 lib/index.js 哈希
+node tools\compat-declare.mjs --allow 0.2.2-rc.6          :: 推进上界（verify 没过会拒绝）
+node tools\compat-declare.mjs --push                      :: 提交推送；用户下次联网自动生效
+```
+
+`--verify` 报 `DIFF` 才说明官方真动了我们打补丁的文件——那时候才需要适配补丁并重发壳。
+
+### 怎么确认当前生效到什么
+
+```bat
+node tools\compat-live.mjs               :: 清单区间 / 生效区间 / 来自哪里 / 已验证内核列表
+node tools\compat-live.mjs --refresh     :: 强制联网刷新（忽略 6 小时缓存）
+dsh-portable.cmd doctor                  :: 体检里的 dsh-range 一行
+```
+

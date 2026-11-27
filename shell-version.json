@@ -6,14 +6,14 @@
   "tag": "v0.7.0",
   "releasedAt": "2026-11-27T04:56:20.212Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T04:57:25.692Z",
+  "generatedAt": "2026-11-27T05:01:27.262Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.0.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
+    "README.md": "8dfd862768b92623640d336cff55d171c951e7f0eb2c14c1b518f1b09077ce33",
     "RELEASE-NOTES.md": "c3fa871e701eed6738804d6f222694e3c19a621d2747d558eb3fd81d6f63260f",
     "check-update.cmd": "7b992939f7c9cb7c983e3a9d426a3c1da241f4b0c14d644046717a4e99cda0db",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
