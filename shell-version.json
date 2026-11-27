@@ -2,19 +2,19 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.6.5",
-  "tag": "v0.6.5",
-  "releasedAt": "2026-11-27T04:18:54.867Z",
+  "shellVersion": "0.6.6",
+  "tag": "v0.6.6",
+  "releasedAt": "2026-11-27T04:32:01.132Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T04:20:00.173Z",
+  "generatedAt": "2026-11-27T04:33:12.252Z",
   "requires": {
-    "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
+    "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.5",
     "node": ">=24.0.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
-    "RELEASE-NOTES.md": "4f5532d32745f101d8af863819a851d3fc5fa58f4c6c84b9261050836dba77df",
+    "RELEASE-NOTES.md": "3234f3f2af76b17624319ae5bd1d4bb406d77a11202218b4256babdaba1e0752",
     "check-update.cmd": "7b992939f7c9cb7c983e3a9d426a3c1da241f4b0c14d644046717a4e99cda0db",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
@@ -56,7 +56,7 @@
     "tools/normalize-eol.mjs": "4a9e38ab5dd180b803da334918c4fc1b7f060b89d7bbee9202cce2a82263f2eb",
     "tools/patch-all.mjs": "3bdfd3d5d9599ded21abc1f6644efa50bcc3f42ac2f1c61ecb8af9222cab96ef",
     "tools/patch-attachment.mjs": "47dc02715d2176145c5d897bd42121378408f4f9c4cbf7b0cb33b8c838e5293e",
-    "tools/patch-fs.mjs": "0cb3f0d1939dda16fe1b9cd67c55ea954a7df88b9d4c0b82e743d3fa5adbb84f",
+    "tools/patch-fs.mjs": "8c393702a290223356dfe927a947a0db7fbc2518e59cf4d43887389112bbf558",
     "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
     "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
     "tools/plugin-shared.mjs": "6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7",
@@ -69,7 +69,7 @@
     "tools/selftest-store.mjs": "1da327a64c5e6a918f2aeab1da085b570735f7617479fbd6648d8a4c460aa706",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
-    "tools/shell-release.mjs": "c10bd24fa58ba6d80b78f5f0420c7ad80fce31aa52d4de4aeaf3920f997ef499",
+    "tools/shell-release.mjs": "24622a06c799a32f5ef2edbeffbb43bcdc87419b2e0a002e127e9df683186d57",
     "tools/shell-update.mjs": "7e135e62d029868447cb674304257f69e7ae92b1cd82b0797e890b12955ddaad",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "26900602fdb1db76c6f0ace990e249d658d1a0e008c2cf02e341597d8a90734f",
@@ -89,30 +89,29 @@
   ],
   "notes": {
     "added": [
-      "**发版时的\"上界过期检查\"**：`prepare` 现在会去 npm 查 `@deepseek-ai/dsh` 的 `latest`/`next`，跟本次要写的 `requires.dsh` 上界对一次。落后就大声警告并拒绝发布（`--allow-stale-range` 可显式豁免）。以前这个上界是每次发版手工重复传的参数，连着几个版本没人动，直到出厂内核跑到自己声明的区间外面。"
+      "`dsh-fs-local` 的已验证版本清单从只有 `0.2.1-rc.5` 一个，补到 `0.2.1-rc.5 / 0.2.2-rc.1 / rc.2 / rc.3 / rc.4 / rc.5`。以前其余版本都会被打上\"版本不在白名单，按锚点处理\"的标签，看着像有问题，其实早就打上了。"
     ],
     "fixed": [
-      "**内核比壳新不再阻断壳升级**（实测死锁）：原来\"本机内核高于适配上界\"被当成硬阻断，于是 npm 上 `latest` 一旦超过上界，所有新装用户就再也收不到壳更新。更荒唐的是我们自己 0.6.x 出厂的内核是 `0.2.2-rc.5`，而壳声明 `<0.2.2-rc.2`，**出厂组合自己\"不支持\"自己**，那批用户永远升不了壳。现在改为只警告（壳照装），并明确指出哪三族补丁（商城装卸 / exFAT 新建文件 / 附件）可能需要适配，装完看体检的 `patches` 一行即可。",
-      "**上界写错成开区间**：`<0.2.2-rc.2` 把 `0.2.2-rc.2` 本身排除了，而 rc.2 正是我们已经适配并验证过的内核（也是很多用户的桌面版本）。改成 `<=0.2.2-rc.2`。"
+      "**`requires.dsh` 上界推到 `0.2.2-rc.5`**（npm 上的 `latest`）。核实方法：`@deepseek-ai/dsh-fs-local` 与 `@deepseek-ai/dsh-attachment-local` 的 `lib/index.js` 在 rc.2 / rc.3 / rc.4 / rc.5 上 **sha256 完全相同**，我们打的那些锚点自然不变；打完补丁后的产物哈希在 rc.2 与 rc.5 上也完全一致。",
+      "于是内核 `0.2.2-rc.3 / rc.4 / rc.5` 上不再出现\"补丁可能需要适配\"的警告——那三代确实没动过我们改的代码。"
     ],
     "optimized": [
-      "区间语义在代码里写清楚了：`blockers`（装了会坏：schema 读不懂 / 更新器太老 / 跨版本太大 / 内核低于下界）与 `advisories`（装了不会坏，但补丁可能没适配：内核高于上界）分成两类，不再混在一个数组里。",
-      "`check` 的输出在计划之前多一行\"注意：…\"，`--json` 里多一个 `advisories` 字段。"
+      "适配这件事从\"凭印象改锚点\"变成可核对的流程：先比被打文件的哈希，再比打完补丁后的产物哈希，最后跑 `patch-all --check`。三步都过才算适配完成。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变。`requires.dsh` 的值从上界开区间改为闭区间（更宽松，不会挡下任何原本能装的组合）。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变，`requires.dsh` 只是上界放宽（从 `<=0.2.2-rc.2` 到 `<=0.2.2-rc.5`）。"
     ],
     "upgrade": [
-      "替换清单里的壳文件（本次变更 4 个：`tools\\shell-update.mjs`、`tools\\shell-release.mjs`、`shell-version.json`、`RELEASE-NOTES.md`）。",
+      "替换清单里的壳文件（本次变更 3 个：`tools\\patch-fs.mjs`、`shell-version.json`、`RELEASE-NOTES.md`）。",
       "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.6.4 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.6.5.zip` 整包覆盖壳文件（**先备份 `home\\profiles`**，zip 里含出厂配置）。"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.6.5 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.6.6.zip` 整包覆盖壳文件（**先备份 `home\\profiles`**，zip 里含出厂配置）。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.5",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.6",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -123,8 +122,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.6.5.zip",
-    "sha256": "ba0cee130437c59bb25fd7990d0d5128375d60330837a2ff599cd304005f22fd",
-    "bytes": 1904263
+    "name": "harness-shell-0.6.6.zip",
+    "sha256": "f29e091e7957df5f7d281fd1c3c14426f2c39136466d1a33a3388577ad881798",
+    "bytes": 1904978
   }
 }

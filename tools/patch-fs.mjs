@@ -25,7 +25,10 @@ const ASAR = process.env.H3RX_PATCH_FS_ASAR || join(ROOT, 'desktop', 'resources'
 const ASAR_ENTRY = 'dsh/node_modules/@deepseek-ai/dsh-fs-local/lib/index.js'
 const MARK = 'h3rx-fs-patch: link-fallback'
 /** 版本只用于报告；判据永远是"能不能语义定位到补丁点" */
-const VERIFIED_APP = ['0.2.1-rc.5']
+// 已验证过的 app 侧 dsh-fs-local 版本（2026-11-27 实测：rc.2/rc.3/rc.4/rc.5 的 lib/index.js
+// 与 rc.2 **逐字节相同**（sha256 610a3ba3…），被打的那段语义锚点自然不变；
+// 版本号只用于报告，真判据永远是"能不能语义定位到补丁点"。
+const VERIFIED_APP = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.2', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5']
 
 /* 语义锚点：不依赖缩进、引号、变量名。两代真实形状都能命中——
  *  0.2.1-rc.5: if (createIfAbsent !== void 0) try { await linkFile(...) } catch (error) { await throwGuardedCreateFailure(...) }
