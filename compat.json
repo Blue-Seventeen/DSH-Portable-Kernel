@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-11-27T05:00:00.000Z",
+  "minShell": "0.7.0",
+  "dsh": {
+    "range": ">=0.2.1-rc.5,<=0.2.2-rc.5",
+    "verified": [
+      "0.2.1-rc.5",
+      "0.2.2-rc.1",
+      "0.2.2-rc.2",
+      "0.2.2-rc.3",
+      "0.2.2-rc.4",
+      "0.2.2-rc.5"
+    ],
+    "note": "rc.3/rc.4/rc.5 未改动补丁锚点（fs-local 与 attachment-local 的 lib/index.js 逐字节相同）。"
+  },
+  "patchedFiles": {
+    "@deepseek-ai/dsh-fs-local/lib/index.js": "610a3ba3658e55ad",
+    "@deepseek-ai/dsh-attachment-local/lib/index.js": "ff717f87226b41b1"
+  }
+}

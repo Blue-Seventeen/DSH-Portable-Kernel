@@ -13,6 +13,53 @@
 
 ---
 
+## v0.7.0 — 2026-11-27
+
+**壳与内核兼容面解耦**：以后官方发新内核，只要没动我们打补丁的文件，我们**只推一个 JSON**，不发新壳、用户不用重装。
+
+### 新增
+
+- **兼容性活声明 `compat.json`**：放在仓库根目录（固定地址，走 master 分支裸文件），壳每次联网时自动拉取，最多 6 小时一次。它声明"这个壳支持哪些内核版本"，改完推上去即对所有用户生效。
+- **`tools\compat-declare.mjs` 维护工具**：`--check` 看 npm 上最新内核差多少、`--verify <版本>` 只下两个被打补丁的包比对 `lib/index.js` 哈希、`--allow <版本>` 推进上界、`--push` 提交推送。别人为一颗内核重发整壳，我们改一行 JSON。
+
+### 修复
+
+- **为一颗内核就得发一个壳**：以前"壳支持到哪"写在壳清单里，而清单是版本化制品的一部分——官方发个 rc，我们就得打新壳、发 Release、所有用户重下。实际上绝大多数 rc 根本没动我们打补丁的文件（实测 rc.2→rc.5 的 `dsh-fs-local` 与 `dsh-attachment-local` 的 `lib/index.js` 逐字节相同）。现在清单只写"本版本实际验证到的面"（保守基线），活声明负责放宽。
+
+### 优化
+
+- **三条安全不变量**（都有测试守着）：① 活声明**只能放宽不能收紧**——远端最多让区间变大，绝不会把用户已经能用的内核判成不支持；② 拿不到就跳过——无网/超时/坏 JSON/schema 太新，一律退回本壳清单，绝不卡启动；③ 体积上限 64 KB。
+- 体检新增 `dsh-range` 一行：显示当前生效的内核区间，以及它来自本壳清单还是远端声明。
+- 内核更新判定、壳更新的"内核太新"警告、体检三处都认这份声明，不会再出现"远端已核实但本地还警告"的错位。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变。`requires.dsh` 在本版回到保守基线 `>=0.2.1-rc.5,<=0.2.2-rc.2`（实际验证面），生效区间由 `compat.json` 放宽到 `<=0.2.2-rc.5`。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（本次变更 6 个：新增 `tools\compat-live.mjs`、`tools\compat-declare.mjs`，更新 `tools\update-check.mjs`、`tools\shell-update.mjs`、`tools\shell-release.mjs`、`dsh-portable.ps1`）。
+- 只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.6.6 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.7.0.zip` 整包覆盖壳文件（**先备份 `home\profiles`**，zip 里含出厂配置）。
+
+### 以后怎么放开新内核（我们自己看）
+
+```
+node tools\compat-declare.mjs --check          :: 官方发了新 rc？差几个版本
+node tools\compat-declare.mjs --verify 0.2.2-rc.6   :: 只下两个包比对哈希（几秒）
+node tools\compat-declare.mjs --allow 0.2.2-rc.6    :: 推进上界（verify 没过会拒绝）
+node tools\compat-declare.mjs --push           :: 推上去，用户下次联网自动生效
+```
+
+如果 `--verify` 报 DIFF，说明官方真动了我们打补丁的文件——那才需要适配补丁 + 发新壳。
+
+---
+
 ## v0.6.6 — 2026-11-27
 
 适配面推到最新内核 `0.2.2-rc.5`：我们打补丁的两个包在这一代**逐字节没变**，所以"适配"实际是核实，不是改代码。

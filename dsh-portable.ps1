@@ -2009,6 +2009,14 @@ switch ($Action) {
       elseif ($chk.summary.status -eq 'local-newer') { $shUpd = ('本地比远端新（' + $cacheRemote + '）') }
       else { $shUpd = '已是最新' }
     }
+    # 生效的内核兼容区间：本壳清单 ∪ 远端兼容声明（远端可随时放宽，不必为此发新壳）。
+    # 远端那一行来自 tmp\compat.json 缓存；拿不到时这里只显示清单值，不会卡住。
+    $dshRange = "-"
+    try {
+      $rl = & $Node (Join-Path $Root "tools\compat-live.mjs") --one-line 2>$null
+      if ($rl) { $dshRange = ($rl | Select-Object -First 1).ToString().Trim() }
+    } catch { }
+    Say ("dsh-range : " + $dshRange)
     Say ("shell-upd : " + $shUpd)
     # 壳有更新时给一条能直接照做的指引。不要写"菜单选 U"——dsh-portable.cmd 只是体检、
     # 它不出菜单（2026-11-27 用户照旧文案去找菜单，找不到，以为升级入口不存在）。

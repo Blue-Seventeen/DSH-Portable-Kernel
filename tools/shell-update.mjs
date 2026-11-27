@@ -252,6 +252,8 @@ export const validateShellBytes = (relPath, buf) => {
 // 不能 import 本文件（CLI 全家桶会被拖进去 → MODULE_NOT_FOUND）。这里 re-export 保持兼容。
 import { equalVer, isNewer, satisfiesRange } from './version-range.mjs'
 export { parseVer, isNewer, satisfiesRange } from './version-range.mjs'
+// 兼容声明：远端可随时放宽"本壳支持到哪个内核"，不必为此发新壳。
+import { effectiveDshRangeSync } from './compat-live.mjs'
 
 // ---- IO ---------------------------------------------------------------------
 const isUrl = (s) => /^https?:\/\//i.test(String(s == null ? '' : s))
@@ -546,7 +548,11 @@ const compatBlockers = (m, installed, opts) => {
           }
         }
         const tooNew = upper ? isNewer(have, upper) || equalVer(have, upper) && !/=$/.test(conds[conds.length - 1] || '') : false
-        if (tooNew) {
+        // 远端兼容声明可能已经把这一版内核核实过了（我们只推一个 JSON，不发新壳）。
+        // 覆盖了就别再吓用户"补丁可能没适配"——那反而会让用户以为不能升。
+        const live = effectiveDshRangeSync(ROOT)
+        const coveredByLive = live.source === 'compat' && satisfiesRange(have, live.range) !== false
+        if (tooNew && !coveredByLive) {
           // 只警告：壳照装，但要讲清哪些功能可能还没适配（三族补丁都按内核锚点打）。
           advisories.push({ code: 'requires-dsh-too-new', advisory: true, message: '本机内核 ' + have + ' 高于本壳补丁的适配区间 dsh ' + wantDsh + '：壳可以装，但商城装卸 / exFAT 新建文件 / 附件这三族补丁可能需要适配', fix: '装完看 dsh-portable.cmd 体检的 patches 那一行，显示 needs-adapt 就是补丁还没跟上这个内核' })
         } else {

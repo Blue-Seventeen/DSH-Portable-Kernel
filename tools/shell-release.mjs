@@ -610,7 +610,15 @@ const guessZipPathsForDryRun = (currentFiles) => {
  * 存在的意义：这个上界以前是每次发版手工重复传参数，于是连着好几个版本没人动过，
  * 直到出厂内核跑到自己声明的区间外面（2026-11-27 发现）。现在每次 prepare 都会查一次。
  */
-const checkRangeStale = async (range) => {
+const checkRangeStale = async (manifestRange) => {
+  // 清单里写的上界允许保守（= 这个壳版本实际验证到的面）；真正面向用户的是
+  // "清单 ∪ compat.json"。所以这里比的是并集，不是清单原文，
+  // 否则每次发版都会因为"清单没写到最新内核"而误报。
+  const { unionRange } = await import('./compat-live.mjs')
+  let compatRange = ''
+  try { compatRange = JSON.parse(readFileSync(join(ROOT, 'compat.json'), 'utf8')).dsh.range || '' } catch { }
+  const range = unionRange(manifestRange, compatRange).range || manifestRange
+  if (compatRange) console.log('  适配面 : 清单 ' + manifestRange + ' ∪ 声明 ' + compatRange + ' = ' + range)
   if (!range) return null
   try {
     const res = await fetch('https://registry.npmjs.org/@deepseek-ai%2Fdsh', {

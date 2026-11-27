@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url'
 // 只依赖 version-range.mjs（零依赖纯函数）：本脚本会被测试单独拷进隔离目录运行（test 18），
 // 不能 import shell-update.mjs（会把整个自更新 CLI 拖进来 → 隔离目录 MODULE_NOT_FOUND）。
 import { satisfiesRange } from './version-range.mjs'
+// 兼容声明（compat.json）：让"壳支持到哪个内核"变成可随时更新的活数据，
+// 不必为了放开一个内核版本就发一个新壳。拿不到就静默退回本壳清单。
+import { effectiveDshRangeSync, refreshCompat } from './compat-live.mjs'
 
 // 只有"线上比本地新"才提示；本地更新（例如装了更新的预发布版）不该被降级
 const parseVer = (v) => {
@@ -166,10 +169,13 @@ const cur = { app: appVersion(), desktop: desktopVersion() }
 // 那时内核版本没变、旧结论却被 6 小时 TTL 原样回放，用户刚换壳还看到"内核出界"（2026-11-26 复测发现）。
 // 区间来自本地壳清单 requires.dsh（缓存身份的一部分，见下）
 const manifest = (() => { try { return JSON.parse(stripBom(read(join(root, 'shell-version.json')))) } catch { return null } })()
-const range = manifest && manifest.requires && typeof manifest.requires.dsh === 'string' ? manifest.requires.dsh : ''
+// 生效区间 = 本壳清单 ∪ 远端兼容声明（只许放宽）。这里先用**缓存**算一次：
+// 启动热路径不能被网络拖慢；缓存过期/没有时才在下面联网刷新。
+let eff = effectiveDshRangeSync(root)
+let range = eff.range
 // frozen.json 是用户手写的文件：可能带 BOM（记事本默认 UTF-8 BOM），JSON.parse 会直接抛——剥掉再解析
 const frozen = (() => { try { const j = JSON.parse(stripBom(read(join(root, 'frozen.json')))); return j && j.dsh ? j : null } catch { return null } })()
-const shape = range + '|' + (frozen ? frozen.dsh : '')
+let shape = range + '|' + (frozen ? frozen.dsh : '')
 const sameLocal = (a, b) => Boolean(a) && Boolean(b) && a.app === b.app && a.desktop === b.desktop
 const sameShape = (s) => !s || String(s.shape || '') === shape
 
@@ -190,7 +196,10 @@ if (!force) {
   } catch {}
 }
 
-const latest = await remote()
+// 缓存没命中才走网络：顺带刷新兼容声明（3 秒超时，失败静默），与查远端版本并行，不额外拖慢启动。
+const [latest] = await Promise.all([remote(), refreshCompat({ root }).catch(() => ({}))])
+eff = effectiveDshRangeSync(root)
+if (eff.range !== range) { range = eff.range; shape = range + '|' + (frozen ? frozen.dsh : '') }
 
 // ---- 内核-壳适配闸门（doc/compat-report-2026-11-12.md §4.2）------------------
 // 区间来自本地壳清单 requires.dsh；出界时不推 UPD（不诱导 update-all），改给 KERN 提示：
@@ -213,9 +222,10 @@ if (frozen) {
     lines.push(
       `KERN 官方 ${out.join(' / ')} 已超出本壳适配区间（${range}）`,
       '  补丁只对区间内内核负责：出界后商城装卸/exFAT 新建文件/附件会静默失效',
-      '  ① 升壳适配：dsh-portable.cmd shell-update check（有适配壳就 apply -Force）',
-      '  ② 没有就冻结当前组合（合法且安全）：新建 frozen.json 写 {"dsh":"' + (cur.app || '?') + '"}',
-      '  ③ 都不做 = 维持现状继续用（这就是冻结）')
+      '  ① 等我们先核实（核实后只改仓库里那份兼容声明，你会自动放开，不用重装壳）',
+      '  ② 想自己确认能否硬升：dsh-portable.cmd shell-update check（有适配壳就 apply -Force）',
+      '  ③ 也可以冻结当前组合（合法且安全）：新建 frozen.json 写 {"dsh":"' + (cur.app || '?') + '"}',
+      '  ④ 都不做 = 维持现状继续用（这就是冻结）')
   }
 }
 const line = lines.join('\n')
@@ -231,6 +241,6 @@ if (done.app || done.desktop) {
 if (process.argv.includes('--verbose')) {
   console.log(`installed: app=${cur.app || '?'} desktop=${cur.desktop || '?'}`)
   console.log(`latest:    app=${latest.app || '?'} desktop=${latest.desktop || '?'}`)
-  console.log(`range:     ${range || '(未声明)'}  frozen=${frozen ? frozen.dsh : 'no'}`)
+  console.log(`range:     ${range || '(未声明)'}  frozen=${frozen ? frozen.dsh : 'no'}  source=${eff.source}${eff.compat ? ' updatedAt=' + (eff.compat.updatedAt || '?') : ''}`)
 }
 if (line) console.log(line)
