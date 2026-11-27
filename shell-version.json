@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.4",
-  "tag": "v1.0.4",
-  "releasedAt": "2026-11-27T12:22:43.584Z",
+  "shellVersion": "1.0.5",
+  "tag": "v1.0.5",
+  "releasedAt": "2026-11-27T13:32:18.542Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T12:23:39.637Z",
+  "generatedAt": "2026-11-27T13:33:12.625Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "b23cd3fa5967fdbbb8e6f0f8c7974264c31f7fbd9ef7ac94c0560b3d592de534",
+    "RELEASE-NOTES.md": "bc51c416ca3591a50cdec6893807c32047ef504a8745c98479cdc3a997f50e8a",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
@@ -68,7 +68,7 @@
     "tools/update/shell-update.mjs": "c18c164d780608e79cd26dd57bcbbc3a905feacc0ca15b4f6d2d42a76675f530",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
     "tools/update/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
-    "tools/verify/verify-shell.mjs": "bf3818daa175a1a93852482b20342c6bf5c830664cff67b15e4e4b101b253260",
+    "tools/verify/verify-shell.mjs": "237de68df8e667b37e0eda4cfc3a5e3674719d7b747d5b231176d512cacec8d7",
     "update.cmd": "aba99a52ce71e37982e75562249671a511337d20d371a1eb5a4f73032646febd"
   },
   "userOwned": [
@@ -83,26 +83,24 @@
   ],
   "notes": {
     "added": [
-      "`tmp\\shell-update.lock` 单实例锁：换装 / 回滚 / 恢复同一时刻只许跑一个。活着的新锁会拒绝并报出持锁 pid；已死的 pid、损坏的锁、超过 30 分钟的锁会被接管并提示。预演（dry-run）不抢锁。"
+      "新增守卫用例：`verify` 的必需文件清单里不许出现 `devtools/`，对 `devtools` 的任何执行必须先过 `MAINT()` 存在性守卫。"
     ],
     "fixed": [
-      "**预演会删文件。** 不带 `--force` 的 `apply` 帮助里写着\"只报告，不改文件\"，但\"已是最新\"分支里无条件跑了残留清理——用户只想看一眼有没有更新，盘上的旧文件就没了。现在预演只报\"将清理 N 个\"，真删必须 `--force`。",
-      "**并发换装互相拆台。** 两个进程同时换装会算出同名备份目录（名字只精确到天），一起写同一个 `files\\`。实测其中一个 EBUSY 后回滚，而它读的是被两个进程混写过的备份，等于把另一个进程刚装好的壳倒回去。"
+      "**`dsh-portable.cmd verify` 在用户机器上必然报红。** `verify-shell` 里有 4 处引用 `devtools/`（`selftest-drain` / `selftest-patches` / `selftest-store` / 必需文件清单里的 `clean-ship.mjs`）。`devtools/` 是维护者工具，**不随壳下发**，所以用户环境里一个都没有——三项自测直接 FAIL，必需文件清单还常年缺一项。",
+      "现在：三项维护者自测在没有 `devtools` 时记 SKIP（不算失败、不算通过），必需文件清单移除 `clean-ship.mjs`。工作区（有 devtools）里行为不变，仍然真跑。"
     ],
     "optimized": [
-      "新增 4 条\"契约级\"用例（共 169 条）：预演零写盘、锁的三种状态（活锁拒绝 / 死锁接管 / 坏锁接管）、三个写盘入口都必须持锁。"
+      "SKIP 行会写明原因（维护者自测、devtools 不随壳下发），不让用户以为是自己的环境坏了。"
     ],
-    "breaking": [
-      "无。锁文件只在换装期间存在，结束即删。"
-    ],
+    "breaking": [],
     "upgrade": [
-      "只替换 `tools\\update\\shell-apply.mjs`、`tools\\update\\shell-update.mjs` 与本说明。"
+      "只替换 `tools\\verify\\verify-shell.mjs` 与本说明。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.4",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.5",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -113,8 +111,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.4.zip",
-    "sha256": "92db96e4a92c1a734d092fd2d73b05b51d178702a24ddcac7006946bea1275e8",
-    "bytes": 1851115
+    "name": "harness-shell-1.0.5.zip",
+    "sha256": "e0eca2c415d294ce379b5a7afe6d4de00cabaf87be7f3da7837d484e03fd924a",
+    "bytes": 1851723
   }
 }

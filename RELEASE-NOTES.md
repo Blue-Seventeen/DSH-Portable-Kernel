@@ -13,6 +13,37 @@
 
 ---
 
+## v1.0.5 — 2026-11-27
+
+修一个**每个用户都会撞上**的自检缺陷 —— 修它是在真实安装上升级时发现的。
+
+### 新增
+
+- 新增守卫用例：`verify` 的必需文件清单里不许出现 `devtools/`，对 `devtools` 的任何执行必须先过 `MAINT()` 存在性守卫。
+
+### 修复
+
+- **`dsh-portable.cmd verify` 在用户机器上必然报红。** `verify-shell` 里有 4 处引用 `devtools/`（`selftest-drain` / `selftest-patches` / `selftest-store` / 必需文件清单里的 `clean-ship.mjs`）。`devtools/` 是维护者工具，**不随壳下发**，所以用户环境里一个都没有——三项自测直接 FAIL，必需文件清单还常年缺一项。
+- 现在：三项维护者自测在没有 `devtools` 时记 SKIP（不算失败、不算通过），必需文件清单移除 `clean-ship.mjs`。工作区（有 devtools）里行为不变，仍然真跑。
+
+### 优化
+
+- SKIP 行会写明原因（维护者自测、devtools 不随壳下发），不让用户以为是自己的环境坏了。
+
+### 破坏性变更
+
+- 无。
+
+### 升级会做什么
+
+- 只替换 `tools\verify\verify-shell.mjs` 与本说明。
+
+### 如何回退
+
+- `dsh-portable.cmd shell-update rollback`
+
+---
+
 ## v1.0.4 — 2026-11-27
 
 升级模块的两处**契约级**问题：一处会误删用户文件，一处会让两个进程互相拆台。

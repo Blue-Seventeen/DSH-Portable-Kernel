@@ -37,6 +37,12 @@ const UPDATE_GATE = process.argv.includes('--update-gate')
 const CHECK_NODE = existsSync(NODE) ? NODE : process.execPath
 const rows = []
 /** skip=true 记 SKIP：这一项在当前这份目录里不适用（比如只有壳的发布版没有 runtime\pnpm），不算失败 */
+/**
+ * 维护者自测住在 devtools\ 目录，**不随壳下发**。用户环境里没有它，所以这几项在这里
+ * 一律记 SKIP（不算失败）—— 否则每个用户跑 verify 都会看到一堆红。
+ * （2026-11-27 实测：1.0.4 在真实安装上 7 项失败，其中 3 项就是找不到 devtools。）
+ */
+const MAINT = (rel) => existsSync(join(ROOT, 'devtools', rel))
 const add = (label, ok, detail, skip) => rows.push({ label, ok: !!ok, detail: detail || '', skip: !!skip })
 /** 单项检查：任何异常都记成 FAIL 行，而不是让整个脚本抛栈退出（审计 F.6） */
 const check = (label, fn) => {
@@ -192,6 +198,7 @@ check('drain 语义补丁已打（等待期不再冻结空闲会话）', () => {
     '标记 ' + hunks + ' 处；D1释放=' + (hasRelease ? 'ok' : '缺') + ' D2边界=' + (hasBoundary ? 'ok' : '缺') + ' D3门控=' + (hasGate ? 'ok' : '缺'))
 })
 check('drain 等待期不冻结会话（selftest-drain）', () => {
+  if (!MAINT('selftest-drain.mjs')) { add('drain 等待期不冻结会话（selftest-drain）', true, '维护者自测（devtools 不随壳下发），跳过', true); return }
   const r = run([join(ROOT, 'devtools/selftest-drain.mjs'), '--quiet'])
   add('drain 等待期不冻结会话（selftest-drain）', r.code === 0, r.code === 0 ? '5 例全过' : (r.out || '').trim().slice(-300))
 })
@@ -229,6 +236,7 @@ check('补丁三族：market / fs / pnpm 状态可查', () => {
         : (parsed.families || []).map((f) => f.family + '=' + f.state).join(' '))
 })
 check('补丁锚点自测（官方两代形状）', () => {
+  if (!MAINT('selftest-patches.mjs')) { add('补丁锚点自测（官方两代形状）', true, '维护者自测（devtools 不随壳下发），跳过', true); return }
   const r = run([join(ROOT, 'devtools/selftest-patches.mjs'), '--quiet'])
   add('补丁锚点自测（官方两代形状）', r.code === 0, r.code === 0 ? '5 个夹具全过' : (r.out || '').trim().slice(-200))
 })
@@ -255,7 +263,7 @@ check('sync 已收敛且本检查不落盘', () => {
 // 5) 结构与体积 --------------------------------------------------------------
 check('必需文件齐全', () => {
   const need = ['dsh-portable.ps1', 'dsh-portable.cmd', 'start-web.cmd', 'start-desktop.cmd', 'env.cmd', 'check-update.cmd', 'version.json',
-    'tools/patch/patch-market.mjs', 'tools/profile/plugin-shared.mjs', 'tools/profile/fix-pnpm-state.mjs', 'tools/lib/mask-log.mjs', 'devtools/clean-ship.mjs',
+    'tools/patch/patch-market.mjs', 'tools/profile/plugin-shared.mjs', 'tools/profile/fix-pnpm-state.mjs', 'tools/lib/mask-log.mjs',
     'tools/verify/verify-shell.mjs', 'tools/lib/say.ps1', 'tools/7z/7z.exe', 'tools/7z/7z.dll', 'runtime/node/bin/node.exe',
     'app/node_modules/@deepseek-ai/dsh/lib/bin.js', 'desktop/DeepSeek Harness.exe', 'desktop/resources/app.asar']
   const missing = need.filter((p) => !exists(join(ROOT, p)))
@@ -666,6 +674,7 @@ check('pnpm store 与 node_modules 记录一致', () => {
   add(label, false, detail + ' → 运行 dsh-portable.cmd fix-state')
 })
 check('store 一致性自测', () => {
+  if (!MAINT('selftest-store.mjs')) { add('store 一致性自测', true, '维护者自测（devtools 不随壳下发），跳过', true); return }
   const r = run([join(ROOT, 'devtools/selftest-store.mjs'), '--quiet'], CHECK_NODE)
   add('store 一致性自测', r.code === 0, r.code === 0 ? '10 个夹具全过' : String(r.out || '').trim().slice(-200))
 })

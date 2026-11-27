@@ -94,4 +94,22 @@ export const cases = [
       assert('tools/7z/7z.exe' in m.files, '前置条件不成立：新版清单里应有 tools/7z/7z.exe')
     },
   },
+
+  {
+    name: 'verify 不许依赖 devtools：用户环境没有那个目录，跑 verify 不能报红',
+    fn() {
+      const src = readFileSync(join(ROOT, 'tools/verify/verify-shell.mjs'), 'utf8')
+      // 1) 必需文件清单里不许出现 devtools（那是维护者工具，用户没有）
+      const needBlock = src.match(/const need = \[([\s\S]*?)\]/)
+      assert(needBlock, '找不到必需文件清单')
+      assert(!/devtools\//.test(needBlock[1]), '必需文件清单里又混进了 devtools：' + needBlock[1].match(/devtools\/[^']+/g))
+      // 2) 任何对 devtools 的执行都必须先过 MAINT 守卫
+      const lines = src.split(/\r?\n/)
+      for (let i = 0; i < lines.length; i++) {
+        if (!/run\(\[join\(ROOT, 'devtools\//.test(lines[i])) continue
+        const before = lines.slice(Math.max(0, i - 3), i).join('\n')
+        assert(/MAINT\(/.test(before), 'L' + (i + 1) + ' 执行 devtools 前没有 MAINT 守卫：' + lines[i].trim())
+      }
+    },
+  },
 ]
