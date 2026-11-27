@@ -20,6 +20,6 @@ set "STOREARG="
 if defined NEEDSTORE set STOREARG=--store-dir "%STORE%" --config.package-import-method=%DSH_PNPM_IMPORT_METHOD%
 rem after moving to another machine/user, node_modules still records the old store path and pnpm
 rem refuses to install/uninstall: align the records first
-if defined NEEDSTORE "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\fix-pnpm-state.mjs" --quiet
+if defined NEEDSTORE "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\profile\fix-pnpm-state.mjs" --quiet
 "%ROOT%runtime\node\bin\node.exe" "%ROOT%app\node_modules\@deepseek-ai\dsh\lib\bin.js" plugin %* %STOREARG%
 endlocal

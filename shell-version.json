@@ -2,26 +2,26 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.7.3",
-  "tag": "v0.7.3",
-  "releasedAt": "2026-11-27T07:15:17.065Z",
+  "shellVersion": "1.0.0",
+  "tag": "v1.0.0",
+  "releasedAt": "2026-11-27T08:02:31.716Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T07:18:06.332Z",
+  "generatedAt": "2026-11-27T08:04:42.308Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
   },
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
-    "README.md": "8dfd862768b92623640d336cff55d171c951e7f0eb2c14c1b518f1b09077ce33",
-    "RELEASE-NOTES.md": "2ec9c65170695358ee8d49029d2fc5f4b9af4105836bf7c24bcd168474f75e3f",
-    "check-update.cmd": "7b992939f7c9cb7c983e3a9d426a3c1da241f4b0c14d644046717a4e99cda0db",
-    "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
-    "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
-    "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
-    "dsh-portable.ps1": "e7db0f0898a1b2d1aeb3b6fa2e5e1b6d7f194fe3d05649bb64db21e6e6bd7b9c",
+    "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
+    "RELEASE-NOTES.md": "f33b5bb9dbafa1547b67a1c08aa62defd99e1bdf1e150cf64566bb0b98996ad5",
+    "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
+    "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
+    "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
+    "dsh-portable.cmd": "58acd0651fe2d449eca11905783db5290e7dc3323d26209af718ba67612a767e",
+    "dsh-portable.ps1": "f9c5ec3d334be9e048c98ef4a14d7d5323764946d3ba6fdd7e7bbe142e5e1952",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
-    "env.cmd": "6096995b80beec9de3008f067c74b057acf5175b4d7e2eb522ca73ccc81ea751",
+    "env.cmd": "e64bac6f4889790fda6fd200c220c60fd4c4dd99b2e83763801d7bff566839d0",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
     "home/profiles/desktop/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/desktop/package.json": "a8754342c50d77f213dc9078c1adc40d79a4f470b050fba09e93d61f22f1678a",
@@ -32,7 +32,7 @@
     "home/profiles/web/cordis.yml": "c300dcf2ebc5f02062d6591268d29d3db6fe45e0cb138f5467276fe2ba06076e",
     "home/profiles/web/package.json": "392bd32b0781f8ec3375c2786051ece65b14a8324255dda5a983ae43a5ec4e43",
     "home/profiles/web/pnpm-lock.yaml": "70c53e8400b02cfaeda8d52228c4ef53e8acb2cdc926e4255d6e019fdae19ee4",
-    "preflight.cmd": "e94da5a4f070248c195087e29fb99e57eeb7a4c4d4490e06bec47a4f2dbc3778",
+    "preflight.cmd": "737000a13313c0599390dfefd8cc97661b64a1d34e33cff5de903be259a3062f",
     "runtime/vcredist/concrt140.dll": "2405355f0a58067b258f8df33c327e3a3d716eaac5a3a5aebb757842d85bd376",
     "runtime/vcredist/msvcp140.dll": "0f885b509a685d2bbfa652fed26b5fb31d88fbdab0a978c641d1c7b8aa460aa9",
     "runtime/vcredist/msvcp140_1.dll": "bfad5aef4c63a669e3c140655cdfdf395b6c979b400a447bd5dcb65ed8826c3d",
@@ -40,44 +40,34 @@
     "runtime/vcredist/msvcp140_atomic_wait.dll": "640b2aefced484d0368eea5bdd06addd0658a3a70a49256e560d6923b404a479",
     "runtime/vcredist/vcruntime140.dll": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
     "runtime/vcredist/vcruntime140_1.dll": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
-    "start-desktop.cmd": "fb68807c1ce94e197ee824ac5d7f865f69223767723f870193181eaba4b75dcd",
-    "start-web.cmd": "6f94a04942f5d59681b5e54b194fdb6095ea456350742bb47e05666570c38c51",
-    "tools/7z/7z.dll": "e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812",
-    "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
-    "tools/asar-lite.mjs": "4747f0e5923842a705760c632b202b03888c4cf8085677005a6aeb09f374ee41",
-    "tools/check-text-encoding.mjs": "7c8853f141bbd88a4a5ae138ac6499fa37b2162e450a9e159c295e5b8fc8a75e",
-    "tools/clean-ship.mjs": "410bea0288c50d61d1b7ad7e324926ef5b035b2dacd8dce2358cebb683ed63ce",
-    "tools/compat-declare.mjs": "af72ba79c4bb3dadaff06d9bd652f8b07b7266df41cb616522cc77956a6f64a6",
-    "tools/compat-live.mjs": "976f4c12efa0f904f95e5d45935b7558e029bf2daad1c9fe448ed2571981b234",
-    "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
-    "tools/fix-attachment.mjs": "8dc4288f18ab7aabd45f36c9ba2abcf2361c80eb53570838a6640e5189617785",
-    "tools/fix-pnpm-state.mjs": "50c9b8c252d74a1f858c7d534e29004c7d2031034860efd22f4ea51468cce86a",
-    "tools/fs-profile.ps1": "3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd",
-    "tools/market-history.mjs": "8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224",
-    "tools/mask-log.mjs": "e4b43a4d79ce0dc624b828fe281df364f601c3e0990b27cffaca6369cb722778",
-    "tools/normalize-eol.mjs": "4a9e38ab5dd180b803da334918c4fc1b7f060b89d7bbee9202cce2a82263f2eb",
-    "tools/patch-all.mjs": "3bdfd3d5d9599ded21abc1f6644efa50bcc3f42ac2f1c61ecb8af9222cab96ef",
-    "tools/patch-attachment.mjs": "b00d03652ef12be7e41f79be227d365574c46e51b46c84eee610b0df6c34e828",
-    "tools/patch-fs.mjs": "33b7cf8f03df88873d80f4721c7f39bc53a13280b0d9d397128357304d588bc1",
-    "tools/patch-market.mjs": "0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122",
-    "tools/patch-pnpm.mjs": "b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb",
-    "tools/plugin-shared.mjs": "6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7",
-    "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
-    "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
-    "tools/say.ps1": "bf5f7cf30d6e943edd6fb43b50bc2913be70ce011299455d4202af7c83baeee9",
-    "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
-    "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
-    "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
-    "tools/selftest-store.mjs": "1da327a64c5e6a918f2aeab1da085b570735f7617479fbd6648d8a4c460aa706",
-    "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
-    "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
-    "tools/shell-release.mjs": "f5cc5e04f59ef45b34d738755bdecb82f5e17dd01628d5dfe283c3e80dfda792",
-    "tools/shell-update.mjs": "76a24e4af2b5095a378109eb0960b8e3138c457be2989971e99db1aa9330ae46",
-    "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
-    "tools/update-check.mjs": "54423394cfd4dee3cbe8588bbb53d12c195a169af5912a1bfccd48214ca4a5d7",
-    "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
-    "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
-    "update.cmd": "255f91dca5555e7b49d90e25082348ec4eca7023221a5f969142d71088aacb13"
+    "start-desktop.cmd": "22fcd3d8e1706a2fb8143f8c78868b85a3c5d3beb282d859bc2505677f061da5",
+    "start-web.cmd": "3032620fd0444dd62153f4fdd3272e8d789fc06cd9df9d92da7a7ea8fea33a18",
+    "tools/lib/asar-lite.mjs": "b37b9bd5f74e07dfd240954db8cb008004cda851c63137d822a9e4d82b97a951",
+    "tools/lib/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
+    "tools/lib/mask-log.mjs": "c17c1cd57b0ac448d72bbb806edfdfbc657ea0bb0869c75a82865e982d0bdef3",
+    "tools/lib/preflight.mjs": "00e80c519a6094628a6d851c50082ed0778f7d6ac9d7eabf1ee4b5566ae5711d",
+    "tools/lib/say.ps1": "f5c247efda6be28565cd230418495b62aea1f486cef28b916aa306a7d1dc9421",
+    "tools/lib/shell-root.mjs": "5c74e819ecaba21ff10c81007c12654b0469ff22de8ba141d2051b491cea4687",
+    "tools/patch/fix-attachment.mjs": "58cd69a90ad57b177449ede722f2ad2696720f185f3de98570318d1906041f73",
+    "tools/patch/patch-all.mjs": "24019ead18afaa2072c72134b3a698948c7b47e709330bef03684bcf26731a79",
+    "tools/patch/patch-attachment.mjs": "41a213736aae1f9eed8d2381358737f829238100b9c7f5e9ee88ef5aa0934e84",
+    "tools/patch/patch-fs.mjs": "979025872d3691b8ff08147c557953004b27252f5efadab63c1b43bab5867559",
+    "tools/patch/patch-market.mjs": "82a36aa9130ed1d34f766c1b80c2eab471440d1b92b9ad164e941ba1ae36b5db",
+    "tools/patch/patch-pnpm.mjs": "0ac7343237c00370df2aa81db3b0727b301a6ea40ec5774e341e361ff02bf860",
+    "tools/patch/probe-fs.mjs": "8352f5f179bde8cf8e487f6ee2e71834dca00a2c98e458f3cfe0370cd02b211b",
+    "tools/profile/fix-pnpm-state.mjs": "14c7d575e50e3553f59c3fd866432246f06d2f6027e8afb4ae4202146b0e3d26",
+    "tools/profile/fs-profile.ps1": "9634c2e263b21fbfa947370bb5461e27334075975ff57097fb5faf8cb8a8a4e6",
+    "tools/profile/market-history.mjs": "490f7013d613094c2ac5a1ad4e3b44f4fdc0562ee22edbfa94142d3f59c480cb",
+    "tools/profile/plugin-shared.mjs": "c1933c4dbb477c5e4ec8c4e16fdd440f5db4695dc398c47c74854a58ec2a35f4",
+    "tools/profile/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
+    "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
+    "tools/update/shell-apply.mjs": "0db667346460b60a2d3002dc33a22a8543aad0d8aed09f19a425de9af34fb9f9",
+    "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
+    "tools/update/shell-update.mjs": "abd8076be38324e8721a4aa3d781bd454bfeac4b03ed3666e0d1d1b2f1af62b8",
+    "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
+    "tools/update/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
+    "tools/verify/verify-shell.mjs": "cd854550ed38e153bc22a047aace4321f98da51678e2bae7179734490576f65d",
+    "update.cmd": "aba99a52ce71e37982e75562249671a511337d20d371a1eb5a4f73032646febd"
   },
   "userOwned": [
     "home/cordis.patch.yml",
@@ -91,39 +81,45 @@
   ],
   "notes": {
     "added": [
-      "**大版本迁移声明**：壳清单可以带 `migration: { url, sha256, entry, note }`。当目标版本换了目录结构、逐文件替换根本做不到时，升级模块会改为：下载一次性迁移脚本 → 校验 sha256 → 执行 → 脚本自己删除。",
-      "校验从严：**只接受 https + 可信主机**、只接受 64 位 sha256、入口只能是 `.cmd/.bat/.ps1`。任何一项不满足，就当没写这个字段，退回原来的逐文件升级（行为与旧版完全一致）。",
-      "失败即中止：脚本哈希不符时**一个字节都不执行**；脚本退出码非 0 时报错并指向 `cache\\major-upgrade-*` 备份；脚本说成功但版本没变，也会被复核抓出来。"
+      "`tools/` 按职责分组：`update/`（自更新）、`patch/`（官方层补丁）、`profile/`（插件与 pnpm 状态）、`lib/`（公共件）、`verify/`（换装后自检）。找东西不用再在 35 个平铺文件里翻。",
+      "`tools/lib/shell-root.mjs`：统一的壳根定位。以前每个工具都靠\"往上数两层\"找壳根，一旦目录分组就全错（这次就是这么把清单扫成 0 个文件的）。现在改成\"就近向上找标记\"，加多少层分组都不会断。"
     ],
-    "fixed": [],
+    "fixed": [
+      "**整包里塞着 2.4 MB 的 7z**：那是我们打发布包用的，用户根本用不到。已随 `devtools/` 移出壳——整包从 1.83 MB 降到约 **0.6 MB**。",
+      "`devtools/`（9 个发布/自测工具）也不再随壳下发，清单从 66 项减到 **56 项**。"
+    ],
     "optimized": [
-      "迁移执行期间的进度会显示在屏幕上（下载 / 执行两段），不会看着一动不动。"
+      "壳里只剩运行期真需要的东西：11 个入口脚本 + 25 个工具 + 出厂配置 + vcredist。",
+      "`test/`（159 条用例）与 `doc/`（设计档案）从仓库忽略名单里解放：`test/` 已纳入版本控制，不再因为一次手滑就永久丢失（0.7.3 之前丢过一整个用例文件）。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变、`requires` 不变。不带 `migration` 字段的清单，走的是原来那条路径。"
+      "**工具路径全部变了**（`tools\\xxx.mjs` → `tools\\<组>\\xxx.mjs`）。对你没有影响：升级由壳自己完成，你不需要记路径。",
+      "若你在自己的脚本里硬编码过 `tools\\shell-update.mjs` 之类的路径，需要跟着改：`tools\\update\\shell-update.mjs`。",
+      "用户数据、会话、插件、配置：**一个字节都不动**。"
     ],
     "upgrade": [
-      "只替换一个文件：`tools\\shell-update.mjs`（外加本说明）。",
-      "不动 app / desktop / 运行时，也不动你的数据、会话、插件和配置。"
+      "按新清单添加/替换壳文件，并清掉旧路径上的壳文件（只清我们自己的壳文件，`userOwned` 与 `home\\` 下你的东西一律不动）。",
+      "换装前自动备份到 `cache\\shell-backup-<时间戳>`，换完跑自检，失败自动回滚。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`",
-      "或 `node tools\\shell-update.mjs apply --to 0.7.2 --force`"
+      "或 `node tools\\\\update\\\\shell-update.mjs apply --to 0.7.3 --force`",
+      "网页兜底：从 Release 页下载 `harness-shell-1.0.0.zip` 整包覆盖（**先备份 `home\\profiles`**）。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.7.3",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.0",
   "migrations": [
     {
       "id": "pnpm-store-dir",
-      "script": "tools/fix-pnpm-state.mjs",
+      "script": "tools/profile/fix-pnpm-state.mjs",
       "args": [
         "--quiet"
       ]
     }
   ],
   "zip": {
-    "name": "harness-shell-0.7.3.zip",
-    "sha256": "622d6c8db7f76bd5f33452263fd50020a31d0a90f97c5c36fa980f4aaee8c49b",
-    "bytes": 1923524
+    "name": "harness-shell-1.0.0.zip",
+    "sha256": "c2e366a3a8c5e900a1335dfa2cd2b954dc1230d1828548b402f31ee784d7187e",
+    "bytes": 788851
   }
 }

@@ -11,13 +11,13 @@ rem
 rem Therefore:
 rem   - keep this file pure ASCII (a double-clicked .cmd is parsed with the OEM
 rem     code page; Chinese text here once got re-parsed as a command) - all
-rem     Chinese strings live in tools\say.ps1;
-rem   - do not add dependencies: only env.cmd, tools\say.ps1,
-rem     tools\shell-update.mjs, dsh-portable.ps1 and runtime\node are allowed;
+rem     Chinese strings live in tools\lib\say.ps1;
+rem   - do not add dependencies: only env.cmd, tools\lib\say.ps1,
+rem     tools\update\shell-update.mjs, dsh-portable.ps1 and runtime\node are allowed;
 rem   - only use shell-update flags that every version understands, and probe
 rem     optional ones (--notice) instead of assuming them: an old shell must
 rem     still be upgradeable by a NEW update.cmd, and vice versa;
-rem   - logic that may need to change belongs in tools\shell-update.mjs, which
+rem   - logic that may need to change belongs in tools\update\shell-update.mjs, which
 rem     node loads and closes, so the updater can replace its own code safely
 rem     (a running .cmd cannot be replaced safely).
 rem
@@ -30,7 +30,7 @@ set "ROOT=%~dp0"
 if not exist "%ROOT%env.cmd" goto no_env
 call "%ROOT%env.cmd"
 set "NODE=%ROOT%runtime\node\bin\node.exe"
-set "SU=%ROOT%tools\shell-update.mjs"
+set "SU=%ROOT%tools\update\shell-update.mjs"
 if not exist "%NODE%" goto no_runtime
 if not exist "%SU%" goto no_tool
 if not exist "%ROOT%tmp" mkdir "%ROOT%tmp" >nul 2>nul
@@ -127,7 +127,7 @@ endlocal & exit /b 0
 :blocked
 echo.
 call :say update-shell-blocked
-if not defined SAYOK echo   This upgrade cannot be applied automatically (compatibility check failed, see above). On 0.6.1 or older: run node tools\shell-update.mjs apply --to 0.6.2 --force first, then double-click update.cmd again. The full zip contains factory home\profiles defaults - back that folder up before overlaying it.
+if not defined SAYOK echo   This upgrade cannot be applied automatically (compatibility check failed, see above). On 0.6.1 or older: run node tools\update\shell-update.mjs apply --to 0.6.2 --force first, then double-click update.cmd again. The full zip contains factory home\profiles defaults - back that folder up before overlaying it.
 echo.
 pause
 endlocal & exit /b 3
@@ -135,7 +135,7 @@ endlocal & exit /b 3
 :net_fail
 echo.
 call :say update-shell-netfail
-if not defined SAYOK echo   Update check failed: no network/blocked, OR your shell is too old to read the new manifest. (1) retry later; (2) on 0.6.1 or older run: node tools\shell-update.mjs apply --to 0.6.2 --force, then double-click update.cmd again; (3) only as a last resort unpack harness-shell-*.zip over this folder - BUT it contains factory home\profiles defaults, so back up home\profiles first or your plugin list gets reset.
+if not defined SAYOK echo   Update check failed: no network/blocked, OR your shell is too old to read the new manifest. (1) retry later; (2) on 0.6.1 or older run: node tools\update\shell-update.mjs apply --to 0.6.2 --force, then double-click update.cmd again; (3) only as a last resort unpack harness-shell-*.zip over this folder - BUT it contains factory home\profiles defaults, so back up home\profiles first or your plugin list gets reset.
 echo.
 pause
 endlocal & exit /b 1
@@ -161,9 +161,9 @@ endlocal & exit /b 1
 :apply_failed
 echo.
 if "%RC%"=="3" (
-  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key cmd-blocked -Value %RC%
+  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key cmd-blocked -Value %RC%
 ) else (
-  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key cmd-failed -Value %RC%
+  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key cmd-failed -Value %RC%
 )
 echo.
 pause
@@ -171,7 +171,7 @@ endlocal & exit /b %RC%
 
 
 rem ---------------------------------------------------------------------------
-rem :say <key> - print one Chinese line through tools\say.ps1, and remember whether
+rem :say <key> - print one Chinese line through tools\lib\say.ps1, and remember whether
 rem that key exists. An OLD shell ships an OLD say.ps1 without the update-shell-*
 rem keys; say.ps1 then prints nothing and still exits 0, so errorlevel cannot be
 rem used. Probing the OUTPUT is the only reliable signal - and the caller prints a
@@ -179,7 +179,7 @@ rem plain ASCII fallback when SAYOK stays unset (measured 2026-11-27: without th
 rem an old shell answered a double-click with a blank screen and exit code 1).
 :say
 if not exist "%ROOT%tmp" mkdir "%ROOT%tmp" >nul 2>nul
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key %~1 > "%ROOT%tmp\say-line.txt" 2>nul
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key %~1 > "%ROOT%tmp\say-line.txt" 2>nul
 for %%A in ("%ROOT%tmp\say-line.txt") do if %%~zA GTR 0 set "SAYOK=1"
 if exist "%ROOT%tmp\say-line.txt" type "%ROOT%tmp\say-line.txt"
 goto :eof
@@ -200,7 +200,7 @@ exit /b 1
 
 :no_tool
 echo.
-echo   [X] tools\shell-update.mjs is missing, so the shell cannot update itself.
+echo   [X] tools\update\shell-update.mjs is missing, so the shell cannot update itself.
 echo       Download harness-shell-*.zip from the Release page and unpack it
 echo       over this folder, then run this file again.
 echo.

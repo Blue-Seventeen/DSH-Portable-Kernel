@@ -65,16 +65,24 @@ dsh-portable.cmd bootstrap
   dsh-portable.ps1       ← 壳的全部逻辑（唯一的"大脑"）
   version.json           ← 出厂快照（文件数 / 体积 / asar 字节 / 版本）
   shell-version.json     ← 壳自更新清单 v2（版本 + 每个壳文件的 sha256 + userOwned + notes）
+  compat.json            ← 内核兼容性活声明（仓库根，壳联网时拉取；不在清单里、不随壳发布）
   README.md  LICENSE     ← 文档与许可
   RELEASE-NOTES.md       ← 更新细则（每个版本六小节，随壳发布）
   RELEASING.md           ← 发布流程 30 秒版（维护者看）
-  tools\                 ← node 小工具（verify-shell / clean-ship / plugin-shared / patch-market / 7z …）
+  tools\                 ← 【随壳发布】运行期工具，按职责分组：
+    update\              ←   自更新（shell-update / shell-apply / update-check / compat-live / version-range）
+    patch\               ←   官方层补丁（patch-all / fs / attachment / market / pnpm）
+    profile\             ←   插件与 pnpm 状态（plugin-shared / fix-pnpm-state / store-consistency）
+    lib\                 ←   公共件（shell-root / asar-lite / download / say.ps1 / preflight）
+    verify\              ←   换装后自检（verify-shell）
   runtime\               ← [自动下载] node + pnpm；vcredist（7 个 DLL）随仓库
   app\                   ← [自动下载] 官方 npm 包
   desktop\               ← [自动下载] 官方 Electron 程序
   home\profiles\         ← 插件清单（web / desktop 各一份）+ 共享 node_modules
   cache\  logs\  tmp\    ← 运行时产物，不入库
 ```
+
+**只有 `tools\` 与根脚本随壳发布。** 仓库里另有 `devtools\`（发布/自测/编码检查 + 7z 二进制，约 2.5 MB）和 `test\`（160 余条用例）、`doc\`（本机档案）——它们**不进清单、不进整包**，用户拿到的壳里没有它们。1.0.0 之前这些是混在一起的，用户白下 2.5 MB。
 
 `home\` 里随仓库走的只有两样：`profiles\`（插件清单 / 锁文件，不含 `node_modules`）和 `cordis.patch.yml`（壳的加载器补丁层：只留主题与界面偏好，**不含任何第三方网关、模型供应商或密钥**；想接自己的 OpenAI 兼容网关，文件开头有注释示例，密钥一律走 `apiKeyEnv` 读环境变量）。其余一切（`sessions\`、`storages\`、`logs\`、`dsh-market\`、`.credentials.yaml`、`.anonymous-user-id`、`settings.yaml`）都是运行时产物，**仓库里一个都不带**。
 
@@ -93,7 +101,7 @@ dsh-portable.cmd bootstrap
 | `update-all` / `update-app` / `update-desktop` | 更新官方那层。**默认只预演**，加 `-Force` 才真更新（`xxx.next` → 校验 → 换名） |
 | `repair` | 修启动失败：`check-update.cmd` 会自动调用它 |
 | `fix-state` / `fix-office` / `fix-market` / `unblock` | 修 pnpm 状态 / Office 补丁 / 市场补丁 / 解除"下载文件被锁" |
-| （自动）补丁三族 | 每次启动与官方升级收尾都会自动重打：商城路径+drain、exFAT 硬链接回退、pnpm 项目注册；`doctor` 的 `patches` 三行看状态，`node tools\patch-all.mjs --check` 可单独查 |
+| （自动）补丁三族 | 每次启动与官方升级收尾都会自动重打：商城路径+drain、exFAT 硬链接回退、pnpm 项目注册；`doctor` 的 `patches` 三行看状态，`node tools\patch\patch-all.mjs --check` 可单独查 |
 | `show-desktop` / `close-desktop` / `focus-desktop` | 桌面窗口三件事（退出码见下） |
 | `clean-ship [apply\|verify\|refresh] [keep-creds]` | 出货前清个人数据；`refresh` 重算 `version.json` 的文件数/体积 |
 | `plugin-list` / `plugin-add` / `plugin-remove` / `plugin-sync` / `plugin-allow` | 插件管理（写的是共享目录） |
@@ -103,7 +111,7 @@ dsh-portable.cmd bootstrap
 | `fix-attachment [check\|apply]` | 附件库回到便携目录：撤掉 `cordis.patch.yml` 里把附件指向 `C:\Users\用户名\.dsh` 的旧绕法，并把旧附件复制回 `home\attachments\v1`（`-Force` 再删旧目录）。需要先有附件库补丁（`repair` 会打） |
 | `market-history [check]` | 清空商城的操作历史（安装/卸载记录）。界面上的“关闭此提示”只关当次显示，记录仍留在 `.dsh-market\drain.ndjson`，重启会再显示；`-Force` 连 `log.ndjson` 一起清 |
 | `plugin-repair` | 修"市场装不上也卸不掉"：pnpm 大版本变了就重建插件依赖（**默认预演**，`-Force` 才真重建） |
-| `shell-update [check\|apply\|rollback\|recover\|notes]` | **更新壳自己**（v2 版本线：只换壳，不动官方层与你的数据；`apply` 默认预演，`-Force` 才真换；`--full` 整包换装、`--to v<版本>` 锁定/降级——这两个高级参数直接传给 `node tools\shell-update.mjs`，`dsh-portable.cmd` 只转 `-Force`；verify 不过自动整体回滚，`rollback` 用最新备份还原，`recover` 恢复中断） |
+| `shell-update [check\|apply\|rollback\|recover\|notes]` | **更新壳自己**（v2 版本线：只换壳，不动官方层与你的数据；`apply` 默认预演，`-Force` 才真换；`--full` 整包换装、`--to v<版本>` 锁定/降级——这两个高级参数直接传给 `node tools\update\shell-update.mjs`，`dsh-portable.cmd` 只转 `-Force`；verify 不过自动整体回滚，`rollback` 用最新备份还原，`recover` 恢复中断） |
 | `fs-profile` | 重新探测所在卷的类型并切档位（NTFS→native / exFAT→compat） |
 | `migrate-store` | 把旧版留在宿主用户目录的 pnpm store 搬进 `<root>\\cache\\pnpm-store`（一次性，GB 级） |
 | `sync-home` / `reset-shell` / `launch-desktop` / `check-updates` | 对齐 DSH_HOME / 重置壳状态 / 直接起桌面模式 / 只查更新 |
@@ -118,12 +126,12 @@ dsh-portable.cmd bootstrap
 
 ## 四、必须守住的不变式
 
-改壳的时候这几条最容易踩，`tools\verify-shell.mjs` 会逐条查：
+改壳的时候这几条最容易踩，`tools\verify\verify-shell.mjs` 会逐条查：
 
-1. **`.cmd` 只能是纯 ASCII + CRLF**。cmd.exe 按字节解析 UTF-8 中文会错位（曾把一行注释当命令执行），中文一律走 `tools\say.ps1`；只写 LF 会报 `The system cannot find the batch label specified - dsh_done`。`.gitattributes` 里这三类文件是 `-text`（按字节存，任何机器 clone 都不会被转成 LF）。
-2. **`dsh-portable.ps1` 与 `tools\say.ps1` 必须 UTF-8 BOM，而且只能有一个**。PS 5.1 不带 BOM 会按 ANSI 读中文，字符串全变乱码；写脚本时用 `.NET` 读回再写会把 BOM 当字符保留、于是变成两个 BOM，PowerShell 直接报 `An expression was expected after '('`。`README.md` / `version.json` 反过来：**不要 BOM**。
+1. **`.cmd` 只能是纯 ASCII + CRLF**。cmd.exe 按字节解析 UTF-8 中文会错位（曾把一行注释当命令执行），中文一律走 `tools\lib\say.ps1`；只写 LF 会报 `The system cannot find the batch label specified - dsh_done`。`.gitattributes` 里这三类文件是 `-text`（按字节存，任何机器 clone 都不会被转成 LF）。
+2. **`dsh-portable.ps1` 与 `tools\lib\say.ps1` 必须 UTF-8 BOM，而且只能有一个**。PS 5.1 不带 BOM 会按 ANSI 读中文，字符串全变乱码；写脚本时用 `.NET` 读回再写会把 BOM 当字符保留、于是变成两个 BOM，PowerShell 直接报 `An expression was expected after '('`。`README.md` / `version.json` 反过来：**不要 BOM**。
 3. **插件只有一份共享副本**。`home\profiles\node_modules` 是共享目录，两个 profile 的 `pnpm-workspace.yaml` 都写 `modulesDir: ../node_modules`，三份 `package.json` 的 `dependencies` 必须逐字符一致；`home\profiles\{web,desktop}\node_modules\dshmarket` 不允许存在（否则同一个插件会有两份，升级后一份新一份旧）。
-4. **只允许一个 pnpm 大版本**。`runtime\pnpm\bin\pnpm.cmd` 这个 62 字节垫片必须存在——dsh 的插件操作是**从 PATH 上找 pnpm** 的，没有垫片时 `env.cmd` 的 PATH 置顶等于没写，dsh 会抓到机器上装的另一代 pnpm。两代 pnpm 的 store 布局目录不同（`…\pnpm-store\v10` vs `v11`），pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`，**市场里连卸载都做不了**。`runtime\` 不进 git，所以垫片由 `tools\fix-pnpm-state.mjs` 每次启动自动补；真的错配了用 `dsh-portable.cmd plugin-repair -Force` 重建。
+4. **只允许一个 pnpm 大版本**。`runtime\pnpm\bin\pnpm.cmd` 这个 62 字节垫片必须存在——dsh 的插件操作是**从 PATH 上找 pnpm** 的，没有垫片时 `env.cmd` 的 PATH 置顶等于没写，dsh 会抓到机器上装的另一代 pnpm。两代 pnpm 的 store 布局目录不同（`…\pnpm-store\v10` vs `v11`），pnpm 会报 `ERR_PNPM_UNEXPECTED_STORE`，**市场里连卸载都做不了**。`runtime\` 不进 git，所以垫片由 `tools\profile\fix-pnpm-state.mjs` 每次启动自动补；真的错配了用 `dsh-portable.cmd plugin-repair -Force` 重建。
 5. **壳只加壳：不碰用户配置、不篡改官方内核**。三层边界写死：
    - **官方内核层**（`app\`、`desktop\`、`runtime\`）：只允许 `tools\patch-*.mjs` 做"便携适配"（exFAT 无软链、store 路径、商城查找、附件 link→copy）。补丁必须幂等、有 `--check`、官方升级后自动重打；**禁止**改版本号、改功能语义、改网络端点、整体替换官方包。
    - **用户配置层**（`home\` 下 `USER_OWNED` 那 8 个文件、两份 `cordis.patch.yml`、会话/凭证/附件）：**只读不写**。升级时 `computePlan` 对它们一律 `preserved`；用户删掉的不会自动装回来（`test\selftest-shell-update.mjs` 有对应用例）。
@@ -136,7 +144,7 @@ dsh-portable.cmd bootstrap
 
 - **版本豁免必须是精确版本**。`compatibility.json` 里写 `"*"` 会让整条记录被忽略（日志里就是 `dsh: skipping profile bundle "@huanlin/…"`）。换版本由 `compat-heal` 在启动前把精确版本改写掉；没有任何插件需要豁免时，官方语义是**删掉这个文件**（缺失 = 无豁免），所以干净交付里两份 `compatibility.json` 都不存在。
 - **exFAT / 移动盘不支持软链、也不支持硬链接**，所以 `pnpm-workspace.yaml` 里固定 `nodeLinker: hoisted`，compat 档再用 `packageImportMethod: copy` 导入（不用硬链接）。
-- `storeDir` 与机器用户名有关：`tools\fix-pnpm-state.mjs` 会在每次启动时把本机的绝对路径写进三份 `pnpm-workspace.yaml`。这三个文件是**机器状态，不入库**（`.gitignore` 里有 `/home/profiles/**/pnpm-workspace.yaml`），由 `fix-pnpm-state` 生成，壳清单也不含它们，所以 `git status` 不会因为 `storeDir` 变脏。
+- `storeDir` 与机器用户名有关：`tools\profile\fix-pnpm-state.mjs` 会在每次启动时把本机的绝对路径写进三份 `pnpm-workspace.yaml`。这三个文件是**机器状态，不入库**（`.gitignore` 里有 `/home/profiles/**/pnpm-workspace.yaml`），由 `fix-pnpm-state` 生成，壳清单也不含它们，所以 `git status` 不会因为 `storeDir` 变脏。
 
 ---
 
@@ -156,7 +164,7 @@ dsh-portable.cmd bootstrap
 
 ## 六、卷类型识别（exFAT 兼容档）
 
-启动时 `tools\fs-profile.ps1` 读一次卷格式，写 `tmp\fs-profile.cmd`，`env.cmd` 直接 `call`：
+启动时 `tools\profile\fs-profile.ps1` 读一次卷格式，写 `tmp\fs-profile.cmd`，`env.cmd` 直接 `call`：
 
 | 卷 | 档位 | 差别 |
 | --- | --- | --- |
@@ -174,7 +182,7 @@ dsh-portable.cmd bootstrap
 | 目录太深，pnpm 解包后路径超过 260 字符（`Could not find a part of the path 'xxx.js.map'`） | `bootstrap` 与 `update-app` 都先装到 `tmp\build\`，再用 robocopy 搬回来（robocopy 支持长路径）。**建议把整包放在路径不超过 ~80 字符的地方**，`preflight.mjs` 会按"官方层最长相对路径约 180 字符"给出警告 |
 | pnpm 报 `ERR_PNPM_IGNORED_BUILDS` | pnpm 10+ 的严格构建策略；`bootstrap` / `update-app` / 插件安装都带 `--config.strict-dep-builds=false`（`node-pty` 有 prebuilds，不需要本地编译） |
 | 报 `ERR_PNPM_EISDIR … symlinkAllModules` | 盘不支持软链（exFAT/FAT32）；必须 `nodeLinker: hoisted`；新建文件报 `EISDIR` 是硬链接失败，`dsh-portable.cmd repair` 会给 `app\node_modules` 和 `desktop\resources\app.asar` 两处都打回退补丁（桌面模式必须打 asar 那份） |
-| 插件装完就"消失" | 版本豁免没跟上：`dsh-portable.cmd plugin-list` 看状态，`tools\plugin-shared.mjs compat-heal` 修 |
+| 插件装完就"消失" | 版本豁免没跟上：`dsh-portable.cmd plugin-list` 看状态，`tools\profile\plugin-shared.mjs compat-heal` 修 |
 | 桌面窗口双击没反应 | `dsh-portable.cmd show-desktop` 看退出码（0/1/2/3 含义见上） |
 | pnpm store 现在在 `<root>\cache\pnpm-store`（整包带走，不再依赖 C 盘） | 装插件比放 C 盘慢一些，但拔盘即走；`doctor` 的 `external` 一行会盯着主机残留 |
 | `fix-office` 在 Win10 1809+ 默认**跳过** vcredist 拷贝 | 系统自带运行库就够了；确实要重装用 `fix-office -Force` 或 `DSH_PORTABLE_OFFICE_ALWAYS=1` |
@@ -211,16 +219,7 @@ dsh-portable.cmd bootstrap
 
 ---
 
-## 九、许可与归属
-
-- `@deepseek-ai/dsh` 与官方桌面程序：MIT，版权归 DeepSeek；本仓库**不包含**它们的二进制，只提供下载脚本。
-- 插件：`dshmarket`、两个主题皮肤，各自遵循其包内许可。
-- 壳（根目录脚本、`tools\`、文档）：MIT，见 [LICENSE](LICENSE)。
-- 本仓库的 `master` 曾经是官方源码的镜像分支，2026-11-03 起换成只装壳。覆盖前那一个提交是 `ce7073d51254c26cd63b22a60835b8f948deb447`（20,233 个文件，属于官方 DeepSeek Harness 源码，可在 GitHub 提交页按此 SHA 直接查看）。为了不让 clone 拖上 357 MB 的旧对象，没有给它留 tag。
-
-> 一句话记住：**壳进仓库，官方那层靠 `bootstrap` 现拉；改壳先跑 `verify`。**
-
-## 内核兼容面（compat.json）
+## 九、内核兼容面（compat.json）
 
 **为什么要这个东西**：以前"这个壳支持哪些内核版本"写在壳清单里，而清单是版本化制品的一部分——
 官方发一个新 rc，我们就得打一个新壳、发一个 Release，所有用户重下一遍。可实际上大多数 rc
@@ -246,10 +245,10 @@ dsh-portable.cmd bootstrap
 ### 官方发了新内核，我们怎么放开（不用发壳）
 
 ```bat
-node tools\compat-declare.mjs --check                     :: 看 npm 上最新内核，差几个版本
-node tools\compat-declare.mjs --verify 0.2.2-rc.6         :: 只下两个被打补丁的包，比对 lib/index.js 哈希
-node tools\compat-declare.mjs --allow 0.2.2-rc.6          :: 推进上界（verify 没过会拒绝）
-node tools\compat-declare.mjs --push                      :: 提交推送；用户下次联网自动生效
+node devtools\compat-declare.mjs --check                     :: 看 npm 上最新内核，差几个版本
+node devtools\compat-declare.mjs --verify 0.2.2-rc.6         :: 只下两个被打补丁的包，比对 lib/index.js 哈希
+node devtools\compat-declare.mjs --allow 0.2.2-rc.6          :: 推进上界（verify 没过会拒绝）
+node devtools\compat-declare.mjs --push                      :: 提交推送；用户下次联网自动生效
 ```
 
 `--verify` 报 `DIFF` 才说明官方真动了我们打补丁的文件——那时候才需要适配补丁并重发壳。
@@ -257,8 +256,17 @@ node tools\compat-declare.mjs --push                      :: 提交推送；用�
 ### 怎么确认当前生效到什么
 
 ```bat
-node tools\compat-live.mjs               :: 清单区间 / 生效区间 / 来自哪里 / 已验证内核列表
-node tools\compat-live.mjs --refresh     :: 强制联网刷新（忽略 6 小时缓存）
+node tools\update\compat-live.mjs               :: 清单区间 / 生效区间 / 来自哪里 / 已验证内核列表
+node tools\update\compat-live.mjs --refresh     :: 强制联网刷新（忽略 6 小时缓存）
 dsh-portable.cmd doctor                  :: 体检里的 dsh-range 一行
 ```
+
+## 十、许可与归属
+
+- `@deepseek-ai/dsh` 与官方桌面程序：MIT，版权归 DeepSeek；本仓库**不包含**它们的二进制，只提供下载脚本。
+- 插件：`dshmarket`、两个主题皮肤，各自遵循其包内许可。
+- 壳（根目录脚本、`tools\`、文档）：MIT，见 [LICENSE](LICENSE)。
+- 本仓库的 `master` 曾经是官方源码的镜像分支，2026-11-03 起换成只装壳。覆盖前那一个提交是 `ce7073d51254c26cd63b22a60835b8f948deb447`（20,233 个文件，属于官方 DeepSeek Harness 源码，可在 GitHub 提交页按此 SHA 直接查看）。为了不让 clone 拖上 357 MB 的旧对象，没有给它留 tag。
+
+> 一句话记住：**壳进仓库，官方那层靠 `bootstrap` 现拉；改壳先跑 `verify`。**
 

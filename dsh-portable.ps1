@@ -28,7 +28,7 @@ $loadFrag = {
 if (-not $env:DSH_FS_PROFILE) { & $loadFrag }
 # 片段缺失或盘符对不上（换机器/换盘）时先现场探测一次，别让 $ImportMethod 退回 auto
 if ((-not $env:DSH_FS_PROFILE) -or ($rootDrive -and $env:DSH_FS_DRIVE -ne $rootDrive)) {
-  $fsScript = Join-Path $Root 'tools\fs-profile.ps1'
+  $fsScript = Join-Path $Root 'tools\profile\fs-profile.ps1'
   if (Test-Path -LiteralPath $fsScript) {
     & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File $fsScript -Root $Root -Quiet | Out-Null
     & $loadFrag
@@ -37,7 +37,7 @@ if ((-not $env:DSH_FS_PROFILE) -or ($rootDrive -and $env:DSH_FS_DRIVE -ne $rootD
 $StoreRoot = if ($env:DSH_PNPM_STORE) { $env:DSH_PNPM_STORE } else { Join-Path $Root 'cache\pnpm-store' }
 $StageRoot = if ($env:DSH_STAGE) { $env:DSH_STAGE } else { Join-Path $Root 'tmp\build' }
 $ImportMethod = if ($env:DSH_PNPM_IMPORT_METHOD) { $env:DSH_PNPM_IMPORT_METHOD } else { 'auto' }
-$SevenZip = Join-Path $Root 'tools\7z\7z.exe'
+$SevenZip = Join-Path $Root 'devtools\7z\7z.exe'
 $Journal = Join-Path $Root 'tmp\update-journal.json'
 $Journal2 = Join-Path $Root 'tmp\shell-update-journal.json'
 $UpdateCache = Join-Path $Root 'cache\update'
@@ -85,7 +85,7 @@ function DesktopRunning {
 function Get-SevenZipState {
   # 只有 7z.exe 没有 7z.dll 时，插件包/更新包两层解包全部失效 —— 原来只 Test-Path exe。
   if (-not (Test-Path -LiteralPath $SevenZip)) { return 'MISSING exe' }
-  $dll = Join-Path $Root 'tools\7z\7z.dll'
+  $dll = Join-Path $Root 'devtools\7z\7z.dll'
   if (-not (Test-Path -LiteralPath $dll)) { return 'MISSING 7z.dll' }
   try {
     $raw = (Get-Item -LiteralPath $SevenZip).VersionInfo.FileVersion
@@ -253,11 +253,11 @@ function Fix-OfficeCli {
   if ($done -gt 0) { Say ("  已给 " + $done + " 份 Office 引擎补上只读目录清理重试（修上游退出码 1 的问题）") }
 }
 function Plugin-Tool {
-  # 共享插件的唯一入口：解析规则、清单登记和 pnpm 调用都在 tools\plugin-shared.mjs 里，
+  # 共享插件的唯一入口：解析规则、清单登记和 pnpm 调用都在 tools\profile\plugin-shared.mjs 里，
   # 这里只负责转发参数并把退出码带回来。
   param([string[]]$ToolArgs)
-  $script = Join-Path $Root 'tools\plugin-shared.mjs'
-  if (-not (Test-Path -LiteralPath $script)) { Warn2 '缺少 tools\plugin-shared.mjs，无法管理共享插件'; return 1 }
+  $script = Join-Path $Root 'tools\profile\plugin-shared.mjs'
+  if (-not (Test-Path -LiteralPath $script)) { Warn2 '缺少 tools\profile\plugin-shared.mjs，无法管理共享插件'; return 1 }
   # 必须 Out-Host：否则 node 的输出会被当成函数返回值，被调用处的 exit 吞掉，屏幕上什么都看不到
   & $Node $script @ToolArgs | Out-Host
   return $LASTEXITCODE
@@ -266,10 +266,10 @@ function Fix-MarketPatch {
   # 插件市场（dshmarket）判断“装成功没有”用的是固定路径 <profile>\node_modules\<包名>。
   # 便携版为了两个模式共用一份插件，用 modulesDir 把包装到了 home\profiles\node_modules，
   # 市场就判定“缺构件”并把刚装好的包删掉（报 MUTATION_FAILED）。
-  # tools\patch-market.mjs 给它加一级向上查找；幂等，已打过就秒退。
+  # tools\patch\patch-market.mjs 给它加一级向上查找；幂等，已打过就秒退。
   # 市场自己升级会覆盖 lib\*.js，所以每次启动都补一次（不联网、不改用户数据）。
   param([switch]$Quiet)
-  $script = Join-Path $Root 'tools\patch-market.mjs'
+  $script = Join-Path $Root 'tools\patch\patch-market.mjs'
   if (-not (Test-Path -LiteralPath $script)) { return }
   $toolArgs = @()
   if ($Quiet) { $toolArgs += '--quiet' }
@@ -280,7 +280,7 @@ function Repair-OfficialPatches {
   # 官方 update-app / update-desktop / bootstrap / 商城自更新会**整份替换**这些文件，补丁随之消失，
   # 所以每次启动和每次升级收尾都要补一次。退出码：0 全好 / 2 本次有改动 / 4 有没打上（WARN，不阻断）/ 1 硬失败。
   param([switch]$Quiet)
-  $tool = Join-Path $Root 'tools\patch-all.mjs'
+  $tool = Join-Path $Root 'tools\patch\patch-all.mjs'
   if (-not (Test-Path -LiteralPath $tool)) { return 0 }
   $toolArgs = @('--apply')
   if ($Quiet) { $toolArgs += '--quiet' }
@@ -360,12 +360,12 @@ function Repair-State {
     }
     Remove-Item -LiteralPath $Journal -Force -ErrorAction SilentlyContinue
   }
-  # 壳换装 journal：tools\shell-update.mjs apply 先写 tmp\shell-update-journal.json，
+  # 壳换装 journal：tools\update\shell-update.mjs apply 先写 tmp\shell-update-journal.json，
   # 它还在就说明上次换装走到一半（断电 / 被杀）。交给 shell-update recover 按备份整体还原。
   if (Test-Path -LiteralPath $Journal2) {
     if (Test-Path -LiteralPath $Node) {
       Warn2 '检测到上次壳换装中断，正在自动恢复……'
-      & $Node (Join-Path $Root 'tools\shell-update.mjs') recover 2>&1 | Out-Null
+      & $Node (Join-Path $Root 'tools\update\shell-update.mjs') recover 2>&1 | Out-Null
       if ($LASTEXITCODE -ne 0) { Warn2 '  自动恢复失败：请运行 dsh-portable.cmd shell-update recover' }
       else { Say '  已恢复到换装前的壳' }
     } else { Warn2 '检测到壳换装中断，但 runtime\node 不在：先 dsh-portable.cmd bootstrap' }
@@ -479,7 +479,7 @@ function Fix-Motw([switch]$IfNeeded, [switch]$Full) {
 }
 function Fix-PnpmState([switch]$Quiet) {
   # 换机器后 home\profiles\*\node_modules 里记着旧机器的绝对路径，pnpm 会拒绝装卸。
-  $tool = Join-Path $Root 'tools\fix-pnpm-state.mjs'
+  $tool = Join-Path $Root 'tools\profile\fix-pnpm-state.mjs'
   if (-not (Test-Path -LiteralPath $tool)) { return }
   if (-not (Test-Path -LiteralPath $Node)) { return }
   $toolArgs = @($tool)
@@ -583,21 +583,21 @@ function Start-DesktopDetached {
   # 统一的「脱离控制台启动桌面程序」实现。两个调用点：正常启动、以及窗口没出现时的"第二实例聚焦"。
   # 为什么不用 Start-Process：① 它会新开/继承控制台；② 本机 -RedirectStandardOutput 会抛
   # "Item has already been added. Key: 'NO_PROXY'"（环境变量重复导致的已知坑），只能走 ProcessStartInfo。
-  # 输出经 tools\mask-log.mjs 脱敏后落到 logs\desktop-console.log（令牌变 <redacted>）。
+  # 输出经 tools\lib\mask-log.mjs 脱敏后落到 logs\desktop-console.log（令牌变 <redacted>）。
   $exe = Join-Path $Root 'desktop\DeepSeek Harness.exe'
   if (-not (Test-Path -LiteralPath $exe)) { Warn2 ('找不到桌面程序：' + $exe); return $false }
   $logDir = Join-Path $Root 'logs'
   if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
   $ud = Join-Path $Root 'shell-profile'
   $crash = Join-Path $Root 'logs\crash'
-  $masker = Join-Path $Root 'tools\mask-log.mjs'
+  $masker = Join-Path $Root 'tools\lib\mask-log.mjs'
   $comspec = if ($env:ComSpec) { $env:ComSpec } else { Join-Path $env:SystemRoot 'System32\cmd.exe' }
   $psi = New-Object System.Diagnostics.ProcessStartInfo
   $psi.FileName = $comspec
   if ((Test-Path -LiteralPath $masker) -and (Test-Path -LiteralPath $Node)) {
     $psi.Arguments = '/c ""' + $exe + '" "--user-data-dir=' + $ud + '" "--crash-dumps-dir=' + $crash + '" 2>&1 | "' + $Node + '" "' + $masker + '" "' + $Root.TrimEnd('\') + '""'
   } else {
-    Warn2 '脱敏器不可用（tools\mask-log.mjs 或 node 缺失），日志会含明文 token'
+    Warn2 '脱敏器不可用（tools\lib\mask-log.mjs 或 node 缺失），日志会含明文 token'
     $psi.Arguments = '/c ""' + $exe + '" "--user-data-dir=' + $ud + '" "--crash-dumps-dir=' + $crash + '" > "' + (Join-Path $logDir 'desktop-console.log') + '" 2>&1"'
   }
   $psi.UseShellExecute = $false
@@ -636,8 +636,8 @@ function Restore-DesktopWindow {
 }
 function Get-CompatState {
   # 豁免 pin 与当前 dsh 版本不一致时，官方会静默跳过那个插件（不报错）——升级后最容易踩的坑。
-  $tool = Join-Path $Root 'tools\plugin-shared.mjs'
-  if (-not (Test-Path -LiteralPath $tool)) { return 'MISSING tools\plugin-shared.mjs' }
+  $tool = Join-Path $Root 'tools\profile\plugin-shared.mjs'
+  if (-not (Test-Path -LiteralPath $tool)) { return 'MISSING tools\profile\plugin-shared.mjs' }
   try {
     $out = ((& $Node $tool compat 2>&1) -join ' ').Trim()
     if ($LASTEXITCODE -eq 0) { return $out }
@@ -647,8 +647,8 @@ function Get-CompatState {
 function Get-MarketPatchState {
   # 补丁没打上 = 市场装插件必失败；而启动器是 --quiet 静默调用的，黑框一闪没人看见。
   # 所以让 doctor 直接把状态亮出来，出问题也有 logs\patch-market.err 可查。
-  $tool = Join-Path $Root 'tools\patch-market.mjs'
-  if (-not (Test-Path -LiteralPath $tool)) { return 'MISSING tools\patch-market.mjs' }
+  $tool = Join-Path $Root 'tools\patch\patch-market.mjs'
+  if (-not (Test-Path -LiteralPath $tool)) { return 'MISSING tools\patch\patch-market.mjs' }
   try {
     $out = ((& $Node $tool --check 2>&1) -join ' ').Trim()
     if ($LASTEXITCODE -eq 0) { return $out }
@@ -753,7 +753,7 @@ function Get-Installer([pscustomobject]$manifest) {
     $need = [math]::Round($manifest.size / 1MB) + 200
     if ((FreeMB $Root) -lt ($need + 1200)) { throw "磁盘空间不足：需要约 $($need + 1200) MB" }
     Say ("下载安装包（第 $attempt/2 次）：" + $manifest.url)
-    & $Node (Join-Path $Root 'tools\download.mjs') $manifest.url $dest | Out-Host
+    & $Node (Join-Path $Root 'tools\lib\download.mjs') $manifest.url $dest | Out-Host
     if ($LASTEXITCODE -ne 0) {
       if ($attempt -eq 2) { throw '下载失败（已清理半成品文件，旧的程序目录未受影响）' }
       Warn2 '下载中断，正在重试…'
@@ -963,7 +963,7 @@ function Resolve-SevenZip {
   # 随包 7z：exe 与 7z.dll 缺一不可，而且要真跑一次（杀软拦截 exe 时这里就会暴露）。
   if ($script:DepCache.ContainsKey('7z')) { return $script:DepCache['7z'] }
   $path = $null
-  if ((Test-Path -LiteralPath $SevenZip) -and (Test-Path -LiteralPath (Join-Path $Root 'tools\7z\7z.dll'))) {
+  if ((Test-Path -LiteralPath $SevenZip) -and (Test-Path -LiteralPath (Join-Path $Root 'devtools\7z\7z.dll'))) {
     if ((Test-NativeTool $SevenZip @('i') '7-Zip').ok) { $path = $SevenZip }
   }
   $script:DepCache['7z'] = $path
@@ -1055,7 +1055,7 @@ function Expand-WithSevenZip {
   # 7z 自带 gzip 解码：tar.gz 要走两趟（gz -> tar -> 文件）。7z 不产生时间戳噪声。
   param([string]$Archive, [string]$Dest, [switch]$TarGz)
   $seven = Resolve-SevenZip
-  if (-not $seven) { throw '随包 7z 不可用（tools\7z 缺失或被拦截）' }
+  if (-not $seven) { throw '随包 7z 不可用（devtools\7z 缺失或被拦截）' }
   if (-not (Test-Path -LiteralPath $UpdateCache)) { New-Item -ItemType Directory -Force -Path $UpdateCache | Out-Null }
   if ($TarGz) {
     $mid = Join-Path $UpdateCache ('7z-mid-' + [guid]::NewGuid().ToString('N'))
@@ -1140,7 +1140,7 @@ function Assert-HostReady {
     $errs += '这台机器是 32 位 Windows：官方 dsh 与随包 7z 都只有 x64 版本'
   }
   if (@(Get-UnpackerChain).Count -eq 0) {
-    $errs += '没有可用的解包工具：系统 tar 与 tools\7z 都不可用（系统被裁剪？杀软拦截？）'
+    $errs += '没有可用的解包工具：系统 tar 与 devtools\7z 都不可用（系统被裁剪？杀软拦截？）'
   }
   foreach ($e in $errs) { Warn2 ('  x ' + $e) }
   if ($errs.Count -gt 0) {
@@ -1591,7 +1591,7 @@ function Bootstrap-App {
 function Bootstrap-Desktop {
   if (Have-Desktop) { Say ('  desktop：已有 ' + (DesktopVersion) + '，跳过'); return }
   if (-not (Have-RuntimeNode)) { throw '还没有 node（上一步没成功），跳过 desktop' }
-  if (-not (Test-Path -LiteralPath $SevenZip)) { throw ('缺少解包工具 ' + $SevenZip + '（tools\7z 必须随壳一起发布）') }
+  if (-not (Test-Path -LiteralPath $SevenZip)) { throw ('缺少解包工具 ' + $SevenZip + '（devtools\7z 必须随壳一起发布）') }
   $manifest = Get-Manifest
   Say ("desktop：下载官方安装包 " + $manifest.version + "（约 " + [math]::Round($manifest.size / 1MB) + " MB）")
   $installer = Get-Installer $manifest
@@ -1650,7 +1650,7 @@ switch ($Action) {
     $patchRc = Repair-OfficialPatches -Quiet
     if ($patchRc -eq 4) { Warn2 '有补丁没打上（官方层可能刚升级过）：doctor 的 patches 三行有详情' }
     if ($patchRc -eq 1) { Warn2 '补丁写入失败（桌面程序可能占着 app.asar）：退出 DeepSeek Harness 后再修复' }
-    if ($env:DSH_FS_PROFILE -eq 'compat') { $null = & $Node (Join-Path $Root 'tools\probe-fs.mjs') --quiet 2>&1 }
+    if ($env:DSH_FS_PROFILE -eq 'compat') { $null = & $Node (Join-Path $Root 'tools\patch\probe-fs.mjs') --quiet 2>&1 }
     $null = Plugin-Tool @('sync', '--quiet'); Say '已检查并修复中断残留'; break
   }
   'tidy' {
@@ -1708,8 +1708,8 @@ switch ($Action) {
   'clean-ship' {
     # 交付前清理：把源机器的凭证/会话/登录态/崩溃日志/旧路径痕迹从包里去掉。
     # 默认 dry-run 只列清单；--apply 才真删；--verify 只断言（还没干净就 exit 1）。
-    $tool = Join-Path $Root 'tools\clean-ship.mjs'
-    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\clean-ship.mjs'; exit 2 }
+    $tool = Join-Path $Root 'devtools\clean-ship.mjs'
+    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 devtools\clean-ship.mjs'; exit 2 }
     $toolArgs2 = @($tool)
     foreach ($a in @($From, $Arg2)) { if ($a) { $toolArgs2 += $a } }
     & $Node @toolArgs2
@@ -1717,8 +1717,8 @@ switch ($Action) {
   }
   'verify' {
     # 壳自己的断言集（编码/依赖一致/bundles/补丁 54 处/sync 幂等/结构与体积）—— 不依赖外部 audit 脚本
-    $tool = Join-Path $Root 'tools\verify-shell.mjs'
-    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\verify-shell.mjs'; exit 2 }
+    $tool = Join-Path $Root 'tools\verify\verify-shell.mjs'
+    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\verify\verify-shell.mjs'; exit 2 }
     & $Node $tool
     exit $LASTEXITCODE
   }
@@ -1754,7 +1754,7 @@ switch ($Action) {
           # 否则 exFAT 上 pnpm 的 registerProject() 会在 store\v11\projects 下建符号链接直接 EISDIR，
           # 而补丁原本要等五步全跑完才打 —— 顺序反了，全新机器第一次必然失败。
           # 这里只打 pnpm 一族（app 还没装，其余几族此时无处可打）。
-          try { $null = & $Node (Join-Path $Root 'tools\patch-pnpm.mjs') --apply 2>&1 } catch { }
+          try { $null = & $Node (Join-Path $Root 'tools\patch\patch-pnpm.mjs') --apply 2>&1 } catch { }
         }
         elseif ($step -eq 'app') { Bootstrap-App }
         elseif ($step -eq 'desktop') { Bootstrap-Desktop }
@@ -1866,10 +1866,10 @@ switch ($Action) {
   }
   'plugin-activate' { exit (Plugin-Tool @('activate')) }
   # 附件库回到便携目录：撤掉 cordis.patch.yml 里的 dshHome 重定向，并把旧附件复制回来。
-  # 先把 tools\patch-attachment.mjs 的补丁打上再执行（没补丁会被拒，退出码 4）。
+  # 先把 tools\patch\patch-attachment.mjs 的补丁打上再执行（没补丁会被拒，退出码 4）。
   'fix-attachment' {
-    $fa = Join-Path $Root 'tools\fix-attachment.mjs'
-    if (-not (Test-Path -LiteralPath $fa)) { Warn2 '缺少 tools\fix-attachment.mjs'; exit 2 }
+    $fa = Join-Path $Root 'tools\patch\fix-attachment.mjs'
+    if (-not (Test-Path -LiteralPath $fa)) { Warn2 '缺少 tools\patch\fix-attachment.mjs'; exit 2 }
     $faArgs = @()
     if ($From -eq 'apply') { $faArgs += '--apply' }
     if ($Force) { $faArgs += '--purge-old' }
@@ -1879,8 +1879,8 @@ switch ($Action) {
   # 商城"操作历史"清不掉：界面只关当次显示，服务端读的是 <profile>\.dsh-market\drain.ndjson。
   # 这里直接整理那几个文件（默认清已结束记录；-Force 连 log.ndjson 一起清）。
   'market-history' {
-    $mh = Join-Path $Root 'tools\market-history.mjs'
-    if (-not (Test-Path -LiteralPath $mh)) { Warn2 '缺少 tools\market-history.mjs'; exit 2 }
+    $mh = Join-Path $Root 'tools\profile\market-history.mjs'
+    if (-not (Test-Path -LiteralPath $mh)) { Warn2 '缺少 tools\profile\market-history.mjs'; exit 2 }
     $mhArgs = @()
     if ($From -eq 'check') { $mhArgs += '--check' }
     if ($Force) { $mhArgs += '--all' }
@@ -1888,10 +1888,10 @@ switch ($Action) {
     exit $LASTEXITCODE
   }
   'shell-update' {
-    # 壳自更新 v2：真正干活的是 tools\shell-update.mjs（取版本线清单 → 校验 → 调 shell-apply.mjs 备份 /
+    # 壳自更新 v2：真正干活的是 tools\update\shell-update.mjs（取版本线清单 → 校验 → 调 shell-apply.mjs 备份 /
     # 换装 / 回滚，verify 不过就整体回滚）。这里只做三件事：子命令分派、占用检查、把 -Force 翻成 --force。
-    $tool = Join-Path $Root 'tools\shell-update.mjs'
-    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\shell-update.mjs'; exit 2 }
+    $tool = Join-Path $Root 'tools\update\shell-update.mjs'
+    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 tools\update\shell-update.mjs'; exit 2 }
     if (-not (Test-Path -LiteralPath $Node)) { Warn2 'runtime\node 不在：先运行 dsh-portable.cmd bootstrap'; exit 2 }
     $sub = if ($From -in @('check', 'apply', 'rollback', 'recover', 'notes', 'stage', 'backups', 'snooze')) { $From } else { 'check' }
     # 桌面窗口占着壳文件：apply 之前必须没有桌面窗口（check / notes 只读，不受影响）
@@ -1949,7 +1949,7 @@ switch ($Action) {
   }
   'fs-profile' {
     # 重新探测卷类型并打印生成的片段（排障/换机器后用）
-    & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tools\fs-profile.ps1') -Root $Root -Force
+    & powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tools\profile\fs-profile.ps1') -Root $Root -Force
     if ($LASTEXITCODE -ne 0) { Warn2 '卷类型探测失败（详见上面的输出），本次仍按残留片段/兜底值运行' }
     $frag = Join-Path $Root 'tmp\fs-profile.cmd'
     if (Test-Path -LiteralPath $frag) { Get-Content -LiteralPath $frag | Where-Object { $_ -like 'set *' } | ForEach-Object { Say ('  ' + $_) } }
@@ -1977,7 +1977,7 @@ switch ($Action) {
     Say ("fs        : " + $(if ($env:DSH_FS_FORMAT) { $env:DSH_FS_FORMAT } else { 'unknown' }) + " -> " + $(if ($env:DSH_FS_PROFILE) { $env:DSH_FS_PROFILE } else { 'unknown' }) + " / " + $(if ($env:DSH_PERMISSION_MODE) { $env:DSH_PERMISSION_MODE } else { 'unknown' }))
     if ($env:DSH_FS_PROFILE -eq 'compat') {
       if (Test-Path -LiteralPath $Node) {
-        $null = & $Node (Join-Path $Root 'tools\patch-fs.mjs') --check --quiet 2>&1
+        $null = & $Node (Join-Path $Root 'tools\patch\patch-fs.mjs') --check --quiet 2>&1
         $patchState = switch ($LASTEXITCODE) { 0 { 'applied' } 2 { 'applied' } 4 { 'not-applied' } default { 'anchor-mismatch' } }
       } else { $patchState = 'unknown (no node yet)' }
       Say ("fs-patch  : " + $patchState)
@@ -2022,7 +2022,7 @@ switch ($Action) {
     # 远端那一行来自 tmp\compat.json 缓存；拿不到时这里只显示清单值，不会卡住。
     $dshRange = "-"
     try {
-      $rl = & $Node (Join-Path $Root "tools\compat-live.mjs") --one-line 2>$null
+      $rl = & $Node (Join-Path $Root "tools\update\compat-live.mjs") --one-line 2>$null
       if ($rl) { $dshRange = ($rl | Select-Object -First 1).ToString().Trim() }
     } catch { }
     Say ("dsh-range : " + $dshRange)
@@ -2039,7 +2039,7 @@ switch ($Action) {
     Say ("auto-upd  : " + $(if (Test-Path (Join-Path $Root 'desktop\resources\app-update.yml')) { 'ENABLED' } else { 'disabled' }))
     Say ("market    : " + (Get-MarketPatchState))
     # 四族补丁状态：applied / needs-work / failed / n-a。needs-work 通常是官方刚升级、壳还没适配
-    $patchTool = Join-Path $Root 'tools\patch-all.mjs'
+    $patchTool = Join-Path $Root 'tools\patch\patch-all.mjs'
     if (Test-Path -LiteralPath $patchTool) {
       $patchLines = @(& $Node $patchTool --check 2>&1 | Where-Object { $_ -match '^\s+(market|fs|pnpm|attachment)\s' })
       if ($patchLines.Count -eq 0) { Say 'patches   : （四族状态读取失败）' }
@@ -2051,12 +2051,12 @@ switch ($Action) {
     break
   }
   'check-quiet' {
-    $out = (& $Node (Join-Path $Root 'tools\update-check.mjs')) -join ''
+    $out = (& $Node (Join-Path $Root 'tools\update\update-check.mjs')) -join ''
     if ($out) { Write-Output $out }
     break
   }
   'check-updates' {
-    & $Node (Join-Path $Root 'tools\update-check.mjs') --verbose --force
+    & $Node (Join-Path $Root 'tools\update\update-check.mjs') --verbose --force
     break
   }
   'sync-home' {

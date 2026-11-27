@@ -3,26 +3,26 @@ setlocal
 set "ROOT=%~dp0"
 call "%ROOT%env.cmd"
 rem NOTE: keep this file pure ASCII. cmd.exe parses a double-clicked .cmd with the OEM code page,
-rem and UTF-8 text here once got re-parsed as a command. Chinese messages live in tools\say.ps1.
+rem and UTF-8 text here once got re-parsed as a command. Chinese messages live in tools\lib\say.ps1.
 rem marker = machine name + drive letter, so a folder copied to a new machine re-prepares itself
 set "KEY=%COMPUTERNAME%_%ROOT:~0,1%"
 rem every start (~0.2s, reads a few small files): point pnpm records at this machine
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\fix-pnpm-state.mjs" --quiet
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\profile\fix-pnpm-state.mjs" --quiet
 rem every start: warn (never block) when the profile node_modules was built by a different pnpm
 rem major than the one we ship - pnpm then refuses every install and uninstall (store v10 vs v11)
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\fix-pnpm-state.mjs" --check-store --quiet
-if errorlevel 3 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key store-mismatch
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\profile\fix-pnpm-state.mjs" --check-store --quiet
+if errorlevel 3 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key store-mismatch
 rem every start: apply plugins that were staged while the app was running. This MUST run
 rem before patch-market: activation may run pnpm, which rewrites the shared plugin tree.
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\plugin-shared.mjs" activate --quiet
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\profile\plugin-shared.mjs" activate --quiet
 rem every start: keep ALL patch families applied (market path+drain, fs link fallback, pnpm store).
 rem An official update replaces those files, so this runs after it and before dsh starts; when a
 rem family no longer matches the new official code it only warns (exit 4) and boot continues.
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\patch-all.mjs" --apply --quiet >nul 2>nul
-if errorlevel 4 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key patch-needs-adapt
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\patch\patch-all.mjs" --apply --quiet >nul 2>nul
+if errorlevel 4 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key patch-needs-adapt
 rem every start: rewrite the version exemption to the CURRENT dsh version. Exact pin only - the
 rem official loader rejects "*" and a stale pin makes it silently skip the plugin (npm 0.2.1-rc.5)
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\plugin-shared.mjs" compat-heal --quiet
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\profile\plugin-shared.mjs" compat-heal --quiet
 rem once per machine+location: clear the "downloaded from another computer" mark (SmartScreen)
 if not exist "%ROOT%tmp\prep-%KEY%.flag" powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" auto-prepare >nul 2>&1
 call "%ROOT%check-update.cmd"
@@ -43,7 +43,7 @@ goto dsh_done
 :dsh_start
 rem The desktop app inherits this console and keeps it alive (its dsh-host child writes here),
 rem so the launcher black box would stay open for the whole session. Redirect its output to a
-rem log file instead (masked by tools\mask-log.mjs): the window closes by itself, log is kept.
+rem log file instead (masked by tools\lib\mask-log.mjs): the window closes by itself, log is kept.
 rem Set DSH_PORTABLE_KEEP_CONSOLE=1 to get the old behaviour (see the log live in the console).
 if "%DSH_PORTABLE_KEEP_CONSOLE%"=="1" (
   start "" "%ROOT%desktop\DeepSeek Harness.exe" --user-data-dir="%ROOT%shell-profile" --crash-dumps-dir="%ROOT%logs\crash"

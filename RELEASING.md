@@ -9,7 +9,7 @@
   **"壳 vX.Y.Z"这个旧叫法不再使用**。
 - **tag 名保持 `vX.Y.Z`**（清单 `tag`、`TAG_TEMPLATE`、`shell-update` 都按 `v<shellVersion>` 解析），
   tag 里不要加产品名前缀。
-- 工具里只有一处：`tools\shell-release.mjs` 的 `PRODUCT_NAME`。
+- 工具里只有一处：`devtools\shell-release.mjs` 的 `PRODUCT_NAME`。
 
 ## 版本号规则（0.x 阶段）
 
@@ -26,23 +26,23 @@
 
 ## Runbook（9 步）
 
-1. **改壳**：改完代码（`tools\*.mjs`、根脚本、`home\profiles` 的清单类文件）。新文件要进壳，先加进 `tools\shell-update.mjs` 的壳白名单，再跑 `clean-ship refresh` 才会出现在清单 `files` 里。
+1. **改壳**：改完代码（`tools\*.mjs`、根脚本、`home\profiles` 的清单类文件）。新文件要进壳，先加进 `tools\update\shell-update.mjs` 的壳白名单，再跑 `clean-ship refresh` 才会出现在清单 `files` 里。
 2. **写更新细则**：在 `RELEASE-NOTES.md` 顶部新增 `## v<新版本> — <YYYY-MM-DD>` 一节，六个小节写全（没有就写"无"，小节不许省）。
-3. **本地自检**：`dsh-portable.cmd verify`、`node tools\selftest-shell-update.mjs`、`node tools\shell-update.mjs check` 都要绿。工作树要干净（发布提交里不该混进调试残留）。
-4. **先看计划**：`node tools\shell-release.mjs prepare --version <新版本> --dry-run`。
+3. **本地自检**：`dsh-portable.cmd verify`、`node devtools\selftest-shell-update.mjs`、`node tools\update\shell-update.mjs check` 都要绿。工作树要干净（发布提交里不该混进调试残留）。
+4. **先看计划**：`node devtools\shell-release.mjs prepare --version <新版本> --dry-run`。
    它会打印要写进 `shell-version.json` 的字段变更、将执行的命令、以及整包的 `name / bytes / sha256 前 12 位`（整包在 `%TEMP%` 里试打，仓库零写入）。确认版本位选对了再往下。
-5. **正式 prepare**：`node tools\shell-release.mjs prepare --version <新版本>`。
+5. **正式 prepare**：`node devtools\shell-release.mjs prepare --version <新版本>`。
    它会：写 v2 清单字段 → 跑三门禁（`clean-ship refresh` / `verify-shell` / `selftest-shell-update`）→ 再 refresh → 按清单 `files` 打 `harness-shell-<版本>.zip`（**不含** `shell-version.json`）→ 把 `zip:{name,sha256,bytes}` 写回清单 → 再 refresh → `git add -A` + commit + `git tag -a v<版本>` → tag 自校验（tag 里清单的每个 sha256 必须等于 tag 里文件字节）。
    最后一行看到 `tag 自校验 … ✓` 才算过。
 6. **配 token**：`set GH_TOKEN=<PAT>`。fine-grained PAT 需要 **Contents: Read and write**；经典 PAT 需要 `repo`。也可以用 `--token-env <变量名>` 指定别的变量；都没配时脚本会试 `git credential fill`（token 永不打印，只报来源和长度）。
-7. **发布**：`node tools\shell-release.mjs publish`。
+7. **发布**：`node devtools\shell-release.mjs publish`。
    它会：`git push origin master` + `git push origin v<版本>` → 查/建 Release（已存在则复用，`--sync-notes` 可刷新说明）→ 上传 `shell-version.json`（字节取自 `git show v<版本>:shell-version.json`，**不是工作树**）与 `harness-shell-<版本>.zip`（按 tag 重打并校验 sha 与清单一致）→ 下载回来比对 sha256。
    先演练可以加 `--dry-run`（只打印，不推送不联网）。
-8. **端到端验**：`node tools\shell-release.mjs verify-published --version <新版本>`。
+8. **端到端验**：`node devtools\shell-release.mjs verify-published --version <新版本>`。
    它拿**上一个 tag** 当"老用户"：clone 到 `%TEMP%` → 跑老壳的 `shell-update check`（断言 `update-available` 且 `remote` == 新版本）→ `stage` 到临时目录并逐文件比对 sha256 → 断言用户数据（`home\sessions`、`home\.credentials.yaml` 等）哈希零改动 → 断言 Release 上的清单字节 == tag 字节、整包资产 size == 清单 `zip.bytes`。首个版本会打印"首个版本，跳过"（退出码 0）。
 9. **同步本机实例**：把本机那份壳（例如 `G:\Hack3rX-Harness`）当成普通用户走一遍 `dsh-portable.cmd shell-update check` → `apply`，确认升级后 `doctor` 正常、插件能装卸。这样发布链路才算真正验过。
 
-出问题随时 `node tools\shell-release.mjs <子命令> --help`；`defaults --json` 会打印默认仓库/清单地址/tag 模板/退出码表。
+出问题随时 `node devtools\shell-release.mjs <子命令> --help`；`defaults --json` 会打印默认仓库/清单地址/tag 模板/退出码表。
 
 ## 坏版本处置
 
@@ -78,6 +78,6 @@
 ## 发布批准（强制）
 
 - **只有用户本人在自己机器上完整测过、并明确说“发布”之后，才允许发布。**
-- 工具层已经拦死：`node tools\shell-release.mjs publish` 不带 `--approved`（或环境变量 `DSH_RELEASE_APPROVED=1`）会直接以退出码 2 拒绝。
+- 工具层已经拦死：`node devtools\shell-release.mjs publish` 不带 `--approved`（或环境变量 `DSH_RELEASE_APPROVED=1`）会直接以退出码 2 拒绝。
 - `prepare`（改版本 + 跑门禁 + 打整包 + 本地打 tag）可以在用户批准之前做——它是本地的、可回退的；**push 与建 Release 必须等批准**。
 - 任何 agent / 自动化都不许自己决定发布，包括“顺手发一版修一下”。

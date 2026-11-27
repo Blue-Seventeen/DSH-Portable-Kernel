@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul 2>nul
-rem NOTE: keep this file pure ASCII; Chinese text is printed by tools\say.ps1
+rem NOTE: keep this file pure ASCII; Chinese text is printed by tools\lib\say.ps1
 rem NEVER trust an inherited ROOT/DSH_HOME: a leftover ROOT in the calling shell made this
 rem script check (and write cache files into) a DIFFERENT installation (2026-11-27). Always
 rem derive from this file's own location, like every other .cmd here does.
@@ -9,7 +9,7 @@ call "%ROOT%env.cmd"
 if not exist "%ROOT%logs" mkdir "%ROOT%logs" >nul 2>nul
 rem shared pre-launch check: finish an interrupted update, then look for a newer version
 if exist "%ROOT%tmp\update-journal.json" (
-  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-interrupted
+  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key update-interrupted
   powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" repair
 )
 if defined DSH_PORTABLE_NO_UPDATE_CHECK goto :eof
@@ -21,7 +21,7 @@ rem version a user who always double-clicks start-desktop.cmd never heard about 
 rem (2026-11-26). The check is cached for 180 minutes so repeat launches cost no network time.
 set "SHELLMSG=%ROOT%tmp\shell-notice.txt"
 if exist "%SHELLMSG%" del "%SHELLMSG%" >nul 2>nul
-if exist "%ROOT%tools\shell-update.mjs" "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\shell-update.mjs" check --cached 180 --notice --quiet-fail > "%SHELLMSG%" 2>nul
+if exist "%ROOT%tools\update\shell-update.mjs" "%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\update\shell-update.mjs" check --cached 180 --notice --quiet-fail > "%SHELLMSG%" 2>nul
 set "SHELLNOTICE="
 for %%F in ("%SHELLMSG%") do if %%~zF GTR 0 set "SHELLNOTICE=1"
 if defined SHELLNOTICE (
@@ -33,7 +33,7 @@ if defined SHELLNOTICE (
 rem --- 2) kernel check ---
 set "MSGFILE=%ROOT%tmp\update-check.txt"
 if exist "%MSGFILE%" del "%MSGFILE%" >nul 2>nul
-"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\update-check.mjs" > "%MSGFILE%" 2> "%ROOT%logs\update-check.err"
+"%ROOT%runtime\node\bin\node.exe" "%ROOT%tools\update\update-check.mjs" > "%MSGFILE%" 2> "%ROOT%logs\update-check.err"
 set "KERNMSG="
 if exist "%MSGFILE%" for %%F in ("%MSGFILE%") do if %%~zF GTR 0 set "KERNMSG=1"
 if defined KERNMSG (
@@ -65,21 +65,21 @@ goto :eof
 :hold
 rem timeout is the canonical waiter but fails when stdin is redirected (launched from another
 rem script/terminal); ping -n 6 covers that case.
-if defined SHELLNOTICE powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key shell-hold
-if defined KERNMSG powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key kernel-hold
+if defined SHELLNOTICE powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key shell-hold
+if defined KERNMSG powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key kernel-hold
 timeout /t 5 /nobreak >nul 2>nul
 if errorlevel 1 ping -n 6 127.0.0.1 >nul 2>nul
 goto :eof
 
 :upd_ask
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-prompt -NoNewline
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-hint
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key update-prompt -NoNewline
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key update-hint
 choice /C YN /T 15 /D N /N /M " > "
 if errorlevel 2 goto :eof
 powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%dsh-portable.ps1" update-all -Force
 if errorlevel 1 (
   echo.
-  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\say.ps1" -Key update-failed
+  powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%ROOT%tools\lib\say.ps1" -Key update-failed
   pause
 )
 goto :eof
