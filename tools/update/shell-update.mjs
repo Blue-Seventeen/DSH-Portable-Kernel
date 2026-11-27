@@ -119,7 +119,7 @@ const SHELL_EXACT = [
   'home/profiles/desktop/pnpm-lock.yaml',
   'home/profiles/desktop/cordis.yml',
 ]
-/** 这俩目录下任意文件（devtools\7z 的二进制、vcredist 也随壳走） */
+/** 这俩目录下任意文件（tools\7z 的二进制、vcredist 也随壳走） */
 const SHELL_PREFIXES = ['tools/', 'runtime/vcredist/']
 /**
  * 显式禁止，优先级最高：
@@ -718,8 +718,14 @@ export const LEGACY_SHELL_FILES = {
  * 所以在"已是最新"时也做一次清扫：命中化石清单且哈希一致才删，用户改过的一律不动。
  */
 export const pruneLegacy = (opts = {}) => {
+  // 化石清单记录的是**旧版**哈希。如果某个路径在新版清单里又出现了（比如 tools/7z
+  // 被误移出壳后又移回来），它就可能与旧哈希完全相同 —— 这时绝不能删，否则把运行期
+  // 依赖当残留清掉。以"当前清单"为准，化石清单只补它没覆盖的部分。
+  const live = new Set()
+  try { for (const rel of Object.keys(JSON.parse(readFileSync(join(ROOT, SHELL_MANIFEST), 'utf8')).files || {})) live.add(lower(rel)) } catch { }
   const gone = []
   for (const [rel, sha] of Object.entries(LEGACY_SHELL_FILES)) {
+    if (live.has(lower(rel))) continue
     const abs = join(ROOT, rel)
     if (!existsSync(abs)) continue
     if (isMachineConfigPath(rel) || isUserOwnedPath(rel) || !isAllowedShellPath(rel)) continue
@@ -732,6 +738,7 @@ export const pruneLegacy = (opts = {}) => {
   // 顺带清空因此变空的目录（只清 tools 下的一层，别乱删）
   if (!opts.dryRun) {
     for (const d of ['tools/7z']) {
+      if (existsSync(join(ROOT, 'tools/7z/7z.exe'))) continue   // 还在用，别删
       const abs = join(ROOT, d)
       try { if (existsSync(abs) && readdirSync(abs).length === 0) rmdirSync(abs) } catch { }
     }
@@ -743,7 +750,9 @@ export const computeRemoved = (m, installed) => {
   if (!installed.present) {
     // 无本地清单（整包安装）：靠化石清单认领旧文件，哈希一致才删
     const out = []
+    const liveSet = new Set(Object.keys(m && m.files ? m.files : {}).map(lower))
     for (const [rel, sha] of Object.entries(LEGACY_SHELL_FILES)) {
+      if (liveSet.has(lower(rel))) continue      // 新版清单里还有它 → 不是残留
       if (!isAllowedShellPath(rel)) continue
       if (isMachineConfigPath(rel)) continue
       if (isUserOwnedPath(rel)) continue
@@ -1080,7 +1089,7 @@ const downloadAll = async (targets, base, label) => {
   return out
 }
 
-const sevenZip = () => join(ROOT, 'devtools', '7z', '7z.exe')
+const sevenZip = () => join(ROOT, 'tools', '7z', '7z.exe')
 
 /** --full：下载整包 zip → 解到 staging → 逐文件按清单校验（多/少/不符都算失败） */
 const stageFull = async (m, stageDir, log) => {

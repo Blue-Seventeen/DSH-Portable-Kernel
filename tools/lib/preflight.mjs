@@ -309,7 +309,7 @@ console.log('\n[10] 工具链（缺系统工具不算问题）')
 // 10.1 解包：系统 tar 有就用、没有就用随包 7z。两者都没有才是真问题（复制没拷全）
 const sysRoot = process.env.SystemRoot || 'C:\\Windows'
 const hasSysTar = existsSync(join(sysRoot, 'System32', 'tar.exe'))
-const has7z = existsSync(join(root, 'devtools', '7z', '7z.exe')) && existsSync(join(root, 'devtools', '7z', '7z.dll'))
+const has7z = existsSync(join(root, 'tools', '7z', '7z.exe')) && existsSync(join(root, 'tools', '7z', '7z.dll'))
 if (has7z && hasSysTar) ok('解包工具齐全（系统 tar + 随包 7z 都在，按 tar → 7z 顺序用）')
 else if (has7z) ok('系统没有 tar.exe（Win10 1703 及更早就是这样），改用随包 7z 解包，不影响使用')
 else fail('随包 7z 不完整（tools\\7z\\7z.exe 或 7z.dll）—— 复制时可能没拷全')

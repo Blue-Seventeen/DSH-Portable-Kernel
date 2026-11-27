@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.1",
-  "tag": "v1.0.1",
-  "releasedAt": "2026-11-27T08:23:32.674Z",
+  "shellVersion": "1.0.2",
+  "tag": "v1.0.2",
+  "releasedAt": "2026-11-27T08:51:56.612Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T08:24:21.581Z",
+  "generatedAt": "2026-11-27T08:52:49.747Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,12 +14,12 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "21ff37b8efd14ecf2118e9db871374a7a38dcc111447044e9e0044dc3b8fffdb",
+    "RELEASE-NOTES.md": "c725052d7deb9b3976660bac11a0e148c6752166436d96efd7628bdc7504334e",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
     "dsh-portable.cmd": "58acd0651fe2d449eca11905783db5290e7dc3323d26209af718ba67612a767e",
-    "dsh-portable.ps1": "f9c5ec3d334be9e048c98ef4a14d7d5323764946d3ba6fdd7e7bbe142e5e1952",
+    "dsh-portable.ps1": "c4952fd40931ac3966029066d2fa2be344adfe3de43513b6b42bbbf7eca40494",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
     "env.cmd": "e64bac6f4889790fda6fd200c220c60fd4c4dd99b2e83763801d7bff566839d0",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
@@ -42,10 +42,12 @@
     "runtime/vcredist/vcruntime140_1.dll": "1f2d41c4aa5db0bc33ebf7b66d72943a817d7ce6cbe880502a9403823633093f",
     "start-desktop.cmd": "22fcd3d8e1706a2fb8143f8c78868b85a3c5d3beb282d859bc2505677f061da5",
     "start-web.cmd": "3032620fd0444dd62153f4fdd3272e8d789fc06cd9df9d92da7a7ea8fea33a18",
+    "tools/7z/7z.dll": "e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812",
+    "tools/7z/7z.exe": "707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71",
     "tools/lib/asar-lite.mjs": "b37b9bd5f74e07dfd240954db8cb008004cda851c63137d822a9e4d82b97a951",
     "tools/lib/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
     "tools/lib/mask-log.mjs": "c17c1cd57b0ac448d72bbb806edfdfbc657ea0bb0869c75a82865e982d0bdef3",
-    "tools/lib/preflight.mjs": "00e80c519a6094628a6d851c50082ed0778f7d6ac9d7eabf1ee4b5566ae5711d",
+    "tools/lib/preflight.mjs": "3b9f2c93ca3ab4b66b99e4386b06c60cf3a85625783527014f295978f7f16879",
     "tools/lib/say.ps1": "f5c247efda6be28565cd230418495b62aea1f486cef28b916aa306a7d1dc9421",
     "tools/lib/shell-root.mjs": "5c74e819ecaba21ff10c81007c12654b0469ff22de8ba141d2051b491cea4687",
     "tools/patch/fix-attachment.mjs": "58cd69a90ad57b177449ede722f2ad2696720f185f3de98570318d1906041f73",
@@ -63,10 +65,10 @@
     "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
     "tools/update/shell-apply.mjs": "0db667346460b60a2d3002dc33a22a8543aad0d8aed09f19a425de9af34fb9f9",
     "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
-    "tools/update/shell-update.mjs": "d05204e5e1ef2a084c2a03cc1470a310b41ce6502917bb7858853106ccc06cd3",
+    "tools/update/shell-update.mjs": "92122afc16ffac6fb5fc9645ed147aa8e483fa76caddbe96d50bea1e5dd1bbea",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
     "tools/update/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
-    "tools/verify/verify-shell.mjs": "cd854550ed38e153bc22a047aace4321f98da51678e2bae7179734490576f65d",
+    "tools/verify/verify-shell.mjs": "bf3818daa175a1a93852482b20342c6bf5c830664cff67b15e4e4b101b253260",
     "update.cmd": "aba99a52ce71e37982e75562249671a511337d20d371a1eb5a4f73032646febd"
   },
   "userOwned": [
@@ -81,27 +83,26 @@
   ],
   "notes": {
     "added": [
-      "化石清单 `LEGACY_SHELL_FILES`（旧路径 → 旧版 sha256，35 条）与 `pruneLegacy()` 幂等清扫。"
+      "化石清单清理加了三重保护：不再删\"新版清单里仍然存在\"的路径（否则 7z 会被当残留清掉）。"
     ],
     "fixed": [
-      "整包装的壳没有本地清单（清单要记 zip 的 sha256，塞进 zip 就是循环依赖），而\"列哪些文件该删\"完全依赖已装清单。结果是 1.0.0 升级完，旧 `tools\\*.mjs`（33 个）和 `tools\\7z\\`（2.4 MB）原样留着，白占空间。",
-      "现在带一份**化石清单**（旧路径 → 旧版 sha256，35 条）：命中且磁盘字节**逐字节一致**才删；用户改过一个字节就一律不动。",
-      "并且在\"已是最新\"时也顺手清一次（幂等），所以已经升过 1.0.0 的人，下一次启动就会自己收拾干净，不用重装。"
+      "**7z 回到壳里**（`tools\\7z\\`，58 个文件）。它至少在三处运行期要用：`--full` 整包换装、更新内核时解官方 tar.gz、更新桌面窗口时解 NSIS 里的 `$PLUGINSDIR\\app-64.7z`（系统 tar 顶不了这个）。",
+      "1.0.1 的用户如果走过 `--full` 或更新过内核/桌面，会撞上 `no-7z`。装完 1.0.2 就恢复。",
+      "`clean-ship` 是维护者命令，用户壳里没有它；现在改成优雅提示，而不是\"找不到 xxx\"报错。"
     ],
     "optimized": [
-      "清完会把变空的 `tools\\7z\\` 目录一并移除。"
+      "新增运行期依赖守卫测试：清单必须带 7z，运行期脚本不许把 7z 指向 `devtools\\`，引用 `devtools\\` 的任何一行都必须紧跟存在性检查。"
     ],
     "breaking": [],
     "upgrade": [
-      "只替换 updater 自己（`tools\\update\\shell-update.mjs`）与本说明。",
-      "升级后再跑一次 `shell-update apply`（或等下一次启动），残留会被清掉。"
+      "新增 `tools\\7z\\7z.exe` 与 `tools\\7z\\7z.dll`（约 2.4 MB），替换 updater 与本说明。",
+      "1.0.1 的用户清单里没有这两个文件，属于\"新增\"，不会影响其他文件。"
     ],
     "rollback": [
-      "`dsh-portable.cmd shell-update rollback`",
-      "---"
+      "`dsh-portable.cmd shell-update rollback`"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.2",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -112,8 +113,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.1.zip",
-    "sha256": "eb3c5af18e9eb9599ef8b46b65a704240eec229c57c6748a846b5e503d5aef2b",
-    "bytes": 791995
+    "name": "harness-shell-1.0.2.zip",
+    "sha256": "c3e2f25952f3f648e6cc34e4914ea79f41aad1e6060d2ff80578dc702c182713",
+    "bytes": 1848460
   }
 }

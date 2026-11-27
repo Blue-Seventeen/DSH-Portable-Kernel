@@ -37,7 +37,7 @@ if ((-not $env:DSH_FS_PROFILE) -or ($rootDrive -and $env:DSH_FS_DRIVE -ne $rootD
 $StoreRoot = if ($env:DSH_PNPM_STORE) { $env:DSH_PNPM_STORE } else { Join-Path $Root 'cache\pnpm-store' }
 $StageRoot = if ($env:DSH_STAGE) { $env:DSH_STAGE } else { Join-Path $Root 'tmp\build' }
 $ImportMethod = if ($env:DSH_PNPM_IMPORT_METHOD) { $env:DSH_PNPM_IMPORT_METHOD } else { 'auto' }
-$SevenZip = Join-Path $Root 'devtools\7z\7z.exe'
+$SevenZip = Join-Path $Root 'tools\7z\7z.exe'
 $Journal = Join-Path $Root 'tmp\update-journal.json'
 $Journal2 = Join-Path $Root 'tmp\shell-update-journal.json'
 $UpdateCache = Join-Path $Root 'cache\update'
@@ -85,7 +85,7 @@ function DesktopRunning {
 function Get-SevenZipState {
   # 只有 7z.exe 没有 7z.dll 时，插件包/更新包两层解包全部失效 —— 原来只 Test-Path exe。
   if (-not (Test-Path -LiteralPath $SevenZip)) { return 'MISSING exe' }
-  $dll = Join-Path $Root 'devtools\7z\7z.dll'
+  $dll = Join-Path $Root 'tools\7z\7z.dll'
   if (-not (Test-Path -LiteralPath $dll)) { return 'MISSING 7z.dll' }
   try {
     $raw = (Get-Item -LiteralPath $SevenZip).VersionInfo.FileVersion
@@ -963,7 +963,7 @@ function Resolve-SevenZip {
   # 随包 7z：exe 与 7z.dll 缺一不可，而且要真跑一次（杀软拦截 exe 时这里就会暴露）。
   if ($script:DepCache.ContainsKey('7z')) { return $script:DepCache['7z'] }
   $path = $null
-  if ((Test-Path -LiteralPath $SevenZip) -and (Test-Path -LiteralPath (Join-Path $Root 'devtools\7z\7z.dll'))) {
+  if ((Test-Path -LiteralPath $SevenZip) -and (Test-Path -LiteralPath (Join-Path $Root 'tools\7z\7z.dll'))) {
     if ((Test-NativeTool $SevenZip @('i') '7-Zip').ok) { $path = $SevenZip }
   }
   $script:DepCache['7z'] = $path
@@ -1055,7 +1055,7 @@ function Expand-WithSevenZip {
   # 7z 自带 gzip 解码：tar.gz 要走两趟（gz -> tar -> 文件）。7z 不产生时间戳噪声。
   param([string]$Archive, [string]$Dest, [switch]$TarGz)
   $seven = Resolve-SevenZip
-  if (-not $seven) { throw '随包 7z 不可用（devtools\7z 缺失或被拦截）' }
+  if (-not $seven) { throw '随包 7z 不可用（tools\7z 缺失或被拦截）' }
   if (-not (Test-Path -LiteralPath $UpdateCache)) { New-Item -ItemType Directory -Force -Path $UpdateCache | Out-Null }
   if ($TarGz) {
     $mid = Join-Path $UpdateCache ('7z-mid-' + [guid]::NewGuid().ToString('N'))
@@ -1140,7 +1140,7 @@ function Assert-HostReady {
     $errs += '这台机器是 32 位 Windows：官方 dsh 与随包 7z 都只有 x64 版本'
   }
   if (@(Get-UnpackerChain).Count -eq 0) {
-    $errs += '没有可用的解包工具：系统 tar 与 devtools\7z 都不可用（系统被裁剪？杀软拦截？）'
+    $errs += '没有可用的解包工具：系统 tar 与 tools\7z 都不可用（系统被裁剪？杀软拦截？）'
   }
   foreach ($e in $errs) { Warn2 ('  x ' + $e) }
   if ($errs.Count -gt 0) {
@@ -1591,7 +1591,7 @@ function Bootstrap-App {
 function Bootstrap-Desktop {
   if (Have-Desktop) { Say ('  desktop：已有 ' + (DesktopVersion) + '，跳过'); return }
   if (-not (Have-RuntimeNode)) { throw '还没有 node（上一步没成功），跳过 desktop' }
-  if (-not (Test-Path -LiteralPath $SevenZip)) { throw ('缺少解包工具 ' + $SevenZip + '（devtools\7z 必须随壳一起发布）') }
+  if (-not (Test-Path -LiteralPath $SevenZip)) { throw ('缺少解包工具 ' + $SevenZip + '（tools\7z 必须随壳一起发布）') }
   $manifest = Get-Manifest
   Say ("desktop：下载官方安装包 " + $manifest.version + "（约 " + [math]::Round($manifest.size / 1MB) + " MB）")
   $installer = Get-Installer $manifest
@@ -1708,8 +1708,14 @@ switch ($Action) {
   'clean-ship' {
     # 交付前清理：把源机器的凭证/会话/登录态/崩溃日志/旧路径痕迹从包里去掉。
     # 默认 dry-run 只列清单；--apply 才真删；--verify 只断言（还没干净就 exit 1）。
+    # 这是**维护者命令**（发布前把源机器的凭证/会话清掉），devtools\ 不随壳下发。
+    # 用户拿到的是成品壳，不需要也不应该跑它（它会删登录态）。所以缺文件时不是报错，是说明。
     $tool = Join-Path $Root 'devtools\clean-ship.mjs'
-    if (-not (Test-Path -LiteralPath $tool)) { Warn2 '找不到 devtools\clean-ship.mjs'; exit 2 }
+    if (-not (Test-Path -LiteralPath $tool)) {
+      Say 'clean-ship 是维护者命令：只在源码目录（含 devtools\）可用。'
+      Say '成品壳里没有它——你的会话与凭证也不需要"交付前清理"。'
+      exit 2
+    }
     $toolArgs2 = @($tool)
     foreach ($a in @($From, $Arg2)) { if ($a) { $toolArgs2 += $a } }
     & $Node @toolArgs2

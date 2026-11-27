@@ -42,7 +42,7 @@
  *      （tag_name、name、body=RELEASE-NOTES 该版本小节原文、prerelease:false、make_latest:true）。
  *   4) 资产两个：
  *        shell-version.json      —— 字节必须取自 `git show v<ver>:shell-version.json`（不是工作树！）
- *        harness-shell-<ver>.zip —— 用 devtools\7z\7z.exe 打包 tag 里清单 files 列出的壳文件
+ *        harness-shell-<ver>.zip —— 用 tools\7z\7z.exe 打包 tag 里清单 files 列出的壳文件
  *                                   （git ls-tree + git show 落到 %TEMP%，时间戳钉成 FIXED_MTIME_MS
  *                                    后打包，所以 prepare 与 publish 两次打包字节相同）
  *                                   不含 shell-version.json / version.json / .git*（清单见 isZipShellPath）
@@ -81,7 +81,7 @@ import { shellRoot } from '../tools/lib/shell-root.mjs'
 
 export const ROOT = shellRoot(import.meta.url)
 export const NODE = join(ROOT, 'runtime/node/bin/node.exe')
-export const SEVEN = join(ROOT, 'devtools/7z/7z.exe')
+export const SEVEN = join(ROOT, 'tools/7z/7z.exe')
 export const SHELL_MANIFEST = 'shell-version.json'
 export const NOTES_FILE = 'RELEASE-NOTES.md'
 export const RELEASING_FILE = 'RELEASING.md'
@@ -462,7 +462,7 @@ const ZIP_DENY = new Set(['version.json', 'shell-version.json', '.gitattributes'
 
 /**
  * 该路径是否进 harness-shell-<ver>.zip：
- *   tools/ 下的 .mjs/.ps1/.cmd/.md + devtools/7z 二进制、runtime/vcredist、根脚本、README/LICENSE/
+ *   tools/ 下的 .mjs/.ps1/.cmd/.md + tools/7z 二进制、runtime/vcredist、根脚本、README/LICENSE/
  *   RELEASE-NOTES.md/RELEASING.md、home/profiles 的清单与主题文件、home/cordis.patch.yml。
  */
 export const isZipShellPath = (rel) => {
@@ -470,7 +470,7 @@ export const isZipShellPath = (rel) => {
   if (!low || low.startsWith('.git') || low.includes('/.git')) return false
   if (ZIP_DENY.has(low)) return false
   if (ZIP_ROOT_FILES.includes(low)) return true
-  if (low.startsWith('devtools/7z/')) return true
+  if (low.startsWith('tools/7z/')) return true
   if (low.startsWith('tools/')) return /\.(mjs|ps1|cmd|md)$/.test(low)
   if (low.startsWith('runtime/vcredist/')) return true
   if (low === 'home/cordis.patch.yml') return true

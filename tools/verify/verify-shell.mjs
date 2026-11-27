@@ -30,7 +30,7 @@ import { shellRoot } from '../lib/shell-root.mjs'
 
 const ROOT = shellRoot(import.meta.url)
 const NODE = join(ROOT, 'runtime/node/bin/node.exe')
-const SEVEN = join(ROOT, 'devtools/7z/7z.exe')
+const SEVEN = join(ROOT, 'tools/7z/7z.exe')
 /** --update-gate：换装后的窄门禁（只跑"壳换完必须立住"的那几项） */
 const UPDATE_GATE = process.argv.includes('--update-gate')
 /** 跑语法检查/子进程用哪个 node：内置运行时不在（空壳、新机器还没 bootstrap）就退回跑本脚本的这个 */
@@ -256,7 +256,7 @@ check('sync 已收敛且本检查不落盘', () => {
 check('必需文件齐全', () => {
   const need = ['dsh-portable.ps1', 'dsh-portable.cmd', 'start-web.cmd', 'start-desktop.cmd', 'env.cmd', 'check-update.cmd', 'version.json',
     'tools/patch/patch-market.mjs', 'tools/profile/plugin-shared.mjs', 'tools/profile/fix-pnpm-state.mjs', 'tools/lib/mask-log.mjs', 'devtools/clean-ship.mjs',
-    'tools/verify/verify-shell.mjs', 'tools/lib/say.ps1', 'devtools/7z/7z.exe', 'devtools/7z/7z.dll', 'runtime/node/bin/node.exe',
+    'tools/verify/verify-shell.mjs', 'tools/lib/say.ps1', 'tools/7z/7z.exe', 'tools/7z/7z.dll', 'runtime/node/bin/node.exe',
     'app/node_modules/@deepseek-ai/dsh/lib/bin.js', 'desktop/DeepSeek Harness.exe', 'desktop/resources/app.asar']
   const missing = need.filter((p) => !exists(join(ROOT, p)))
   add('必需文件齐全（' + need.length + ' 项）', missing.length === 0, missing.join(', '))
@@ -289,7 +289,7 @@ check('内置 node 可跑（runtime\\node\\bin\\node.exe）', () => {
   add('内置 node 可跑（runtime\\node\\bin\\node.exe）', r.code === 0 && /^v\d+\./.test(r.out.trim()), r.out.trim())
 })
 check('7z 链完整（真跑一次 7z i）', () => {
-  if (!exists(SEVEN) || !exists(join(ROOT, 'devtools/7z/7z.dll'))) { add('7z 链完整（真跑一次 7z i）', false, '缺少 exe 或 7z.dll'); return }
+  if (!exists(SEVEN) || !exists(join(ROOT, 'tools/7z/7z.dll'))) { add('7z 链完整（真跑一次 7z i）', false, '缺少 exe 或 7z.dll'); return }
   let out = ''
   try { out = execFileSync(SEVEN, ['i'], { encoding: 'utf8', timeout: 20000 }) } catch (e) { out = String((e && e.stdout) || '') }
   add('7z 链完整（真跑一次 7z i）', /7-Zip/i.test(out), (out.split('\n')[1] || '').trim())
