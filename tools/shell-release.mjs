@@ -142,7 +142,10 @@ export const DEFAULT_USER_OWNED = [
 // 规矩（用户 2026-11-27 明确）：每次发壳都要问一句"npm 上最新内核还是不是我写的这个上界"，
 // 适配到新内核就把上界往右推；不许一直写着不变（之前连续 6 个版本都没动，导致出厂组合
 // 内核 0.2.2-rc.5 落在自己声明的区间之外）。prepare 会自动比对 npm dist-tags 并大声提醒。
-const DEFAULT_REQUIRES = { dsh: '>=0.2.1-rc.5,<=0.2.2-rc.5', node: '>=24.0.0' }
+// node 下界跟着官方内核走：@deepseek-ai/dsh 从 0.2.2-rc.1 起声明 engines.node >= 24.9.0。
+// 我们捆绑的运行时是 v24.21.0（version.json.nodeVersion），写 24.9.0 既如实又不会挡住自己。
+// 以前写 >=24.0.0 是虚数：声称支持 24.0~24.8，而内核在那上面根本跑不起来。
+const DEFAULT_REQUIRES = { dsh: '>=0.2.1-rc.5,<=0.2.2-rc.5', node: '>=24.9.0' }
 const DEFAULT_UPDATER_MIN = 2
 const VALID_CHANNELS = ['stable', 'beta', 'rc', 'alpha']
 const GIT = process.env.SHELL_RELEASE_GIT || 'git'

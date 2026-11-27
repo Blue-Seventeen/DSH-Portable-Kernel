@@ -45,16 +45,28 @@ const out = (obj) => process.stdout.write(JSON.stringify(obj) + '\n')
 /** 找 import 块：`import { ... } from "node:fs/promises"`，允许跨行 */
 const IMPORT_RE = /import\s*\{([\s\S]*?)\}\s*from\s*(["'])node:fs\/promises\2\s*;?/
 
-const hasLinkClause = (text) => {
+const importNames = (text) => {
   const m = text.match(IMPORT_RE)
-  if (!m) return false
-  return m[1].split(',').some((x) => x.trim() === 'link')
+  return m ? m[1].split(',').map((x) => x.trim()) : null
 }
+
+/**
+ * shim 用到的三个名字必须都在同一个 import 子句里：
+ *   __h3rxLink（由 link 改名而来）、readFile、writeFile
+ * 2026-11-27 加固：原来只检查 link。若上游把 readFile/writeFile 拆到别的 import，
+ * 打进去的 shim 语法能过（node --check OK）但运行期 ReferenceError —— 属于"假成功"。
+ */
+const hasShimDeps = (text) => {
+  const names = importNames(text)
+  return !!names && names.includes('link') && names.includes('readFile') && names.includes('writeFile')
+}
+
+const hasLinkClause = (text) => hasShimDeps(text) // 向后兼容旧调用名
 
 const siteApply = (text) => {
   if (text.includes(MARK)) return text
   const m = text.match(IMPORT_RE)
-  if (!m || !hasLinkClause(text)) return null
+  if (!m || !hasShimDeps(text)) return null
   const clause = m[1]
     .split(',')
     .map((x) => x.trim())

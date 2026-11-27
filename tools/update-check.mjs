@@ -149,6 +149,15 @@ function desktopVersion() {
 const withTimeout = (ms) => { const c = new AbortController(); const t = setTimeout(() => c.abort(), ms); t.unref?.(); return c.signal }
 
 async function remote() {
+  // 离线夹具（只给测试用）：DSH_UPDATE_FIXTURE 指向一个 {app,desktop} 的 JSON，
+  // 直接返回、不联网。缓存与适配区间这两类逻辑不该依赖真实网络 —— 以前那两个用例
+  // 会因为一次网络抖动偶发变红（2026-11-27 实测过一次），门禁因此不可信。
+  if (process.env.DSH_UPDATE_FIXTURE) {
+    try {
+      const j = JSON.parse(read(process.env.DSH_UPDATE_FIXTURE))
+      return { app: typeof j.app === 'string' ? j.app : '', desktop: typeof j.desktop === 'string' ? j.desktop : '' }
+    } catch { return { app: '', desktop: '' } }
+  }
   const out = { app: '', desktop: '' }
   const jobs = [
     fetch('https://registry.npmjs.org/@deepseek-ai%2Fdsh/latest', { signal: withTimeout(4000) })

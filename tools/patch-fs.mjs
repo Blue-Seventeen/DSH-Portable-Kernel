@@ -36,10 +36,15 @@ const VERIFIED_APP = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.2', '0.2.2-rc.3', '0
  * 为什么不用整段字面：官方改一次缩进/参数名/重构就失配（2026-11-04 实测：0.2.2-rc.1 换行后 asar 直接 anchor-mismatch）。
  */
 const SITE_IF = /if\s*\(([^)]*createIfAbsent[^)]*)\)\s*try\s*\{/
-const SITE_LINK = /await\s+link\w*\s*\([^)]*\)\s*;/
+// 捕获实参：插入的回退分支必须用**源码里真实的变量名**，不能写死 tempPath/absolutePath。
+// 2026-11-27 实测：写死名字时，只要上游把参数改名，工具仍然报 applied、node --check 也过，
+// 但运行期直接 ReferenceError —— 属于"假成功"，比失配更危险。
+const SITE_LINK = /await\s+(link\w*)\s*\(([^)]*)\)\s*;/
 const SITE_CATCH = /\}\s*catch\s*\(\s*(\w+)\s*\)\s*\{/
 const FALLBACK_CODES = ['ENOTSUP', 'ENOSYS', 'EPERM', 'EACCES', 'EISDIR', 'EXDEV']
 const MARK_LINE = '/* ' + MARK + ' */'
+// 失配原因（给报告用）：'anchor'=结构没找到；'scope'=结构找到了但要插入的标识符不可信
+let adaptReason = 'anchor'
 
 /** 从 `{` 起配平找到对应的 `}`（跳过字符串/模板/注释；这两份源码里够用） */
 const matchBrace = (text, openAt) => {
@@ -78,8 +83,18 @@ const findSite = (text) => {
   const body = text.slice(bodyStart, bodyEnd)
   // 只处理"单语句"catch 体：这样 else 分支不必加花括号，还原也能按字符串精确剥离
   if (body.split(';').filter((s) => s.trim().length).length !== 1) return null
-  return { bodyStart, bodyEnd, errVar: catchM[1] }
+  // 回退分支会写 rename(arg0, arg1)：arg0/arg1 必须就是源码里那两个实参名
+  const args = String(link[2] || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const ident = /^[A-Za-z_$][\w$]*$/
+  if (args.length !== 2 || !args.every((a) => ident.test(a))) {
+    adaptReason = 'scope'
+    return null
+  }
+  return { bodyStart, bodyEnd, errVar: catchM[1], from: args[0], to: args[1] }
 }
+
+/** 插入代码要调用裸 rename：必须确认模块真的从 node:fs/promises 导入了这个名字 */
+const hasRenameBinding = (text) => /import\s*\{[^}]*\brename\b[^}]*\}\s*from\s*['"]node:fs\/promises['"]/.test(text)
 
 const indentAt = (text, at) => {
   const lineStart = text.lastIndexOf('\n', at) + 1
@@ -98,7 +113,7 @@ const siteApply = (text) => {
   const cond = site.errVar + ' && typeof ' + site.errVar + " === 'object' && ("
     + FALLBACK_CODES.map((c) => site.errVar + ".code === '" + c + "'").join(' || ') + ')'
   const insert = '\n' + indent + MARK_LINE + '\n' + indent
-    + 'if (' + cond + ') { await rename(tempPath, absolutePath); } else '
+    + 'if (' + cond + ') { await rename(' + site.from + ', ' + site.to + '); } else '
   return text.slice(0, site.bodyStart) + insert + text.slice(site.bodyStart)
 }
 
@@ -150,18 +165,27 @@ const asarVersion = () => {
 const syntaxOk = (file) => spawnSync(process.execPath, ['--check', file], { stdio: 'ignore', windowsHide: true }).status === 0
 
 // ---------------------------------------------------------------- npm 副本
+/**
+ * 文件级前置条件：插入代码会调用裸 rename()，所以整份文件必须真的从 node:fs/promises 导入了它。
+ * 这条只能放在文件级 —— 纯文本片段夹具（--selftest）里没有 import 行，放在 findSite 会误判。
+ */
 const appCheck = () => {
   if (!existsSync(TARGET)) return { state: 'missing' }
   const text = readFileSync(TARGET, 'utf8')
   const version = pkgVersion()
   if (text.includes(MARK)) return { state: 'applied', version }
-  if (findSite(text)) return { state: 'not-patched', version }
-  return { state: 'anchor-mismatch', version }
+  if (findSite(text)) {
+    if (!hasRenameBinding(text)) return { state: 'anchor-mismatch', version, reason: 'scope' }
+    return { state: 'not-patched', version }
+  }
+  return { state: 'anchor-mismatch', version, reason: adaptReason }
 }
 const appApply = () => {
   const version = pkgVersion()
   const cur = readFileSync(TARGET, 'utf8')
   if (cur.includes(MARK)) return { state: 'already', version }
+  // 写文件前最后一道闸：没有 rename 绑定就绝不落盘（否则语法过、运行期 ReferenceError）
+  if (findSite(cur) && !hasRenameBinding(cur)) return { state: 'anchor-mismatch', version, reason: 'scope' }
   const next = siteApply(cur)
   if (!next) return { state: 'anchor-mismatch', version }
   const bak = TARGET + '.bak-h3rx-' + stamp()

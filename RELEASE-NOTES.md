@@ -13,6 +13,42 @@
 
 ---
 
+## v0.7.1 — 2026-11-27
+
+清三条隐患：补丁工具会"假装成功"、node 下界是个虚数、两个测试真连网会假红。
+
+### 新增
+
+- 无。纯加固版本，命令与参数都没变。
+
+### 修复
+
+- **补丁工具会"假成功"**（用户模拟实测发现）：`patch-fs` 往 catch 体里插的那句回退代码，路径变量是**写死**的 `tempPath` / `absolutePath`。上游只要改个形参名，工具照样报 `applied`、`node --check` 也过、`--check` 报"已打上"，**运行期才 `ReferenceError`**——这种假成功比失配更危险（失配至少会被发现）。现在从 `link*(a, b)` 调用里抓**真实实参名**：改名跟着改；实参是表达式、或模块没从 `node:fs/promises` 导入 `rename`，一律判失配拒绝写入。
+- **附件补丁同一类问题**：它的 shim 要用 `readFile` / `writeFile`，但原来只检查 `link` 在不在同一个 import 子句里。现在三个名字缺一不可。
+- **`requires.node` 是虚数**：官方内核从 `0.2.2-rc.1` 起声明 `engines.node >= 24.9.0`，我们清单一直写 `>=24.0.0`——声称支持 24.0~24.8，而内核在那上面根本跑不起来。现在下界改成 `>=24.9.0`，并加测试保证它永远 ≤ 我们实际捆绑的运行时（当前 v24.21.0）。
+
+### 优化
+
+- **联网测试改成离线夹具**：`update-check` 的两个缓存用例原来真连网，一次抖动就让门禁假红（本轮实际发生过一次）。现在有 `DSH_UPDATE_FIXTURE` 通道，耗时从 ~1400ms 降到 ~450ms，且结论确定（连跑两遍都过）。
+- 新增 7 条机械守卫（148 项）：三条行为级反向验证（形参改名要跟随 / 表达式实参要拒绝 / 缺 rename 要拒绝）+ 四条源码级契约。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变。`requires.node` 下界从 24.0.0 提到 24.9.0（跟着官方内核走；我们捆绑的 v24.21.0 不受影响）。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（本次变更 5 个：`tools\patch-fs.mjs`、`tools\patch-attachment.mjs`、`tools\update-check.mjs`、`shell-version.json`、`RELEASE-NOTES.md`）。
+- 只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.7.0 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.7.1.zip` 整包覆盖壳文件（**先备份 `home\profiles`**，zip 里含出厂配置）。
+
+---
+
 ## v0.7.0 — 2026-11-27
 
 **壳与内核兼容面解耦**：以后官方发新内核，只要没动我们打补丁的文件，我们**只推一个 JSON**，不发新壳、用户不用重装。
