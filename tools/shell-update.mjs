@@ -82,6 +82,7 @@ const USAGE = [
 export const ROOT_SHELL_FILES = [
   'dsh-portable.ps1', 'preflight.cmd', 'start-web.cmd', 'start-desktop.cmd', 'dsh-portable.cmd',
   'dsh.cmd', 'dsh-plugin.cmd', 'dsh-plugin-shared.cmd', 'check-update.cmd', 'env.cmd',
+  'update.cmd',
 ]
 /**
  * 用户可变文件：正常使用中会被插件市场 / fix-pnpm-state / 用户自己改写。
@@ -746,6 +747,8 @@ const buildSummary = (m, installed, rows, removed, blockers, opts) => {
 }
 
 const runCheck = async (opts) => {
+  // 真查网络前先给一句话：GitHub 慢的时候这里可能停几秒，没反馈就像卡死（2026-11-27 反馈）
+  if (!opts.json && !opts.notice && !opts.brief) progress('正在检查更新…（网络慢时最多 ~15 秒）')
   // 缓存：只有"取不到远端"或显式 --cached 时才用；有缓存且未过期就直接回放
   const sourceKey = opts.manifest || (opts.to ? RAW_BASE + '/refs/tags/' + tagFor(opts.to) + '/' + SHELL_MANIFEST : DEFAULT_MANIFEST)
   const cache = opts.cached > 0 ? readCache() : null
@@ -756,6 +759,7 @@ const runCheck = async (opts) => {
   const cacheLocalOk = !!cache && !!cache.summary
     && String(cache.summary.local || '') === String(installedNow.shellVersion || '')
   if (cache && cacheLocalOk && cache.at && cache.source === sourceKey && Date.now() - Number(cache.at) < opts.cached * 60000 && cache.summary) {
+    if (!opts.json && !opts.notice && !opts.brief) progressEnd()
     const s = cache.summary
     if (opts.notice) {
       const sn = snoozedFor(s.remote) || snoozedFor(s.shellVersion || '')
@@ -773,6 +777,7 @@ const runCheck = async (opts) => {
   }
 
   const m = await loadManifest(opts)
+  if (!opts.json && !opts.notice && !opts.brief) progressEnd()
   if (!m.ok) return fail(opts.json, 'check', m.errorCode, m.error)
   const installed = readLocalManifest()
   const rows = computePlan(m, installed)
@@ -875,10 +880,18 @@ const defaultStageDir = (version) => {
   return join(base, 'shell-' + safe)
 }
 
+// 进度输出：全部走 stderr，避免污染 --json / --notice 的 stdout。
+// TTY 上原地刷新（\r），重定向到文件时改为逐行，日志仍然可读。
+const PROGRESS_TTY = Boolean(process.stderr.isTTY)
+const progress = (s) => { try { process.stderr.write(PROGRESS_TTY ? '\r  ' + s + '   ' : '  ' + s + '\n') } catch { } }
+const progressEnd = () => { try { if (PROGRESS_TTY) process.stderr.write('\n') } catch { } }
+
 /** 小并发拉取（CONCURRENCY 路），结果按清单顺序落回数组，输出仍然确定 */
-const downloadAll = async (targets, base) => {
+const downloadAll = async (targets, base, label) => {
   const out = new Array(targets.length)
   let idx = 0
+  let finished = 0
+  let totalBytes = 0
   const worker = async () => {
     while (true) {
       const i = idx++
@@ -886,10 +899,17 @@ const downloadAll = async (targets, base) => {
       const t = targets[i]
       const got = await getBytes(base, t.path)
       out[i] = Object.assign({}, t, got)
+      // 没进度用户会以为卡死（2026-11-27 用户反馈）：每落一个文件报一次，含累计字节
+      if (label) {
+        finished += 1
+        totalBytes += (got && got.buf ? got.buf.length : 0)
+        progress(label + ' ' + finished + '/' + targets.length + '  ' + t.path + '  ' + Math.round(totalBytes / 1024) + ' KB')
+      }
     }
   }
   const n = Math.min(CONCURRENCY, targets.length)
   await Promise.all(Array.from({ length: n }, worker))
+  if (label) progressEnd()
   return out
 }
 
@@ -949,6 +969,7 @@ const runStage = async (opts) => {
   const installed = readLocalManifest()
   const rows = computePlan(m, installed)
   const targets = rows.filter((r) => r.action === 'add' || r.action === 'update')
+  if (!opts.json) line('正在准备：下载并校验 ' + m.shellVersion + ' 的壳文件…')
   const stageDir = guardStageDir(opts.stage ? opts.stage : defaultStageDir(m.shellVersion))
   const log = (s) => line(s)
 
@@ -971,7 +992,7 @@ const runStage = async (opts) => {
     return finish(EXIT_OK)
   }
 
-  const got = await downloadAll(targets, m.base)
+  const got = await downloadAll(targets, m.base, '下载')
   const bad = []
   const warnings = []
   const okFiles = []
@@ -1099,6 +1120,7 @@ const runApply = async (opts) => {
   if (stageCode !== 0) return fail(opts.json, 'apply', 'stage-failed', '取文件/校验阶段失败，没有改动任何本地文件')
   if (!existsSync(join(stageDir, SHELL_MANIFEST))) return fail(opts.json, 'apply', 'stage-failed', 'staging 里没有清单文件')
 
+  if (!opts.json) line('正在替换壳文件（换装前会先备份到 cache\\shell-backup-<时间戳>）…')
   const res = await applyUpdate({
     root: ROOT,
     stage: stageDir,
@@ -1122,6 +1144,8 @@ const runApply = async (opts) => {
   // → 商城装/卸插件不会被 pnpm 以 store 不一致拒绝（2026-11-04 事故的兜底）。
   if (res.ok) {
     try {
+      // 这一步内部会 spawn pnpm，最长给到 2 分钟：不说一声用户会以为卡死
+      if (!opts.json) line('正在对齐 pnpm 状态…（最多 2 分钟，不关窗口就行）')
       const fix = join(ROOT, 'tools', 'fix-pnpm-state.mjs')
       if (existsSync(fix)) {
         const r = spawnSync(process.execPath, [fix, '--quiet'], { cwd: ROOT, encoding: 'utf8', timeout: 120000, windowsHide: true })
@@ -1161,7 +1185,7 @@ const runStageInner = async (m, installed, opts, stageDir) => {
   }
   mkdirSync(stageDir, { recursive: true })
   if (targets.length === 0) { writeFileSync(join(stageDir, SHELL_MANIFEST), m.raw); return 0 }
-  const got = await downloadAll(targets, m.base)
+  const got = await downloadAll(targets, m.base, '下载')
   const bad = []
   for (const g of got) {
     if (!g.ok) { bad.push(g.path + '（下载失败：' + g.error + '）'); continue }

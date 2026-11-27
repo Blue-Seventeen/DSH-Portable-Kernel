@@ -442,6 +442,7 @@ export const listTagFiles = (tag) => {
 /** 根目录随壳走的一批脚本 */
 const ZIP_ROOT_FILES = [
   'dsh-portable.ps1', 'preflight.cmd', 'start-web.cmd', 'start-desktop.cmd', 'dsh-portable.cmd',
+  'update.cmd',
   'dsh.cmd', 'dsh-plugin.cmd', 'dsh-plugin-shared.cmd', 'check-update.cmd', 'env.cmd',
   'readme.md', 'license', 'license.md', 'license.txt', 'release-notes.md', 'releasing.md',
 ]

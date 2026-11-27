@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.6.1",
-  "tag": "v0.6.1",
-  "releasedAt": "2026-11-27T02:03:26.059Z",
+  "shellVersion": "0.6.2",
+  "tag": "v0.6.2",
+  "releasedAt": "2026-11-27T03:06:48.230Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T02:04:17.910Z",
+  "generatedAt": "2026-11-27T03:07:38.406Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<0.2.2-rc.2",
     "node": ">=24.0.0"
@@ -14,12 +14,12 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "b062f56930f52381aee8074eaf6c4233a2eb32f71c43e867716e747877a8d30a",
-    "RELEASE-NOTES.md": "db2e958617181dc31ed54fb89b3ffa8afe4b34430c9daae8af18f669ed6ac9d7",
+    "RELEASE-NOTES.md": "c64c72ef51ce1ce36a6c913179d1b74f664b7e44e343110dadd841d5fcd72909",
     "check-update.cmd": "49644c6f2378eaab834db874e41bc59c89a2221508becea707eb22613c146651",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
-    "dsh-portable.ps1": "a98f10a8a4b348b4ffa0dfdc42f4b148f75b27569166190f07d429669491aadd",
+    "dsh-portable.ps1": "8d54d199c0d9092b10452d9d14d0be41198e2d84d400aecfeeabb31c90459859",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
     "env.cmd": "6096995b80beec9de3008f067c74b057acf5175b4d7e2eb522ca73ccc81ea751",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
@@ -62,19 +62,20 @@
     "tools/plugin-shared.mjs": "6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7",
     "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
-    "tools/say.ps1": "9632c9cdfcb8c52019783d4721e209ee85f3c323330fe0bfcaf5b45e6ccbe886",
+    "tools/say.ps1": "dbc94bbf69bf6fdac2bab9f5eed89ef4bfb702cce831bbabaaf66a22b7d3faa7",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
     "tools/selftest-store.mjs": "1da327a64c5e6a918f2aeab1da085b570735f7617479fbd6648d8a4c460aa706",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
-    "tools/shell-release.mjs": "d54aa0b2f9b743c6f3d6491257b577443569c56289cbb8f62415ecfcdd32d9c5",
-    "tools/shell-update.mjs": "080319037cfaca4961c9eff1dd784226662c395002c2d15f68babd4603ce3d4d",
+    "tools/shell-release.mjs": "4a9fd19dc5f7bdc3249cca026501267a623d046adc3960f40d8c7869b6fdc466",
+    "tools/shell-update.mjs": "5caa883884cddbc57c74e3f7368a8e9967dc1fa5ac0649b1890000d5a3a319ed",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "26900602fdb1db76c6f0ace990e249d658d1a0e008c2cf02e341597d8a90734f",
     "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
-    "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff"
+    "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
+    "update.cmd": "f3963eb47539509cb2bfbface9cac89437fcf9d22fde2bf112f07b0f83185808"
   },
   "userOwned": [
     "home/cordis.patch.yml",
@@ -88,31 +89,33 @@
   ],
   "notes": {
     "added": [
-      "无。这是纯修复版本：只换体检读取残留的方式，命令、参数和输出格式都不变。"
+      "**`update.cmd`：永久升级入口**。双击即用：先查有没有新版 → 一行结论 → 问一句 Y/n（20 秒不选就自动开始）→ 如果你还开着 DeepSeek 就提示你关掉并自动等待 → 换装 → 完成。**这个文件的内容从此冻结**：名字、行为、依赖都不再变，因为老版本只认它当初带的那个名字，改名或重写等于把所有老用户的升级路断掉。",
+      "换装过程现在**每个阶段都有输出**：正在检查更新（最多约 15 秒）/ 下载并校验壳文件（逐文件计数 + 累计 KB）/ 正在替换壳文件 / 正在对齐 pnpm 状态（最多 2 分钟）。以前这几步是静默的，慢一点就像卡死。"
     ],
     "fixed": [
-      "**`dsh-portable.cmd` 体检卡在 `login-bak` 之后不动**（实测事故）：统计\"残留文件\"时对整棵 `tmp` 做递归遍历。`tmp` 里会堆运行时目录、Office 转换临时目录、自测夹具，实测某台机器 84 万个文件——在 exFAT 上遍历一遍烧掉 85% CPU、3.9 分钟，用户看到的就是\"半天不动\"。现在只查真正会留下半成品的位置（两个更新日志、`app.next`/`desktop.next`、`cache\\update\\*.part`、三个目录**顶层**的散落临时文件），常数级开销：同一台机器从\"跑不完\"降到 **220 毫秒**。",
-      "**残留计数会把截图临时文件也算进去**：Windows 的文件系统过滤器参数按 8.3 后缀匹配，`*.tmp` 会连 `xxx.tmp.png`（会话截图临时文件）一起算上，凭空多报几百个残留。改用标准通配符逐条比对。"
+      "**升级入口是断的**（用户实测）：唯一带“要不要升级 Y/N”的文件是 `preflight.cmd`，但它没有被任何脚本调用——双击 `start-desktop.cmd` 走不到它，双击 `dsh-portable.cmd` 只跑体检，所以两条路都不会提示升级。现在升级收敛到一个专门入口 `update.cmd`。",
+      "**提示文案指向不存在的东西**：v0.6.0 写的是“双击 dsh-portable.cmd，菜单里选 U”——可那个入口只打印体检结果，根本没有菜单。现在一律指向 `update.cmd`。",
+      "**体检不再只报“有新版”**：`shell-upd` 显示可更新时，紧跟一行“升级方式：关掉 DeepSeek 后双击本目录的 update.cmd”，照着做就行。"
     ],
     "optimized": [
-      "体检的残留统计对每个目录只遍历一次（原来 4 个模式各列一遍）。",
-      "本地测试套件 119 → 121 项（含\"不许递归\"\"不许用过滤器参数\"\"深层子目录一律不算\"三条断言，各做过反向验证）。"
+      "本地壳文件被你手改过（版本没变、只是文件不一致）时不再弹升级询问：那种情况算“修复”，不该显示 `x.y.z -> x.y.z` 去吓人。",
+      "检查更新的进度提示写到 stderr，`--json` 等机器可读输出完全不受影响。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变、`requires.dsh` 不变。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变、`requires.dsh` 不变，`shell-update` 的命令行参数一个没改。"
     ],
     "upgrade": [
-      "替换清单里的壳文件（本次只改 `dsh-portable.ps1` 一个文件，另加发布说明）。",
+      "替换清单里的壳文件（本次变更 6 个：新增 `update.cmd`，更新 `dsh-portable.ps1`、`tools\\say.ps1`、`tools\\shell-update.mjs`、`tools\\shell-release.mjs`、`RELEASE-NOTES.md`）。",
       "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.6.0 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.6.1.zip` 整包覆盖壳文件。",
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.6.1 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.6.2.zip` 整包覆盖壳文件。",
       "---"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.6.2",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -123,8 +126,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.6.1.zip",
-    "sha256": "d9079dbd6d882f2422664b764eba89c5c560c99f83d5c1e9423b18be059daf11",
-    "bytes": 1893918
+    "name": "harness-shell-0.6.2.zip",
+    "sha256": "d892bf718cc1df4141995ef5eb809a8db988555778ce67f66bf45f2a80c1de66",
+    "bytes": 1898064
   }
 }

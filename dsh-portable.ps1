@@ -2010,6 +2010,11 @@ switch ($Action) {
       else { $shUpd = '已是最新' }
     }
     Say ("shell-upd : " + $shUpd)
+    # 壳有更新时给一条能直接照做的指引。不要写"菜单选 U"——dsh-portable.cmd 只是体检、
+    # 它不出菜单（2026-11-27 用户照旧文案去找菜单，找不到，以为升级入口不存在）。
+    if ($shUpd -match "可更新" -and (Test-Path -LiteralPath (Join-Path $Root "update.cmd"))) {
+      Say "            升级方式：关掉 DeepSeek 后双击本目录的 update.cmd（只换壳文件，配置不动）"
+    }
     Say ("journal   : " + $(if (Test-Path -LiteralPath $Journal2) { '有中断残留（运行 dsh-portable.cmd shell-update recover）' } else { 'none' }))
     Say ("office    : " + (Get-OfficePatchState))
     Say ("login-bak : " + (Get-LoginBackupCount))
