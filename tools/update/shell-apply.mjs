@@ -791,6 +791,16 @@ const applyLocked = async (ctx, result, backup) => {
       try { writeJsonAtomic(journalPath, journal) } catch (e) { result.warnings.push('更新 journal 失败：' + errText(e)) }
       logger('换装完成，跑自检：' + ctx.verify.cmd.join(' '))
       const v = await runCommand(ctx.verify.cmd, root, ctx.verify.quiet === true)
+      // 结构迁移会把自检脚本挪位置：老版本把自己的路径写死，换装后那个文件没了，
+      // node 直接 Cannot find module。这**不是壳坏了**，是我们的路径假设过期了。
+      // 以前这种情形一律回滚 —— 等于用'别升级'惩罚用户（0.5~0.7 升 1.x 全被卡住）。
+      // 现在只把它记为'跳过'并大声提示，让它继续完成换装。
+      const scriptGone = !v.ok && /Cannot find module|ERR_MODULE_NOT_FOUND/i.test(String(v.output || ''))
+      if (scriptGone) {
+        result.verify = { ok: null, code: v.code, failed: [], ran: false, skipped: true, reason: 'verify-script-missing' }
+        result.warnings.push('自检脚本没找到（这次换装改了它的位置），本轮跳过自检；请手动跑一次 dsh-portable.cmd verify 复核')
+        logger('  自检脚本路径失效，跳过自检（不当作失败，也不回滚）')
+      } else {
       result.verify = { ok: v.ok, code: v.code, failed: extractFailures(v.output, v.code), ran: true }
       if (!v.ok) {
         result.ok = false
@@ -808,6 +818,7 @@ const applyLocked = async (ctx, result, backup) => {
         return result
       }
       logger('  自检通过')
+      }
     }
 
     // 6) 迁移（语义 8）：失败只记 message，不整体回滚

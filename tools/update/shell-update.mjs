@@ -1228,7 +1228,13 @@ const runStage = async (opts) => {
 // ---- apply / rollback / recover -----------------------------------------------
 const verifyCmd = (opts) => {
   if (opts.noVerify) return { cmd: null, enabled: false }
-  const vp = join(ROOT, 'tools', 'verify', 'verify-shell.mjs')
+  // 自检脚本可能在这些位置：1.0.0+ 分组后的真身，或老结构的扁平路径（现在是转发桩）。
+  // 不写死单一路径 —— 少一处假设就少一次'换装后被自己的自检判死'。
+  const candidates = [
+    join(ROOT, 'tools', 'verify', 'verify-shell.mjs'),
+    join(ROOT, 'tools', 'verify-shell.mjs'),
+  ]
+  const vp = candidates.find((x) => existsSync(x)) || candidates[0]
   return { cmd: [process.execPath, vp, '--update-gate'], enabled: true, quiet: !!opts.json }
 }
 

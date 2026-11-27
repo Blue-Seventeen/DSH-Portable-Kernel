@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.5",
-  "tag": "v1.0.5",
-  "releasedAt": "2026-11-27T13:32:18.542Z",
+  "shellVersion": "1.0.6",
+  "tag": "v1.0.6",
+  "releasedAt": "2026-11-27T14:35:58.297Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T13:33:12.625Z",
+  "generatedAt": "2026-11-27T14:36:48.120Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "bc51c416ca3591a50cdec6893807c32047ef504a8745c98479cdc3a997f50e8a",
+    "RELEASE-NOTES.md": "a861c525d3252fe0895680f2fc76fb3549ca375d07735ca5ef8bdddcf1b30162",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
@@ -63,11 +63,12 @@
     "tools/profile/plugin-shared.mjs": "c1933c4dbb477c5e4ec8c4e16fdd440f5db4695dc398c47c74854a58ec2a35f4",
     "tools/profile/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
-    "tools/update/shell-apply.mjs": "7390c295b8429577ff1dc34c9ad0b109a7a5c7199c1ee0fd307bf039996790d8",
+    "tools/update/shell-apply.mjs": "8935631611950b4e6f126b7f39102558fe05234ed64b8ed78789a35d51563f95",
     "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
-    "tools/update/shell-update.mjs": "c18c164d780608e79cd26dd57bcbbc3a905feacc0ca15b4f6d2d42a76675f530",
+    "tools/update/shell-update.mjs": "a2374b2eb90b12c055487b87c62647d9ff7af230e5fa17df9851137053dfcef8",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
     "tools/update/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
+    "tools/verify-shell.mjs": "2849640e23eb7469a2142735a869ce780e574624296edc1cc53695087bca57eb",
     "tools/verify/verify-shell.mjs": "237de68df8e667b37e0eda4cfc3a5e3674719d7b747d5b231176d512cacec8d7",
     "update.cmd": "aba99a52ce71e37982e75562249671a511337d20d371a1eb5a4f73032646febd"
   },
@@ -83,24 +84,26 @@
   ],
   "notes": {
     "added": [
-      "新增守卫用例：`verify` 的必需文件清单里不许出现 `devtools/`，对 `devtools` 的任何执行必须先过 `MAINT()` 存在性守卫。"
+      "`tools\\verify-shell.mjs` **兼容转发桩**：只把参数与退出码原样交给 `tools\\verify\\verify-shell.mjs`，自己不实现任何检查。老版本把\"换装后自检\"的路径写死成这个位置，留着它就等于给老客户端留了一条能走通的路。",
+      "`verifyCmd` 改为**候选路径**：先找 `tools\\verify\\verify-shell.mjs`，再找扁平兼容路径，不再写死单一位置。"
     ],
     "fixed": [
-      "**`dsh-portable.cmd verify` 在用户机器上必然报红。** `verify-shell` 里有 4 处引用 `devtools/`（`selftest-drain` / `selftest-patches` / `selftest-store` / 必需文件清单里的 `clean-ship.mjs`）。`devtools/` 是维护者工具，**不随壳下发**，所以用户环境里一个都没有——三项自测直接 FAIL，必需文件清单还常年缺一项。",
-      "现在：三项维护者自测在没有 `devtools` 时记 SKIP（不算失败、不算通过），必需文件清单移除 `clean-ship.mjs`。工作区（有 devtools）里行为不变，仍然真跑。"
+      "**0.6.2 ~ 0.7.x 带清单的壳永远升不到 1.x。** 老客户端换装完成、去跑自检时，那条写死的 `tools\\verify-shell.mjs` 已经被换装删掉 → node 报 `Cannot find module` → 旧代码判定\"自检不通过\"→ 整份回滚。用户看到的是\"升级失败，已回滚\"，重试多少次都一样。",
+      "现在两条路都通：新结构里有转发桩，自检照常**真跑**（安全网没缺口）；万一将来又挪了位置，自检脚本确实消失时**记\"跳过\"而不是回滚**，并提示用户手动跑一次 `verify` 复核 —— 不再用\"不许升级\"惩罚用户。",
+      "跳过逻辑只认\"脚本找不到\"这一种情形（`Cannot find module` / `ERR_MODULE_NOT_FOUND`）；自检**真跑失败**依旧整份回滚，安全网没被拆掉。"
     ],
     "optimized": [
-      "SKIP 行会写明原因（维护者自测、devtools 不随壳下发），不让用户以为是自己的环境坏了。"
+      "新增 5 条用例（共 175 条）：桩存在且在清单里、参数与退出码透传、脚本消失→跳过、真失败→仍回滚、`verifyCmd` 候选路径。"
     ],
     "breaking": [],
     "upgrade": [
-      "只替换 `tools\\verify\\verify-shell.mjs` 与本说明。"
+      "新增 `tools\\verify-shell.mjs`（约 1.9 KB 的转发桩），替换 `tools\\update\\shell-update.mjs`、`tools\\update\\shell-apply.mjs` 与本说明。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.5",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.6",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -111,8 +114,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.5.zip",
-    "sha256": "e0eca2c415d294ce379b5a7afe6d4de00cabaf87be7f3da7837d484e03fd924a",
-    "bytes": 1851723
+    "name": "harness-shell-1.0.6.zip",
+    "sha256": "a0799d9e26a05a0fb770926e4a51d3f98f5681fc85986a16f01317c7d063dcae",
+    "bytes": 1854341
   }
 }
