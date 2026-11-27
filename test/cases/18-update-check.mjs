@@ -76,6 +76,9 @@ const fixture = () => {
     mkdirSync(dir, { recursive: true })
     fixtureFile = join(dir, 'remote.json')
     writeFileSync(fixtureFile, JSON.stringify({ app: '0.2.2-rc.5', desktop: '0.2.2-rc.2' }), 'utf8')
+    // 运行器没有 teardown 钩子，就挂在进程退出上自净：
+    // 早先这里不清，跑一圈就在 tmp\ 里留一个 shell-test-update-check-fixture-*。
+    process.on('exit', () => { try { rmSync(dir, { recursive: true, force: true }) } catch {} })
   }
   return fixtureFile
 }

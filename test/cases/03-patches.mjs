@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { ROOT, run, assert, tmpDir, jsonObject } from '../lib.mjs'
 
@@ -48,8 +48,13 @@ export const cases = [
     name: '暂存引擎自测（队列/快照/回滚，临时根）',
     fn() {
       const dir = tmpDir('stage')
-      const r = run(['tools/profile/plugin-shared.mjs', '--root', dir, 'stage-selftest', '--quiet'])
-      assert(r.code === 0, r.out.trim().slice(-300))
+      try {
+        const r = run(['tools/profile/plugin-shared.mjs', '--root', dir, 'stage-selftest', '--quiet'])
+        assert(r.code === 0, r.out.trim().slice(-300))
+      } finally {
+        // 夹具必须自净：早先这条用例没清，跑一圈就在 tmp\ 里留一个 shell-test-stage-*。
+        rmSync(dir, { recursive: true, force: true })
+      }
     },
   },
   {
