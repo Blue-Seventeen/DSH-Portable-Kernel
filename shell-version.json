@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.2",
-  "tag": "v1.0.2",
-  "releasedAt": "2026-11-27T08:51:56.612Z",
+  "shellVersion": "1.0.3",
+  "tag": "v1.0.3",
+  "releasedAt": "2026-11-27T09:00:22.920Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T08:52:49.747Z",
+  "generatedAt": "2026-11-27T09:01:16.164Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "c725052d7deb9b3976660bac11a0e148c6752166436d96efd7628bdc7504334e",
+    "RELEASE-NOTES.md": "e2d276e756b4383e64316735b8f661d4b756f3e21530fd50d993f870f6a1f773",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
@@ -63,7 +63,7 @@
     "tools/profile/plugin-shared.mjs": "c1933c4dbb477c5e4ec8c4e16fdd440f5db4695dc398c47c74854a58ec2a35f4",
     "tools/profile/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
-    "tools/update/shell-apply.mjs": "0db667346460b60a2d3002dc33a22a8543aad0d8aed09f19a425de9af34fb9f9",
+    "tools/update/shell-apply.mjs": "618003ae4d44a4fffedea76def998ae1818369000659a848421a30b9df3a484f",
     "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
     "tools/update/shell-update.mjs": "92122afc16ffac6fb5fc9645ed147aa8e483fa76caddbe96d50bea1e5dd1bbea",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
@@ -83,26 +83,24 @@
   ],
   "notes": {
     "added": [
-      "化石清单清理加了三重保护：不再删\"新版清单里仍然存在\"的路径（否则 7z 会被当残留清掉）。"
+      "`shell-apply` 增加瞬时锁重试：`EBUSY`/`EPERM`/`EACCES`/`ENOTEMPTY` 退避重试 5 次（50→800ms），其他错误照旧立即抛。"
     ],
     "fixed": [
-      "**7z 回到壳里**（`tools\\7z\\`，58 个文件）。它至少在三处运行期要用：`--full` 整包换装、更新内核时解官方 tar.gz、更新桌面窗口时解 NSIS 里的 `$PLUGINSDIR\\app-64.7z`（系统 tar 顶不了这个）。",
-      "1.0.1 的用户如果走过 `--full` 或更新过内核/桌面，会撞上 `no-7z`。装完 1.0.2 就恢复。",
-      "`clean-ship` 是维护者命令，用户壳里没有它；现在改成优雅提示，而不是\"找不到 xxx\"报错。"
+      "1.0.2 验证时实测到：`--full` 用 `tools\\7z\\7z.exe` 解完整包后，紧接着按目标清单删这个 7z 会报 `EPERM`，整次换装失败。Windows 上刚执行过的 exe、杀软实时扫描、索引器都会短暂持有句柄——这是**瞬时**状态，不是真占用。",
+      "现在重试即可通过；同样的降级换装已实测成功（\"2 个旧文件已删\"）。"
     ],
     "optimized": [
-      "新增运行期依赖守卫测试：清单必须带 7z，运行期脚本不许把 7z 指向 `devtools\\`，引用 `devtools\\` 的任何一行都必须紧跟存在性检查。"
+      "回滚路径（删除本次新增的文件）也走同一套重试。"
     ],
     "breaking": [],
     "upgrade": [
-      "新增 `tools\\7z\\7z.exe` 与 `tools\\7z\\7z.dll`（约 2.4 MB），替换 updater 与本说明。",
-      "1.0.1 的用户清单里没有这两个文件，属于\"新增\"，不会影响其他文件。"
+      "只替换 `tools\\update\\shell-apply.mjs` 与本说明。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.2",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.3",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -113,8 +111,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.2.zip",
-    "sha256": "c3e2f25952f3f648e6cc34e4914ea79f41aad1e6060d2ff80578dc702c182713",
-    "bytes": 1848460
+    "name": "harness-shell-1.0.3.zip",
+    "sha256": "f49fc9ac9190de1f53be1b93df66832b8dfa714fed6b67781c9e36ae6f33810d",
+    "bytes": 1849275
   }
 }

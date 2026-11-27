@@ -96,6 +96,27 @@ const readJsonFile = (abs) => {
   try { return JSON.parse(readFileSync(abs, 'utf8')) } catch { return null }
 }
 
+// ---- 瞬时锁重试 ---------------------------------------------------------------
+/**
+ * Windows 上 EBUSY/EPERM 是**瞬时**的：刚执行过的 exe、杀软实时扫描、索引器都可能
+ * 短暂持有句柄。退避重试三四次基本都能过，不该让整次换装失败。
+ * （2026-11-27 实测：--full 之后删 tools\7z\7z.exe 报 EPERM，手动重跑就成功。）
+ */
+const RETRY_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY'])
+const withRetry = (fn, attempts = 5) => {
+  let last = null
+  for (let i = 0; i < attempts; i++) {
+    try { return fn() } catch (e) {
+      last = e
+      if (!RETRY_CODES.has(e && e.code)) throw e
+      // 同步旋塞式退避：50ms → 100 → 200 → 400（同步代码里睡不了，用忙等换确定性）
+      const until = Date.now() + 50 * Math.pow(2, i)
+      while (Date.now() < until) { /* spin */ }
+    }
+  }
+  throw last
+}
+
 // ---- 落盘：一律 .new + rename，绝不在原路径上就地写 ---------------------------------
 const writeFileAtomic = (abs, buf) => {
   mkdirSync(dirname(abs), { recursive: true })
@@ -105,7 +126,7 @@ const writeFileAtomic = (abs, buf) => {
     const got = sha256File(tmp)
     const want = sha256(buf)
     if (got !== want) throw new Error('落盘后 sha256 与期望不一致：' + abs)
-    renameSync(tmp, abs) // Windows 上等价 MoveFileEx(REPLACE_EXISTING)：覆盖是原子的
+    withRetry(() => renameSync(tmp, abs)) // Windows 上等价 MoveFileEx(REPLACE_EXISTING)：覆盖是原子的
   } catch (e) {
     try { rmSync(tmp, { force: true }) } catch {}
     throw e
@@ -444,7 +465,7 @@ const restoreBackup = (ctx, backupDir, meta) => {
       }
       try { writeFileAtomic(abs, buf); restored.push(safeRel) } catch (e) { errors.push('还原失败：' + safeRel + '（' + errText(e) + '）') }
     } else if (existsSync(abs)) {
-      try { rmSync(abs, { force: true }); removed.push(safeRel) } catch (e) { errors.push('删除本次新增的文件失败：' + safeRel + '（' + errText(e) + '）') }
+      try { withRetry(() => rmSync(abs, { force: true })); removed.push(safeRel) } catch (e) { errors.push('删除本次新增的文件失败：' + safeRel + '（' + errText(e) + '）') }
     }
     try { rmSync(abs + '.new', { force: true }) } catch {}
   }
@@ -698,7 +719,7 @@ export const applyUpdate = async (opts) => {
     for (const rel of plan.deletes) {
       const abs = absOf(root, rel)
       if (!isInside(root, abs)) throw new Error('删除路径逃出 root：' + rel)
-      rmSync(abs, { force: true })
+      withRetry(() => rmSync(abs, { force: true }))
       deleted.push(rel)
       logger('  - ' + rel + '  已删除')
     }
