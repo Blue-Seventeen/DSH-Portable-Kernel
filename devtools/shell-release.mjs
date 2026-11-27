@@ -295,6 +295,9 @@ const listItems = (lines) => {
     if (/^```/.test(l)) { fence = !fence; continue }
     if (!l) continue
     if (!fence && /^#{1,6}\s/.test(l)) continue
+    // 水平分隔线不是内容：`---` / `***` / `___` 曾经被当成列表项塞进 notes.rollback，
+    // 于是清单里出现一条 item = "---"（1.0.1 就是这样）。
+    if (/^([-*_])\1{2,}$/.test(l)) continue
     const item = l
       .replace(/^[-*+•]\s+/, '')
       .replace(/^\d+[.)]\s+/, '')

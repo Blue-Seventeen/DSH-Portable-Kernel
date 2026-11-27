@@ -120,4 +120,26 @@ export const cases = [
       assert(/export const pruneLegacy/.test(src), '没有 pruneLegacy（已是最新时的自愈清理）')
     },
   },
+
+  {
+    name: '发布说明解析：水平分隔线不许混进 notes（1.0.1 出过一次 "---" 条目）',
+    fn() {
+      const rel = pathToFileURL(join(ROOT, 'devtools', 'shell-release.mjs')).href
+      // 动态加载：devtools 不进壳，但测试在自己的工作区里跑，路径是有的
+      return import(rel).then((m) => {
+        const text = readFileSync(join(ROOT, 'RELEASE-NOTES.md'), 'utf8')
+        const r = m.parseNotes(text, '1.0.1')
+        assert(r.found, '解析不到 v1.0.1 小节')
+        for (const k of Object.keys(r.notes)) {
+          for (const item of r.notes[k]) {
+            assert(item !== '---', k + ' 里又出现了分隔线条目')
+            assert(!/^[-*_]{3,}$/.test(item), k + ' 里有分隔线残留：' + item)
+          }
+        }
+        for (const sec of ['added', 'fixed', 'optimized', 'breaking', 'upgrade', 'rollback']) {
+          assert(Array.isArray(r.notes[sec]), 'notes 缺小节：' + sec)
+        }
+      })
+    },
+  },
 ]
