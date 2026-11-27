@@ -252,7 +252,13 @@ if (isMain) {
   const argv = process.argv.slice(2)
   const rootArg = argv.indexOf('--root')
   const root = rootArg >= 0 ? argv[rootArg + 1] : ROOT
-  if (argv.includes('--refresh')) await refreshCompat({ root, force: true })
+  // 2026-11-27：以前把 refreshCompat 的结果直接丢掉，用户只看到"未采用（not-an-object）"，
+  // 完全不知道是没网、还是远端 404、还是 JSON 坏了。现在把真实原因带出来。
+  let refreshErr = ''
+  if (argv.includes('--refresh')) {
+    const r = await refreshCompat({ root, force: true })
+    if (r && r.ok === false) refreshErr = String(r.error || 'unknown')
+  }
   const e = effectiveDshRangeSync(root)
   if (argv.includes('--one-line')) {
     const src = e.source === 'compat' ? 'compat ' + (e.compat && e.compat.updatedAt ? e.compat.updatedAt.slice(0, 10) : '') : 'manifest'
@@ -267,7 +273,7 @@ if (isMain) {
       console.log('  已验证内核: ' + (e.compat.verified.join(', ') || '(未列出)'))
       if (e.compat.note) console.log('  说明     : ' + e.compat.note)
     } else if (e.reason) {
-      console.log('  远端声明 : 未采用（' + e.reason + '）')
+      console.log('  远端声明 : 未采用（' + e.reason + '）' + (refreshErr ? '，本次刷新失败原因：' + refreshErr : ''))
     }
   }
 }

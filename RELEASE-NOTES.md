@@ -13,6 +13,67 @@
 
 ---
 
+## v0.7.2 — 2026-11-27
+
+模拟用户跑了两轮测试（壳升级链路 / 内核拉取与运行），查出 **1 个 P0 + 2 个 P1**。全部修掉。
+
+### 新增
+
+- 无。修缺陷版本。
+
+### 修复
+
+- **P0：从 Release 整包安装出来的壳，自升级 100% 失败**（`staging 里缺这个文件：tools/xxx.mjs`，一个字节都不写）。
+  - 根因：整包**故意不含** `shell-version.json`（清单要记 zip 自己的 sha256，塞进去就是循环依赖）→ zip 安装没有本地清单 → `installed.files` 为空。而判定逻辑里有一条"`tools/` 下的陌生文件是用户自建脚本，永不覆盖"，判据正是 `installed.files[rel] === undefined` —— 空对象让**所有内容有变化的 tools 文件全被判`preserved`**（不下载、不进 staging）。可 `shell-apply` 只认 `userOwned`，其余一律要求 staging 里有它 → 原子预写校验必然失败。
+  - 修法："陌生文件 = 用户自建"的推断只在**存在本地清单**时成立；无从证明是用户改动时，以远端清单为准。
+  - 实测：0.7.0 整包 + 无清单 + 普通 `apply --force` → 16 秒成功、退出码 0、本地清单被写出、再查显示"已是最新"。
+- **P1：全新 exFAT 机器 `bootstrap` 第一次必然失败（两处）**
+  - ① pnpm 补丁打得太晚：`bootstrap` 原来只在五步全跑完后才打补丁，而 pnpm 族补丁修的正是 `registerProject()` 那条符号链接调用。exFAT 不支持软链 → 装 app 阶段直接 `EISDIR`。现在 `Bootstrap-Pnpm` 成功后**立刻**打 pnpm 族补丁，再继续装 app。
+  - ② `Bootstrap-Profiles` 与 `Repair-PluginEnv` 调 pnpm 时漏了 `--config.node-linker=hoisted`（只有装 app 那两处传了）。exFAT 上默认 isolated 会在 `symlinkAllModules` 处 `EISDIR`。两处都补上。
+- **P3：`update-app` 在全新壳上直接抛 `MODULE_NOT_FOUND: runtime\pnpm`**，用户看不出该先自举。现在缺 pnpm 时给一句人话：先跑 `bootstrap`。
+- **`compat-live --refresh` 吞掉真实失败原因**：拿不到远端声明时只说"未采用（not-an-object）"。现在会带上本次刷新的失败原因（没网 / 404 / JSON 坏）。
+- **旧壳人工介入的文案漏了 `--full`**：文案与文档都写 `apply --to 0.6.2 --force`，实测在 0.6.1 上必然失败（就是上面那个 P0）。已改成 `apply --to 0.6.2 --full --force`。
+
+### 优化
+
+- **补上发布门禁的盲区**：新增 6 条守卫（153 项）。核心是把 plan 阶段的判定做成可注入本地哈希的纯函数 `computePlanForTest`，从而能在隔离目录里直接验证"无本地清单 → tools 差异必须判 update 而不是 preserved"。这个 P0 能发布出去，正是因为门禁只比"清单 vs 资产"，从没测过"整包装出来的壳能不能自己升"。
+
+### 破坏性变更
+
+- 无。清单 schema 仍是 2、`updaterMin` 不变、`requires` 不变。
+
+### 已在旧版本的用户请注意（重要）
+
+- 如果你是从 **Release 整包 zip** 安装的（不是用 `bootstrap` 装的），在 0.7.2 之前你**升不动**。一次性人工介入：
+  ```bat
+  :: 把新壳这三个文件覆盖到旧壳目录
+  ::   update.cmd
+  ::   tools\shell-update.mjs
+  ::   tools\compat-live.mjs
+  node tools\shell-update.mjs apply --full --force
+  ```
+  `--full` 整包换装，绕开那个判定分歧；之后再升级就正常了。
+- 用 `dsh-portable.cmd bootstrap` 装的用户不受影响（bootstrap 会写本地清单）。
+
+### 升级会做什么
+
+- 替换清单里的壳文件（本次变更 5 个：`dsh-portable.ps1`、`tools\shell-update.mjs`、`tools\compat-live.mjs`、`tools\say.ps1`、`RELEASE-NOTES.md`）。
+- 只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。
+
+### 如何回退
+
+- 刚换完发现不对：`dsh-portable.cmd shell-update rollback`。
+- 想退回上一版：`node tools\shell-update.mjs apply --to 0.7.1 --force`。
+- 网页兜底：从 Release 页下载 `harness-shell-0.7.2.zip` 整包覆盖壳文件（**先备份 `home\profiles`**，zip 里含出厂配置）。
+
+### 尚未修的已知问题（如实列出）
+
+- 整包不含 `version.json`：全新安装跑 `doctor` 会显示 `shell : 0 MB`，`verify` 有几项失败。不影响运行。
+- 整包出厂 profile 的 bundles 计数与 `verify` 的声明差 1（web 6/7、desktop 13/14）。同上。
+- `patch-all --apply` 在 app / dshmarket 尚未安装时返回硬失败（属于中间态噪声）。
+
+---
+
 ## v0.7.1 — 2026-11-27
 
 清三条隐患：补丁工具会"假装成功"、node 下界是个虚数、两个测试真连网会假红。

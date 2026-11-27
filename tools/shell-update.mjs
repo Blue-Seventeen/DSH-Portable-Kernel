@@ -573,17 +573,31 @@ const compatBlockers = (m, installed, opts) => {
 }
 
 /** 远端清单 vs 本地实物：code/update、user-owned 保留、add、skip。userOwned 以清单为准（缺省回退到代码常量） */
-export const computePlan = (m, installed) => {
+/**
+ * 测试钩子：computePlan 会去磁盘读真实文件，无法在隔离目录里单测。
+ * 2026-11-27 的 P0（无本地清单 → 所有 tools 文件被判 preserved → apply 必然失败）
+ * 就发生在 plan 阶段，所以必须能脱离磁盘验证这条判定。
+ * 传入 localShas（{rel: sha}）时用它代替磁盘读取。
+ */
+export const computePlanForTest = (m, installed, localShas = {}) =>
+  computePlan(m, installed, (rel) => (rel in localShas ? localShas[rel] : null))
+
+export const computePlan = (m, installed, localShaOf) => {
   const rows = []
   const ownedSet = new Set((Array.isArray(m.userOwned) ? m.userOwned : USER_OWNED).map(lower))
   for (const rel of Object.keys(m.files).sort()) {
     const abs = join(ROOT, rel)
     let have = null
     let size = 0
-    try {
-      const st = statSync(abs)
-      if (st.isFile()) { have = sha256File(abs); size = st.size }
-    } catch { }
+    if (typeof localShaOf === 'function') {
+      // 测试路径：不碰磁盘
+      have = localShaOf(rel)
+    } else {
+      try {
+        const st = statSync(abs)
+        if (st.isFile()) { have = sha256File(abs); size = st.size }
+      } catch { }
+    }
     const remoteSha = m.files[rel]
     const owned = ownedSet.has(lower(rel))
     let action = 'skip'
@@ -592,8 +606,14 @@ export const computePlan = (m, installed) => {
     else if (have === null) action = 'add'
     else if (have === remoteSha) action = 'skip'
     else if (owned && (installed.files[rel] ? installed.files[rel] !== have : true)) action = 'preserved'
-    // tools\ 是整目录白名单：本地已有、但"上一版清单没装过"的文件，是用户自己放的脚本，永不覆盖
-    else if (!owned && installed.files[rel] === undefined && lower(rel).startsWith('tools/')) action = 'preserved'
+    // tools\ 是整目录白名单：本地已有、但"上一版清单没装过"的文件，是用户自己放的脚本，永不覆盖。
+    // 2026-11-27 修复（QA 报的 P0）：这条"没装过=用户自建"的推断只在**存在本地清单**时成立。
+    // 从 Release zip 解压出来的壳根本没有 shell-version.json（整包不含清单：清单要记 zip 的 sha256，
+    // 塞进去就是循环依赖），此时 installed.files 为空 → 所有内容有差异的 tools 文件全被判 preserved，
+    // 不下载也不进 staging；而 shell-apply 的 plan 只认 userOwned，其余一律要求 staging 里有 → 
+    // 原子预写校验必然失败，整包一个字节都不落盘。用户看到的就是"永远升不动"。
+    // 无从证明是用户改动时，以远端清单为准（远端清单本身就声明了"这个路径是壳文件"）。
+    else if (!owned && installed.present && installed.files[rel] === undefined && lower(rel).startsWith('tools/')) action = 'preserved'
     else action = 'update'
     rows.push({ path: rel, action, class: owned ? 'user-owned' : 'code', localSha: have, remoteSha, bytes: size })
   }

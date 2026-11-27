@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "0.7.1",
-  "tag": "v0.7.1",
-  "releasedAt": "2026-11-27T05:19:40.811Z",
+  "shellVersion": "0.7.2",
+  "tag": "v0.7.2",
+  "releasedAt": "2026-11-27T06:03:00.937Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T05:21:01.680Z",
+  "generatedAt": "2026-11-27T06:03:51.710Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,12 +14,12 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "8dfd862768b92623640d336cff55d171c951e7f0eb2c14c1b518f1b09077ce33",
-    "RELEASE-NOTES.md": "79c3c71769e32e2363a7a9cf95ab6f57608ce734e8836ac8feda136841f86b88",
+    "RELEASE-NOTES.md": "8f3c008ae0ca1e1b2c9bbd8fe1ab66af5b1db6a811d5eb4f54b40870f749127e",
     "check-update.cmd": "7b992939f7c9cb7c983e3a9d426a3c1da241f4b0c14d644046717a4e99cda0db",
     "dsh-plugin-shared.cmd": "58892801dc0578bc762727188321acf41608c069e2bf98621a8f0afff96a1617",
     "dsh-plugin.cmd": "759e09d808ee9c8f04ca6cfd60c84c0e4326330f015b644e40e37fe5072b4684",
     "dsh-portable.cmd": "63fdc351627a33d68a96ec6c850fec9d4932e9f6f5f2eda0e3e9216884356b26",
-    "dsh-portable.ps1": "d950e0c7d4189c329999514f36bdf8429e7fee17f06dfdf3fc8112100a37443d",
+    "dsh-portable.ps1": "e7db0f0898a1b2d1aeb3b6fa2e5e1b6d7f194fe3d05649bb64db21e6e6bd7b9c",
     "dsh.cmd": "04279725f05f63d6423c7663a55d35506fe28b38603ed1c0ed2fa21766ac7b09",
     "env.cmd": "6096995b80beec9de3008f067c74b057acf5175b4d7e2eb522ca73ccc81ea751",
     "home/cordis.patch.yml": "6d8915c0231ba16be8f32dc2506bcb82e85deb5ea5224b2e9c25b9810b73b7ee",
@@ -48,7 +48,7 @@
     "tools/check-text-encoding.mjs": "7c8853f141bbd88a4a5ae138ac6499fa37b2162e450a9e159c295e5b8fc8a75e",
     "tools/clean-ship.mjs": "410bea0288c50d61d1b7ad7e324926ef5b035b2dacd8dce2358cebb683ed63ce",
     "tools/compat-declare.mjs": "af72ba79c4bb3dadaff06d9bd652f8b07b7266df41cb616522cc77956a6f64a6",
-    "tools/compat-live.mjs": "0beb75700ae40574cae8965d28f89f317c26b6d0eb0024d981392fb4eb78aef4",
+    "tools/compat-live.mjs": "976f4c12efa0f904f95e5d45935b7558e029bf2daad1c9fe448ed2571981b234",
     "tools/download.mjs": "22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776",
     "tools/fix-attachment.mjs": "8dc4288f18ab7aabd45f36c9ba2abcf2361c80eb53570838a6640e5189617785",
     "tools/fix-pnpm-state.mjs": "50c9b8c252d74a1f858c7d534e29004c7d2031034860efd22f4ea51468cce86a",
@@ -64,7 +64,7 @@
     "tools/plugin-shared.mjs": "6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7",
     "tools/preflight.mjs": "852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898",
     "tools/probe-fs.mjs": "bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f",
-    "tools/say.ps1": "6962c3c27b0468bc8b7b61b1619ad9e4494436fbb8f08baa1ea43d7ca226c940",
+    "tools/say.ps1": "bf5f7cf30d6e943edd6fb43b50bc2913be70ce011299455d4202af7c83baeee9",
     "tools/selftest-drain.mjs": "a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376",
     "tools/selftest-patches.mjs": "3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868",
     "tools/selftest-shell-update.mjs": "7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5",
@@ -72,7 +72,7 @@
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
     "tools/shell-release.mjs": "f5cc5e04f59ef45b34d738755bdecb82f5e17dd01628d5dfe283c3e80dfda792",
-    "tools/shell-update.mjs": "fc2a3cafffd1222e795d1a41fca86e59665e8c4aadde5bfc068ab3a3ec465242",
+    "tools/shell-update.mjs": "165b254501d6e90c51757aace35d9b24e47bdab84c15f8ce41bb9446a9fa4958",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "54423394cfd4dee3cbe8588bbb53d12c195a169af5912a1bfccd48214ca4a5d7",
     "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
@@ -91,32 +91,37 @@
   ],
   "notes": {
     "added": [
-      "无。纯加固版本，命令与参数都没变。"
+      "无。修缺陷版本。"
     ],
     "fixed": [
-      "**补丁工具会\"假成功\"**（用户模拟实测发现）：`patch-fs` 往 catch 体里插的那句回退代码，路径变量是**写死**的 `tempPath` / `absolutePath`。上游只要改个形参名，工具照样报 `applied`、`node --check` 也过、`--check` 报\"已打上\"，**运行期才 `ReferenceError`**——这种假成功比失配更危险（失配至少会被发现）。现在从 `link*(a, b)` 调用里抓**真实实参名**：改名跟着改；实参是表达式、或模块没从 `node:fs/promises` 导入 `rename`，一律判失配拒绝写入。",
-      "**附件补丁同一类问题**：它的 shim 要用 `readFile` / `writeFile`，但原来只检查 `link` 在不在同一个 import 子句里。现在三个名字缺一不可。",
-      "**`requires.node` 是虚数**：官方内核从 `0.2.2-rc.1` 起声明 `engines.node >= 24.9.0`，我们清单一直写 `>=24.0.0`——声称支持 24.0~24.8，而内核在那上面根本跑不起来。现在下界改成 `>=24.9.0`，并加测试保证它永远 ≤ 我们实际捆绑的运行时（当前 v24.21.0）。"
+      "**P0：从 Release 整包安装出来的壳，自升级 100% 失败**（`staging 里缺这个文件：tools/xxx.mjs`，一个字节都不写）。",
+      "根因：整包**故意不含** `shell-version.json`（清单要记 zip 自己的 sha256，塞进去就是循环依赖）→ zip 安装没有本地清单 → `installed.files` 为空。而判定逻辑里有一条\"`tools/` 下的陌生文件是用户自建脚本，永不覆盖\"，判据正是 `installed.files[rel] === undefined` —— 空对象让**所有内容有变化的 tools 文件全被判`preserved`**（不下载、不进 staging）。可 `shell-apply` 只认 `userOwned`，其余一律要求 staging 里有它 → 原子预写校验必然失败。",
+      "修法：\"陌生文件 = 用户自建\"的推断只在**存在本地清单**时成立；无从证明是用户改动时，以远端清单为准。",
+      "实测：0.7.0 整包 + 无清单 + 普通 `apply --force` → 16 秒成功、退出码 0、本地清单被写出、再查显示\"已是最新\"。",
+      "**P1：全新 exFAT 机器 `bootstrap` 第一次必然失败（两处）**",
+      "① pnpm 补丁打得太晚：`bootstrap` 原来只在五步全跑完后才打补丁，而 pnpm 族补丁修的正是 `registerProject()` 那条符号链接调用。exFAT 不支持软链 → 装 app 阶段直接 `EISDIR`。现在 `Bootstrap-Pnpm` 成功后**立刻**打 pnpm 族补丁，再继续装 app。",
+      "② `Bootstrap-Profiles` 与 `Repair-PluginEnv` 调 pnpm 时漏了 `--config.node-linker=hoisted`（只有装 app 那两处传了）。exFAT 上默认 isolated 会在 `symlinkAllModules` 处 `EISDIR`。两处都补上。",
+      "**P3：`update-app` 在全新壳上直接抛 `MODULE_NOT_FOUND: runtime\\pnpm`**，用户看不出该先自举。现在缺 pnpm 时给一句人话：先跑 `bootstrap`。",
+      "**`compat-live --refresh` 吞掉真实失败原因**：拿不到远端声明时只说\"未采用（not-an-object）\"。现在会带上本次刷新的失败原因（没网 / 404 / JSON 坏）。",
+      "**旧壳人工介入的文案漏了 `--full`**：文案与文档都写 `apply --to 0.6.2 --force`，实测在 0.6.1 上必然失败（就是上面那个 P0）。已改成 `apply --to 0.6.2 --full --force`。"
     ],
     "optimized": [
-      "**联网测试改成离线夹具**：`update-check` 的两个缓存用例原来真连网，一次抖动就让门禁假红（本轮实际发生过一次）。现在有 `DSH_UPDATE_FIXTURE` 通道，耗时从 ~1400ms 降到 ~450ms，且结论确定（连跑两遍都过）。",
-      "新增 7 条机械守卫（148 项）：三条行为级反向验证（形参改名要跟随 / 表达式实参要拒绝 / 缺 rename 要拒绝）+ 四条源码级契约。"
+      "**补上发布门禁的盲区**：新增 6 条守卫（153 项）。核心是把 plan 阶段的判定做成可注入本地哈希的纯函数 `computePlanForTest`，从而能在隔离目录里直接验证\"无本地清单 → tools 差异必须判 update 而不是 preserved\"。这个 P0 能发布出去，正是因为门禁只比\"清单 vs 资产\"，从没测过\"整包装出来的壳能不能自己升\"。"
     ],
     "breaking": [
-      "无。清单 schema 仍是 2、`updaterMin` 不变。`requires.node` 下界从 24.0.0 提到 24.9.0（跟着官方内核走；我们捆绑的 v24.21.0 不受影响）。"
+      "无。清单 schema 仍是 2、`updaterMin` 不变、`requires` 不变。"
     ],
     "upgrade": [
-      "替换清单里的壳文件（本次变更 5 个：`tools\\patch-fs.mjs`、`tools\\patch-attachment.mjs`、`tools\\update-check.mjs`、`shell-version.json`、`RELEASE-NOTES.md`）。",
+      "替换清单里的壳文件（本次变更 5 个：`dsh-portable.ps1`、`tools\\shell-update.mjs`、`tools\\compat-live.mjs`、`tools\\say.ps1`、`RELEASE-NOTES.md`）。",
       "只换壳，不动 app / desktop / 运行时，也不动你的数据和配置。"
     ],
     "rollback": [
       "刚换完发现不对：`dsh-portable.cmd shell-update rollback`。",
-      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.7.0 --force`。",
-      "网页兜底：从 Release 页下载 `harness-shell-0.7.1.zip` 整包覆盖壳文件（**先备份 `home\\profiles`**，zip 里含出厂配置）。",
-      "---"
+      "想退回上一版：`node tools\\shell-update.mjs apply --to 0.7.1 --force`。",
+      "网页兜底：从 Release 页下载 `harness-shell-0.7.2.zip` 整包覆盖壳文件（**先备份 `home\\profiles`**，zip 里含出厂配置）。"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.7.1",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v0.7.2",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -127,8 +132,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-0.7.1.zip",
-    "sha256": "90a4af9f0663a7e1021e9501923aff0b60d90c96c4d4e3ed67cdfb1d7db456b0",
-    "bytes": 1918472
+    "name": "harness-shell-0.7.2.zip",
+    "sha256": "b204891bfd047232a449b69bacff05e9d2744ad7e1e0000ecceaa5c0d17664a9",
+    "bytes": 1921166
   }
 }

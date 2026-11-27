@@ -1460,7 +1460,8 @@ function Repair-PluginEnv {
     if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 runtime\pnpm\dist\pnpm.mjs' }
     $store = $StoreRoot
     Say '  正在用壳自带的 pnpm 重装插件依赖（包大多已在本地 store 里，通常很快）……'
-    & $Node $pnpm --dir $prof install --store-dir $store --config.package-import-method=$ImportMethod --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
+    # exFAT 没有软链：必须显式 hoisted，否则 pnpm 在 symlinkAllModules 处 EISDIR（2026-11-27 QA 实测）
+    & $Node $pnpm --dir $prof install --store-dir $store --config.package-import-method=$ImportMethod --config.confirmModulesPurge=false --config.strict-dep-builds=false --config.node-linker=hoisted --reporter append-only
     if ($LASTEXITCODE -ne 0) { throw ('插件依赖安装失败（exit ' + $LASTEXITCODE + '）。清单已备份在 ' + $bak + '，处理完网络/权限后重跑本命令即可') }
     $null = Plugin-Tool @('sync', '--quiet')
     Fix-MarketPatch -Quiet
@@ -1630,7 +1631,8 @@ function Bootstrap-Profiles {
   if (-not (Test-Path -LiteralPath $pnpm)) { throw '缺少 pnpm，无法安装插件依赖（先看上面 pnpm 那一步的失败原因）' }
   Say '  插件：按 home\profiles\package.json 安装商城与主题（约 20 MB）'
   $store = $StoreRoot
-  & $Node $pnpm --dir $prof install --store-dir $store --config.package-import-method=$ImportMethod --config.confirmModulesPurge=false --config.strict-dep-builds=false --reporter append-only
+  # exFAT 没有软链：必须显式 hoisted（2026-11-27 QA 实测）
+  & $Node $pnpm --dir $prof install --store-dir $store --config.package-import-method=$ImportMethod --config.confirmModulesPurge=false --config.strict-dep-builds=false --config.node-linker=hoisted --reporter append-only
   if ($LASTEXITCODE -ne 0) { throw '插件依赖安装失败（可重跑；或先 dsh-portable.cmd fix-state）' }
   $null = Plugin-Tool @('sync', '--quiet')
   Say '  插件：商城与主题就绪'
@@ -1746,7 +1748,14 @@ switch ($Action) {
     foreach ($step in @('node', 'pnpm', 'app', 'desktop', 'profiles')) {
       try {
         if ($step -eq 'node') { Bootstrap-Node }
-        elseif ($step -eq 'pnpm') { Bootstrap-Pnpm }
+        elseif ($step -eq 'pnpm') {
+          Bootstrap-Pnpm
+          # 2026-11-27 QA 实测的阻断点：pnpm 装好后要先打 pnpm 族补丁，再装 app。
+          # 否则 exFAT 上 pnpm 的 registerProject() 会在 store\v11\projects 下建符号链接直接 EISDIR，
+          # 而补丁原本要等五步全跑完才打 —— 顺序反了，全新机器第一次必然失败。
+          # 这里只打 pnpm 一族（app 还没装，其余几族此时无处可打）。
+          try { $null = & $Node (Join-Path $Root 'tools\patch-pnpm.mjs') --apply 2>&1 } catch { }
+        }
         elseif ($step -eq 'app') { Bootstrap-App }
         elseif ($step -eq 'desktop') { Bootstrap-Desktop }
         else { Bootstrap-Profiles }
@@ -2059,6 +2068,12 @@ switch ($Action) {
     break
   }
   'update-app' {
+    # 2026-11-27 QA：全新壳只有 node、没有 runtime\pnpm，这里原来会直接抛 MODULE_NOT_FOUND，
+    # 用户看不出"该先跑 bootstrap"。
+    if (-not (Test-Path -LiteralPath (Join-Path $Root 'runtime\pnpm\dist\pnpm.mjs'))) {
+      Warn2 '还没自举：缺少 runtime\pnpm。请先跑 dsh-portable.cmd bootstrap（它会拉 pnpm 与内核）。'
+      exit 1
+    }
     if (-not $Force) { Say ("app 当前 " + (AppVersion) + "；这是预演，加 -Force 才真更新"); break }
     Install-App
     # 官方层整份换掉了：补丁必须跟着重打（否则商城装不上、exFAT 上新建文件失败）
