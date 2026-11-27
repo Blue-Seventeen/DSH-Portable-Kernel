@@ -1301,8 +1301,14 @@ const runApply = async (opts) => {
       })
       return finish(EXIT_OK)
     }
-    const legacy = pruneLegacy()
-    if (legacy.length) line('顺带清理了 ' + legacy.length + ' 个结构重排残留的旧文件（eg tools/7z、tools/*.mjs）')
+    // 契约：不带 --force 的 apply 是**预演**，一个字节都不许改（正文里明写着"只报告，不改文件"）。
+    // 这里曾经无条件 pruneLegacy() —— 于是"看一眼有没有更新"就把盘上的旧文件删了。
+    // 预演只报出"会清什么"，真清必须加 --force。
+    const legacy = pruneLegacy({ dryRun: !opts.force })
+    if (legacy.length) {
+      line((opts.force ? '顺带清理了 ' : '预演：将顺带清理 ') + legacy.length + ' 个结构重排残留的旧文件（eg tools/7z、tools/*.mjs）')
+      if (!opts.force) line('（加 --force 才真的删；现在只是报告）')
+    }
     line('已是最新（' + installed.shellVersion + '），没有需要更新的文件')
     return finish(EXIT_OK)
   }

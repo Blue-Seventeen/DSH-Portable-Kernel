@@ -34,6 +34,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 /** 残留 journal（相对 root）。apply 动手前写、成功后清；断电后 recoverUpdate 靠它找备份。 */
 export const APPLY_JOURNAL = 'tmp/shell-update-journal.json'
 /** 备份目录名前缀：<backupRoot>\shell-backup-<yyyyMMdd-HHmmss>[-n] */
+export const APPLY_LOCK = 'tmp/shell-update.lock'
 export const BACKUP_PREFIX = 'shell-backup-'
 
 const BACKUP_META = 'meta.json'
@@ -115,6 +116,50 @@ const withRetry = (fn, attempts = 5) => {
     }
   }
   throw last
+}
+
+// ---- 单实例锁 ------------------------------------------------------------------
+/**
+ * 换装/回滚/恢复同一时刻只许跑一个。
+ *
+ * 为什么必须有：两个进程同时换装会算出**同名备份目录**（名字只到"天"），
+ * 一起去写同一个 files\ 目录 —— 实测一个报 EBUSY 触发回滚，而它的回滚会按那份
+ * 被两个进程混写过的备份还原，等于把另一个进程刚装好的壳又倒回去（2026-11-27 实测）。
+ *
+ * 判定规则：
+ *   - 锁里的 pid 还活着 → 拒绝（告诉用户谁在跑）
+ *   - pid 已死 / 锁文件坏了 / 超过 30 分钟 → 当作残留，接管并提示
+ */
+const LOCK_STALE_MS = 30 * 60 * 1000
+const pidAlive = (pid) => {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  if (pid === process.pid) return true
+  try { process.kill(pid, 0); return true } catch (e) { return e && e.code === 'EPERM' }
+}
+export const acquireLock = (root, action) => {
+  const lockPath = join(root, APPLY_LOCK)
+  const mine = { pid: process.pid, action: String(action || ''), at: nowIso() }
+  const take = () => {
+    mkdirSync(dirname(lockPath), { recursive: true })
+    writeFileSync(lockPath, JSON.stringify(mine, null, 2) + '\n')
+    return { ok: true, path: lockPath, release: () => { try { rmSync(lockPath, { force: true }) } catch { } } }
+  }
+  if (!existsSync(lockPath)) return take()
+  let holder = null
+  try { holder = JSON.parse(readFileSync(lockPath, 'utf8')) } catch { holder = null }
+  const old = (() => { try { return Date.now() - statSync(lockPath).mtimeMs } catch { return 0 } })()
+  const alive = holder && pidAlive(Number(holder.pid))
+  if (alive && old < LOCK_STALE_MS) {
+    return {
+      ok: false,
+      holder,
+      error: '另一个进程正在' + (holder.action || '换装') + '（pid ' + holder.pid + '，' + Math.round(old / 1000) + ' 秒前开始）。' +
+        '等它结束再试；确认它已经不在了就删掉 ' + APPLY_LOCK,
+    }
+  }
+  // 残留锁：接管
+  const why = !holder ? '锁文件损坏' : (!alive ? 'pid ' + holder.pid + ' 已不存在' : '已超过 30 分钟')
+  return Object.assign(take(), { warning: '接管了一个残留锁（' + why + '）' })
 }
 
 // ---- 落盘：一律 .new + rename，绝不在原路径上就地写 ---------------------------------
@@ -630,6 +675,19 @@ export const applyUpdate = async (opts) => {
   if (!ctx) return result
   const { root, stage, journalPath, logger } = ctx
   let backup = null
+  // 预演不落盘，不必抢锁；真换装才要单实例
+  let lock = null
+  if (!ctx.dryRun) {
+    lock = acquireLock(root, '换装')
+    if (!lock.ok) { result.ok = false; result.errors.push(lock.error); return result }
+    if (lock.warning) result.warnings.push(lock.warning)
+  }
+  try { return await applyLocked(ctx, result, backup) } finally { if (lock && lock.release) lock.release() }
+}
+
+/** applyUpdate 的实体（已持锁）。单独拆出来是为了让 finally 一定能释放锁。 */
+const applyLocked = async (ctx, result, backup) => {
+  const { root, stage, journalPath, logger } = ctx
 
   try {
     // 1) 计划
@@ -806,6 +864,13 @@ export const rollbackUpdate = async (opts) => {
   }
   result.from = ctx.installed.shellVersion
   result.warnings.push(...ctx.warnings)
+  const lock = acquireLock(ctx.root, '回滚')
+  if (!lock.ok) { result.ok = false; result.errors.push(lock.error); return result }
+  if (lock.warning) result.warnings.push(lock.warning)
+  try { return await rollbackLocked(ctx, result) } finally { lock.release() }
+}
+
+const rollbackLocked = async (ctx, result) => {
   try {
     const backups = listBackups(ctx.backupRoot)
     if (!backups.length) {
@@ -872,6 +937,13 @@ export const recoverUpdate = async (opts) => {
   }
   result.from = ctx.installed.shellVersion
   result.warnings.push(...ctx.warnings)
+  const lock = acquireLock(ctx.root, '恢复')
+  if (!lock.ok) { result.ok = false; result.errors.push(lock.error); return result }
+  if (lock.warning) result.warnings.push(lock.warning)
+  try { return await recoverLocked(ctx, result) } finally { lock.release() }
+}
+
+const recoverLocked = async (ctx, result) => {
   try {
     if (!existsSync(ctx.journalPath)) {
       result.noop = true

@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.3",
-  "tag": "v1.0.3",
-  "releasedAt": "2026-11-27T09:00:22.920Z",
+  "shellVersion": "1.0.4",
+  "tag": "v1.0.4",
+  "releasedAt": "2026-11-27T12:22:43.584Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T09:01:16.164Z",
+  "generatedAt": "2026-11-27T12:23:39.637Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "e2d276e756b4383e64316735b8f661d4b756f3e21530fd50d993f870f6a1f773",
+    "RELEASE-NOTES.md": "b23cd3fa5967fdbbb8e6f0f8c7974264c31f7fbd9ef7ac94c0560b3d592de534",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
@@ -63,9 +63,9 @@
     "tools/profile/plugin-shared.mjs": "c1933c4dbb477c5e4ec8c4e16fdd440f5db4695dc398c47c74854a58ec2a35f4",
     "tools/profile/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
-    "tools/update/shell-apply.mjs": "618003ae4d44a4fffedea76def998ae1818369000659a848421a30b9df3a484f",
+    "tools/update/shell-apply.mjs": "7390c295b8429577ff1dc34c9ad0b109a7a5c7199c1ee0fd307bf039996790d8",
     "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
-    "tools/update/shell-update.mjs": "92122afc16ffac6fb5fc9645ed147aa8e483fa76caddbe96d50bea1e5dd1bbea",
+    "tools/update/shell-update.mjs": "c18c164d780608e79cd26dd57bcbbc3a905feacc0ca15b4f6d2d42a76675f530",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
     "tools/update/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
     "tools/verify/verify-shell.mjs": "bf3818daa175a1a93852482b20342c6bf5c830664cff67b15e4e4b101b253260",
@@ -83,24 +83,26 @@
   ],
   "notes": {
     "added": [
-      "`shell-apply` 增加瞬时锁重试：`EBUSY`/`EPERM`/`EACCES`/`ENOTEMPTY` 退避重试 5 次（50→800ms），其他错误照旧立即抛。"
+      "`tmp\\shell-update.lock` 单实例锁：换装 / 回滚 / 恢复同一时刻只许跑一个。活着的新锁会拒绝并报出持锁 pid；已死的 pid、损坏的锁、超过 30 分钟的锁会被接管并提示。预演（dry-run）不抢锁。"
     ],
     "fixed": [
-      "1.0.2 验证时实测到：`--full` 用 `tools\\7z\\7z.exe` 解完整包后，紧接着按目标清单删这个 7z 会报 `EPERM`，整次换装失败。Windows 上刚执行过的 exe、杀软实时扫描、索引器都会短暂持有句柄——这是**瞬时**状态，不是真占用。",
-      "现在重试即可通过；同样的降级换装已实测成功（\"2 个旧文件已删\"）。"
+      "**预演会删文件。** 不带 `--force` 的 `apply` 帮助里写着\"只报告，不改文件\"，但\"已是最新\"分支里无条件跑了残留清理——用户只想看一眼有没有更新，盘上的旧文件就没了。现在预演只报\"将清理 N 个\"，真删必须 `--force`。",
+      "**并发换装互相拆台。** 两个进程同时换装会算出同名备份目录（名字只精确到天），一起写同一个 `files\\`。实测其中一个 EBUSY 后回滚，而它读的是被两个进程混写过的备份，等于把另一个进程刚装好的壳倒回去。"
     ],
     "optimized": [
-      "回滚路径（删除本次新增的文件）也走同一套重试。"
+      "新增 4 条\"契约级\"用例（共 169 条）：预演零写盘、锁的三种状态（活锁拒绝 / 死锁接管 / 坏锁接管）、三个写盘入口都必须持锁。"
     ],
-    "breaking": [],
+    "breaking": [
+      "无。锁文件只在换装期间存在，结束即删。"
+    ],
     "upgrade": [
-      "只替换 `tools\\update\\shell-apply.mjs` 与本说明。"
+      "只替换 `tools\\update\\shell-apply.mjs`、`tools\\update\\shell-update.mjs` 与本说明。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.3",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.4",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -111,8 +113,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.3.zip",
-    "sha256": "f49fc9ac9190de1f53be1b93df66832b8dfa714fed6b67781c9e36ae6f33810d",
-    "bytes": 1849275
+    "name": "harness-shell-1.0.4.zip",
+    "sha256": "92db96e4a92c1a734d092fd2d73b05b51d178702a24ddcac7006946bea1275e8",
+    "bytes": 1851115
   }
 }
