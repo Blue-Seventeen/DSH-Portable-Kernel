@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.6",
-  "tag": "v1.0.6",
-  "releasedAt": "2026-11-27T14:35:58.297Z",
+  "shellVersion": "1.0.7",
+  "tag": "v1.0.7",
+  "releasedAt": "2026-11-27T15:06:34.234Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T14:36:48.120Z",
+  "generatedAt": "2026-11-27T15:07:30.902Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "a861c525d3252fe0895680f2fc76fb3549ca375d07735ca5ef8bdddcf1b30162",
+    "RELEASE-NOTES.md": "8c7de00fc3a45cb5148ebf5761eec8ed5e77fec9142ff2e4b9b3bbb58c8c1719",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
@@ -63,7 +63,7 @@
     "tools/profile/plugin-shared.mjs": "c1933c4dbb477c5e4ec8c4e16fdd440f5db4695dc398c47c74854a58ec2a35f4",
     "tools/profile/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
-    "tools/update/shell-apply.mjs": "8935631611950b4e6f126b7f39102558fe05234ed64b8ed78789a35d51563f95",
+    "tools/update/shell-apply.mjs": "d9da7f6ebf8bef54493d4be7c0dd9eaad804ed6a9d5f3cf844ceecf3ca7649f0",
     "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
     "tools/update/shell-update.mjs": "a2374b2eb90b12c055487b87c62647d9ff7af230e5fa17df9851137053dfcef8",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
@@ -84,26 +84,26 @@
   ],
   "notes": {
     "added": [
-      "`tools\\verify-shell.mjs` **兼容转发桩**：只把参数与退出码原样交给 `tools\\verify\\verify-shell.mjs`，自己不实现任何检查。老版本把\"换装后自检\"的路径写死成这个位置，留着它就等于给老客户端留了一条能走通的路。",
-      "`verifyCmd` 改为**候选路径**：先找 `tools\\verify\\verify-shell.mjs`，再找扁平兼容路径，不再写死单一位置。"
+      "用例：自检脚本在、但它依赖的模块缺失（壳真坏）→ 必须回滚，不许当跳过。",
+      "用例：自定义自检命令不许被路径重解析劫持（只接管 `verify*.mjs`）。"
     ],
     "fixed": [
-      "**0.6.2 ~ 0.7.x 带清单的壳永远升不到 1.x。** 老客户端换装完成、去跑自检时，那条写死的 `tools\\verify-shell.mjs` 已经被换装删掉 → node 报 `Cannot find module` → 旧代码判定\"自检不通过\"→ 整份回滚。用户看到的是\"升级失败，已回滚\"，重试多少次都一样。",
-      "现在两条路都通：新结构里有转发桩，自检照常**真跑**（安全网没缺口）；万一将来又挪了位置，自检脚本确实消失时**记\"跳过\"而不是回滚**，并提示用户手动跑一次 `verify` 复核 —— 不再用\"不许升级\"惩罚用户。",
-      "跳过逻辑只认\"脚本找不到\"这一种情形（`Cannot find module` / `ERR_MODULE_NOT_FOUND`）；自检**真跑失败**依旧整份回滚，安全网没被拆掉。"
+      "**1.0.6 的跳过判定太宽，会把\"壳真坏了\"也放过。** 初版只要输出里有 `Cannot find module` 就往\"脚本没了、跳过吧\"走；于是\"自检脚本在、但它 import 的模块被删了\"这种真正的半截壳也会被提交。现在必须**精确比对**：node 抱怨的缺失模块必须**就是我们要跑的那个自检脚本本身**，缺别的模块照旧整份回滚。",
+      "**回滚到老版本时误报\"回滚失败\"。** 回滚会把树换回老结构，但自检命令还沿用换装前算好的新结构路径，那个文件已经不在 → 必然失败 → 报\"回滚失败\"，可文件其实早已正确还原（实测 0.7.3 备份 66/66 全部一致却报失败）。现在落盘后**按当前这棵树重挑自检器**：回滚到老版本就跑老版本自己的自检。",
+      "**路径重解析会劫持自定义自检命令。** `resolveVerifyCmd` 初版无条件替换候选，把 `node -e \"process.exit(3)\"` 换成了目录里的 verify 脚本，退出码从 3 变 1（自测用例 E 当场变红）。现在只接管文件名形如 `verify*.mjs` 的命令，其余原样不动。"
     ],
     "optimized": [
-      "新增 5 条用例（共 175 条）：桩存在且在清单里、参数与退出码透传、脚本消失→跳过、真失败→仍回滚、`verifyCmd` 候选路径。"
+      "三处判定抽成 `isVerifyScriptGone` / `resolveVerifyCmd` 两个助手，apply 与 rollback 共用同一套规则，避免两边逻辑漂移。"
     ],
     "breaking": [],
     "upgrade": [
-      "新增 `tools\\verify-shell.mjs`（约 1.9 KB 的转发桩），替换 `tools\\update\\shell-update.mjs`、`tools\\update\\shell-apply.mjs` 与本说明。"
+      "替换 `tools\\update\\shell-apply.mjs` 与本说明。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.6",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.7",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -114,8 +114,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.6.zip",
-    "sha256": "a0799d9e26a05a0fb770926e4a51d3f98f5681fc85986a16f01317c7d063dcae",
-    "bytes": 1854341
+    "name": "harness-shell-1.0.7.zip",
+    "sha256": "4d033b34ee3d33ebe2a78ed7dbdab725d263f7b70e12c73df6193f19bb1e1cce",
+    "bytes": 1855989
   }
 }

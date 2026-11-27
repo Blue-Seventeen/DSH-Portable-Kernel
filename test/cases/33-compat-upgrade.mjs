@@ -131,4 +131,50 @@ export const cases = [
       assert(m[1].includes("'verify', 'verify-shell.mjs'"), '候选里没有扁平兼容路径')
     },
   },
+
+  {
+    name: '自检脚本在、但它依赖的模块缺失（壳真坏）→ 必须回滚，不许当跳过',
+    async fn() {
+      // 这是初版跳过逻辑的漏洞：用 /Cannot find module/ 一刀切，于是
+      // "verify-shell.mjs 在、但它 import 的东西被删了"也会被放过，换装照样提交。
+      // 判定必须精确到"缺的就是自检脚本本身"。
+      const sb = await mkSandbox('verify-dep-missing')
+      const vp = join(sb.dir, 'tools', 'verify', 'verify-shell.mjs')
+      mkdirSync(join(sb.dir, 'tools', 'verify'), { recursive: true })
+      writeFileSync(vp, 'import "../lib/gone-dep.mjs"\nprocess.exit(0)\n', 'utf8')
+      const r = await applyWithVerify(sb, {
+        enabled: true,
+        cmd: [process.execPath, vp, '--update-gate'],
+        quiet: true,
+      })
+      assert(r.ok === false, '自检依赖缺失时必须判失败（这是真坏，不是路径失效）')
+      assert(r.rolledBack === true, '自检依赖缺失时必须回滚')
+      assert(!(r.verify && r.verify.skipped), '不许标成 skipped：' + JSON.stringify(r.verify))
+      assert(r.verify && r.verify.ran === true, '真的跑起来了，ran 应为 true')
+      assert(!existsSync(join(sb.dir, 'x.mjs')), '回滚后新增文件应被撤掉')
+      rmSync(sb.dir, { recursive: true, force: true })
+    },
+  },
+
+  {
+    name: '自定义自检命令不许被路径重解析劫持（只接管 verify*.mjs）',
+    async fn() {
+      // resolveVerifyCmd 只该在"命令指向自检脚本、但那个脚本不见了"时换路径。
+      // 初版无条件替换候选，把 `node -e "process.exit(3)"` 换成了夹具里的 verify-shell，
+      // 退出码从 3 变成 1 —— selftest 用例 E 当场变红（2026-11-27）。
+      const sb = await mkSandbox('no-hijack')
+      // 故意在夹具里放一份"看起来像自检"的脚本，制造劫持机会
+      mkdirSync(join(sb.dir, 'tools', 'verify'), { recursive: true })
+      writeFileSync(join(sb.dir, 'tools', 'verify', 'verify-shell.mjs'), 'process.exit(9)\n', 'utf8')
+      const r = await applyWithVerify(sb, {
+        enabled: true,
+        cmd: [process.execPath, '-e', 'process.exit(3)'],
+        quiet: true,
+      })
+      assert(r.verify, '没有 verify 结果')
+      assert(r.verify.code === 3, '自定义自检命令被劫持了：期望 3，实际 ' + r.verify.code)
+      assert(r.rolledBack === true, '自检失败（3）仍须回滚')
+      rmSync(sb.dir, { recursive: true, force: true })
+    },
+  },
 ]

@@ -553,6 +553,47 @@ const runCommand = (cmd, cwd, quiet) => new Promise((done) => {
   }))
 })
 
+/** node 报"找不到模块"时，取它抱怨的那个路径；不是这类错误返回空串 */
+const missingModuleOf = (output) => {
+  const m = /Cannot find module '([^']+)'/i.exec(String(output || ''))
+  return m ? m[1] : ''
+}
+
+/**
+ * 这次失败是不是"我们想跑的那个自检脚本本身不见了"？
+ * 必须精确比对路径：缺的是**别的**模块，说明壳真的坏了，不能放过（否则安全网等于拆了）。
+ */
+const isVerifyScriptGone = (v, cmd) => {
+  if (!v || v.ok) return false
+  const missing = missingModuleOf(v.output)
+  const script = String((cmd && cmd[1]) || '')
+  if (!missing || !script) return false
+  const norm = (x) => { try { return resolve(String(x)).toLowerCase() } catch { return String(x).toLowerCase() } }
+  return norm(missing) === norm(script)
+}
+
+/**
+ * 换装/回滚会把 tools\ 的结构整体换掉，自检脚本位置也跟着变。
+ * 落盘之后要**按当前这棵树**重新挑一次，不能沿用换装前算好的命令 ——
+ * 回滚到老版本时，该跑的是老版本自己的自检器，而不是新版那个（它已经不在树里了）。
+ */
+const resolveVerifyCmd = (root, baseCmd) => {
+  if (!Array.isArray(baseCmd) || !baseCmd.length) return baseCmd
+  const script = String(baseCmd[1] || '')
+  // 只接管"看起来就是自检脚本"的命令。别的一概原样返回 ——
+  // 否则会把 `node -e "process.exit(3)"` 这类自定义自检命令替换掉
+  // （2026-11-27 自测用例 E 就是这么被我改红的：期望退出码 3 变成 1）。
+  if (!/(^|[\\/])verify[^\\/]*\.mjs$/i.test(script)) return baseCmd
+  // 指定的脚本还在，就用它（老客户端指到转发桩也照样能跑通）
+  if (existsSync(script)) return baseCmd
+  const candidates = [
+    join(root, 'tools', 'verify', 'verify-shell.mjs'),
+    join(root, 'tools', 'verify-shell.mjs'),
+  ]
+  const found = candidates.find((x) => existsSync(x))
+  return found ? [baseCmd[0], found, ...baseCmd.slice(2)] : baseCmd
+}
+
 const ANSI_RE = /\x1b\[[0-9;]*m/g
 const FAIL_LINE_RE = /(^|[\s\[\]（(])(FAIL|FAILED|ERROR|✗|✘)/i
 
@@ -789,13 +830,15 @@ const applyLocked = async (ctx, result, backup) => {
       journal.deleted = deleted.slice()
       journal.updatedAt = nowIso()
       try { writeJsonAtomic(journalPath, journal) } catch (e) { result.warnings.push('更新 journal 失败：' + errText(e)) }
-      logger('换装完成，跑自检：' + ctx.verify.cmd.join(' '))
-      const v = await runCommand(ctx.verify.cmd, root, ctx.verify.quiet === true)
+      const verifyCmd = resolveVerifyCmd(root, ctx.verify.cmd)
+      logger('换装完成，跑自检：' + verifyCmd.join(' '))
+      const v = await runCommand(verifyCmd, root, ctx.verify.quiet === true)
       // 结构迁移会把自检脚本挪位置：老版本把自己的路径写死，换装后那个文件没了，
       // node 直接 Cannot find module。这**不是壳坏了**，是我们的路径假设过期了。
       // 以前这种情形一律回滚 —— 等于用'别升级'惩罚用户（0.5~0.7 升 1.x 全被卡住）。
       // 现在只把它记为'跳过'并大声提示，让它继续完成换装。
-      const scriptGone = !v.ok && /Cannot find module|ERR_MODULE_NOT_FOUND/i.test(String(v.output || ''))
+      // 判定细节见 isVerifyScriptGone()：必须缺的就是自检脚本本身，缺别的模块照旧回滚。
+      const scriptGone = isVerifyScriptGone(v, verifyCmd)
       if (scriptGone) {
         result.verify = { ok: null, code: v.code, failed: [], ran: false, skipped: true, reason: 'verify-script-missing' }
         result.warnings.push('自检脚本没找到（这次换装改了它的位置），本轮跳过自检；请手动跑一次 dsh-portable.cmd verify 复核')
@@ -920,12 +963,21 @@ const rollbackLocked = async (ctx, result) => {
       if (me) result.warnings.push('写备份 meta 失败：' + me)
     }
     if (ctx.verify.enabled) {
-      ctx.logger('还原后自检：' + ctx.verify.cmd.join(' '))
-      const v = await runCommand(ctx.verify.cmd, ctx.root, ctx.verify.quiet === true)
-      result.verify = { ok: v.ok, code: v.code, failed: extractFailures(v.output, v.code), ran: true }
-      if (!v.ok) {
-        result.ok = false
-        result.errors.push(v.error ? '无法启动还原后的自检（' + errText(v.error) + '）' : '还原后的壳自检不通过（退出码 ' + v.code + '）')
+      // 回滚后树已经变回老结构：必须按**现在这棵树**重挑自检器。
+      // 沿用换装前那条新结构路径的话，文件已经不在，必然报失败 ——
+      // 用户看到"回滚失败"，其实文件早还原好了（2026-11-27 实测踩到）。
+      const verifyCmd = resolveVerifyCmd(ctx.root, ctx.verify.cmd)
+      ctx.logger('还原后自检：' + verifyCmd.join(' '))
+      const v = await runCommand(verifyCmd, ctx.root, ctx.verify.quiet === true)
+      if (isVerifyScriptGone(v, verifyCmd)) {
+        result.verify = { ok: null, code: v.code, failed: [], ran: false, skipped: true, reason: 'verify-script-missing' }
+        result.warnings.push('还原完成，但自检脚本没找到（版本结构不同），本次跳过自检')
+      } else {
+        result.verify = { ok: v.ok, code: v.code, failed: extractFailures(v.output, v.code), ran: true }
+        if (!v.ok) {
+          result.ok = false
+          result.errors.push(v.error ? '无法启动还原后的自检（' + errText(v.error) + '）' : '还原后的壳自检不通过（退出码 ' + v.code + '）')
+        }
       }
     }
     return result
