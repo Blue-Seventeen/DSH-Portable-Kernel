@@ -109,14 +109,29 @@ function Get-OfficePatchState {
   return ($(if ($n -gt 0) { 'patched (' + $n + ' dll)' } else { 'clean' }))
 }
 function Get-LeftoverCount {
-  # 只扫根目录 + tmp/cache/logs（不递归 app/desktop，避免 doctor 变慢）
+  # 只数「会留下半成品的固定位置」，绝不递归扫 tmp/cache/logs。
+  # 来由（2026-11-27 实测）：tmp 会堆到几十万文件（dsh 运行时目录、Office 转换临时目录、
+  # 自测夹具……），原来这里对整棵 tmp 做递归全量遍历，在 exFAT/U 盘上一次要几分钟。
+  # 用户双击 dsh-portable.cmd 看到体检停在 login-bak 后面不动，其实是这里在空转
+  # （实测 84 万文件：85% CPU 烧 3.9 分钟，看起来像卡死）。
+  # 残留只可能出现在下面这几处，扫它们就够，且都是常数级开销：
+  #   1) tmp\update-journal.json / tmp\shell-update-journal.json —— 中断的更新
+  #   2) app.next / desktop.next —— 装了一半没有换名
+  #   3) cache\update\*.part —— 没下完的安装包（download.mjs 的临时名）
+  #   4) tmp / cache / logs 顶层散落的 *.part / *.tmp / *.tmpdir / *.next
+  # 注意必须用 -like 逐条匹配，不要用文件系统的过滤器参数：Windows 那个参数按 8.3 后缀匹配，
+  # 会把活跃会话的 xxx.tmp.png（截图临时文件）一起算进来，误报几百个。
   $n = 0
-  if (Test-Path -LiteralPath $Journal) { $n++ }
+  foreach ($f in @($Journal, (Join-Path $Root 'tmp\shell-update-journal.json'))) {
+    if (Test-Path -LiteralPath $f) { $n++ }
+  }
   foreach ($pat in @('app.next', 'desktop.next')) { if (Test-Path -LiteralPath (Join-Path $Root $pat)) { $n++ } }
-  foreach ($d in @('tmp', 'cache', 'logs')) {
-    $p = Join-Path $Root $d
-    if (-not (Test-Path -LiteralPath $p)) { continue }
-    $n += @(Get-ChildItem -LiteralPath $p -Recurse -Force -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -like '*.part' -or $_.Name -like '*.bak-*' -or $_.Name -like '*.tmpdir' -or $_.Name -like '*.next' -or $_.Name -like '*.tmp' }).Count
+  foreach ($d in @((Join-Path $Root 'tmp'), (Join-Path $Root 'cache'), (Join-Path $Root 'logs'), $UpdateCache)) {
+    if (-not (Test-Path -LiteralPath $d)) { continue }
+    # 每个目录只遍历一次（tmp 顶层上千条，重复列 4 遍纯属浪费）
+    $n += @(Get-ChildItem -LiteralPath $d -File -Force -ErrorAction SilentlyContinue | Where-Object {
+      $_.Name -like '*.part' -or $_.Name -like '*.tmp' -or $_.Name -like '*.tmpdir' -or $_.Name -like '*.next'
+    }).Count
   }
   return $n
 }
