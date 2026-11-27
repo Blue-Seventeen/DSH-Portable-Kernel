@@ -82,7 +82,6 @@ const USAGE = [
 export const ROOT_SHELL_FILES = [
   'dsh-portable.ps1', 'preflight.cmd', 'start-web.cmd', 'start-desktop.cmd', 'dsh-portable.cmd',
   'dsh.cmd', 'dsh-plugin.cmd', 'dsh-plugin-shared.cmd', 'check-update.cmd', 'env.cmd',
-  'update.cmd',
 ]
 /**
  * 用户可变文件：正常使用中会被插件市场 / fix-pnpm-state / 用户自己改写。
@@ -157,12 +156,20 @@ const normalizeRel = (p) => {
  * 路径是否允许写。Windows 文件系统大小写不敏感（"TOOLS/x.mjs" 会落到 tools\x.mjs），
  * 所以白名单一律按小写判；返回给调用方的路径保留清单原样。
  */
+// 根目录下"壳自己的脚本"这一形态：以后新增入口文件（update.cmd / repair.cmd …）不必再登记。
+// 为什么必须这样（2026-11-27 事故）：本函数同时被"写清单的人"和"读清单的人"使用，而读清单的人
+// 是**已经装出去的旧版本**。旧版本的白名单里没有新文件，于是它把整份清单判为非法
+// （whitelist-violation）—— 发一个新文件，等于把老用户永久挡在升级门外。
+// 安全边界没有放松：仍然只允许根目录、只允许这几种脚本/证书扩展名；app/ desktop/ runtime/ home/
+// 以及 SHELL_DENY 里的一切照样拒绝。
+const ROOT_ENTRY_RE = /^[a-z0-9][a-z0-9._-]*\.(cmd|bat|ps1)$/
 export const isAllowedShellPath = (p) => {
   const rel = normalizeRel(p)
   if (!rel) return false
   const low = lower(rel)
   if (SHELL_DENY_SET.has(low)) return false
   if (SHELL_EXACT_SET.has(low)) return true
+  if (ROOT_ENTRY_RE.test(low)) return true
   return SHELL_PREFIXES.some((pre) => low.startsWith(pre) && low.length > pre.length)
 }
 

@@ -4,9 +4,9 @@
   "channel": "stable",
   "shellVersion": "0.6.2",
   "tag": "v0.6.2",
-  "releasedAt": "2026-11-27T03:06:48.230Z",
+  "releasedAt": "2026-11-27T03:16:37.382Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T03:07:38.406Z",
+  "generatedAt": "2026-11-27T03:17:38.830Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<0.2.2-rc.2",
     "node": ">=24.0.0"
@@ -69,13 +69,12 @@
     "tools/selftest-store.mjs": "1da327a64c5e6a918f2aeab1da085b570735f7617479fbd6648d8a4c460aa706",
     "tools/shell-apply.mjs": "0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6",
     "tools/shell-migrations.mjs": "bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6",
-    "tools/shell-release.mjs": "4a9fd19dc5f7bdc3249cca026501267a623d046adc3960f40d8c7869b6fdc466",
-    "tools/shell-update.mjs": "5caa883884cddbc57c74e3f7368a8e9967dc1fa5ac0649b1890000d5a3a319ed",
+    "tools/shell-release.mjs": "d54aa0b2f9b743c6f3d6491257b577443569c56289cbb8f62415ecfcdd32d9c5",
+    "tools/shell-update.mjs": "7e770a36e5df1e8eeafd204de4ed5e68e4f77205025a8ba7c24d8091ce13da23",
     "tools/store-consistency.mjs": "a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3",
     "tools/update-check.mjs": "26900602fdb1db76c6f0ace990e249d658d1a0e008c2cf02e341597d8a90734f",
     "tools/verify-shell.mjs": "0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738",
-    "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
-    "update.cmd": "f3963eb47539509cb2bfbface9cac89437fcf9d22fde2bf112f07b0f83185808"
+    "tools/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff"
   },
   "userOwned": [
     "home/cordis.patch.yml",
@@ -127,7 +126,7 @@
   ],
   "zip": {
     "name": "harness-shell-0.6.2.zip",
-    "sha256": "d892bf718cc1df4141995ef5eb809a8db988555778ce67f66bf45f2a80c1de66",
-    "bytes": 1898064
+    "sha256": "60c200ccd4604d9d50bb6cc55456ee9aead0d1a178bf130aa0c99db2d3f1c80c",
+    "bytes": 1896287
   }
 }
