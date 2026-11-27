@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "updaterMin": 2,
   "channel": "stable",
-  "shellVersion": "1.0.0",
-  "tag": "v1.0.0",
-  "releasedAt": "2026-11-27T08:02:31.716Z",
+  "shellVersion": "1.0.1",
+  "tag": "v1.0.1",
+  "releasedAt": "2026-11-27T08:23:32.674Z",
   "minShellVersion": "0.1.0",
-  "generatedAt": "2026-11-27T08:04:42.308Z",
+  "generatedAt": "2026-11-27T08:24:21.581Z",
   "requires": {
     "dsh": ">=0.2.1-rc.5,<=0.2.2-rc.2",
     "node": ">=24.9.0"
@@ -14,7 +14,7 @@
   "files": {
     "LICENSE": "1051b4530d6332ff80d215cc978928990104ea98d4796aa20319f51af2b02033",
     "README.md": "f33bd1abeabb0c330bb4bc555cce95b112118610b2d996fbf1c17d9855fa79c5",
-    "RELEASE-NOTES.md": "f33b5bb9dbafa1547b67a1c08aa62defd99e1bdf1e150cf64566bb0b98996ad5",
+    "RELEASE-NOTES.md": "21ff37b8efd14ecf2118e9db871374a7a38dcc111447044e9e0044dc3b8fffdb",
     "check-update.cmd": "a9e9ca55eb5aae9677ecde73781c3494eec4e9c3db1d64aed647eb1327584383",
     "dsh-plugin-shared.cmd": "50f08d53b7bc4c7056abda19ac91d9bfe73496fed6a45f8a54113bacf865f3fb",
     "dsh-plugin.cmd": "8c5522055244affd1892e3d005fee46e160a03e4ab450f202ae621a42bba846e",
@@ -63,7 +63,7 @@
     "tools/update/compat-live.mjs": "f5f9a2a3c7b9e2d99bc33a2c20e5f1db3bcf3a5d05efa348cc4d1b331a228e89",
     "tools/update/shell-apply.mjs": "0db667346460b60a2d3002dc33a22a8543aad0d8aed09f19a425de9af34fb9f9",
     "tools/update/shell-migrations.mjs": "2242215bad9937b9a06fe50f1a9ab3e16f47a0677bd577cdc6184279e03525cd",
-    "tools/update/shell-update.mjs": "abd8076be38324e8721a4aa3d781bd454bfeac4b03ed3666e0d1d1b2f1af62b8",
+    "tools/update/shell-update.mjs": "d05204e5e1ef2a084c2a03cc1470a310b41ce6502917bb7858853106ccc06cd3",
     "tools/update/update-check.mjs": "0f3ad2cb84139ad8bf21feb2e20c278d9ffb43451904f186752ded7a124bb8f1",
     "tools/update/version-range.mjs": "5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff",
     "tools/verify/verify-shell.mjs": "cd854550ed38e153bc22a047aace4321f98da51678e2bae7179734490576f65d",
@@ -81,33 +81,27 @@
   ],
   "notes": {
     "added": [
-      "`tools/` 按职责分组：`update/`（自更新）、`patch/`（官方层补丁）、`profile/`（插件与 pnpm 状态）、`lib/`（公共件）、`verify/`（换装后自检）。找东西不用再在 35 个平铺文件里翻。",
-      "`tools/lib/shell-root.mjs`：统一的壳根定位。以前每个工具都靠\"往上数两层\"找壳根，一旦目录分组就全错（这次就是这么把清单扫成 0 个文件的）。现在改成\"就近向上找标记\"，加多少层分组都不会断。"
+      "化石清单 `LEGACY_SHELL_FILES`（旧路径 → 旧版 sha256，35 条）与 `pruneLegacy()` 幂等清扫。"
     ],
     "fixed": [
-      "**整包里塞着 2.4 MB 的 7z**：那是我们打发布包用的，用户根本用不到。已随 `devtools/` 移出壳——整包从 1.83 MB 降到约 **0.6 MB**。",
-      "`devtools/`（9 个发布/自测工具）也不再随壳下发，清单从 66 项减到 **56 项**。"
+      "整包装的壳没有本地清单（清单要记 zip 的 sha256，塞进 zip 就是循环依赖），而\"列哪些文件该删\"完全依赖已装清单。结果是 1.0.0 升级完，旧 `tools\\*.mjs`（33 个）和 `tools\\7z\\`（2.4 MB）原样留着，白占空间。",
+      "现在带一份**化石清单**（旧路径 → 旧版 sha256，35 条）：命中且磁盘字节**逐字节一致**才删；用户改过一个字节就一律不动。",
+      "并且在\"已是最新\"时也顺手清一次（幂等），所以已经升过 1.0.0 的人，下一次启动就会自己收拾干净，不用重装。"
     ],
     "optimized": [
-      "壳里只剩运行期真需要的东西：11 个入口脚本 + 25 个工具 + 出厂配置 + vcredist。",
-      "`test/`（159 条用例）与 `doc/`（设计档案）从仓库忽略名单里解放：`test/` 已纳入版本控制，不再因为一次手滑就永久丢失（0.7.3 之前丢过一整个用例文件）。"
+      "清完会把变空的 `tools\\7z\\` 目录一并移除。"
     ],
-    "breaking": [
-      "**工具路径全部变了**（`tools\\xxx.mjs` → `tools\\<组>\\xxx.mjs`）。对你没有影响：升级由壳自己完成，你不需要记路径。",
-      "若你在自己的脚本里硬编码过 `tools\\shell-update.mjs` 之类的路径，需要跟着改：`tools\\update\\shell-update.mjs`。",
-      "用户数据、会话、插件、配置：**一个字节都不动**。"
-    ],
+    "breaking": [],
     "upgrade": [
-      "按新清单添加/替换壳文件，并清掉旧路径上的壳文件（只清我们自己的壳文件，`userOwned` 与 `home\\` 下你的东西一律不动）。",
-      "换装前自动备份到 `cache\\shell-backup-<时间戳>`，换完跑自检，失败自动回滚。"
+      "只替换 updater 自己（`tools\\update\\shell-update.mjs`）与本说明。",
+      "升级后再跑一次 `shell-update apply`（或等下一次启动），残留会被清掉。"
     ],
     "rollback": [
       "`dsh-portable.cmd shell-update rollback`",
-      "或 `node tools\\\\update\\\\shell-update.mjs apply --to 0.7.3 --force`",
-      "网页兜底：从 Release 页下载 `harness-shell-1.0.0.zip` 整包覆盖（**先备份 `home\\profiles`**）。"
+      "---"
     ]
   },
-  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.0",
+  "notesUrl": "https://github.com/Blue-Seventeen/DSH-Portable-Kernel/releases/tag/v1.0.1",
   "migrations": [
     {
       "id": "pnpm-store-dir",
@@ -118,8 +112,8 @@
     }
   ],
   "zip": {
-    "name": "harness-shell-1.0.0.zip",
-    "sha256": "c2e366a3a8c5e900a1335dfa2cd2b954dc1230d1828548b402f31ee784d7187e",
-    "bytes": 788851
+    "name": "harness-shell-1.0.1.zip",
+    "sha256": "eb3c5af18e9eb9599ef8b46b65a704240eec229c57c6748a846b5e503d5aef2b",
+    "bytes": 791995
   }
 }

@@ -1572,7 +1572,14 @@ const verifyPublished = async (opts) => {
     }
   }
 
-  const cloneUpdate = join(cloneDir, 'tools', 'update', 'shell-update.mjs')
+  // 上一版的 updater 可能还在扁平位置（0.x）也可能已分组（1.0.0+）。
+  // 这里按"哪个存在用哪个"来找，别写死新路径：门禁克隆的是**老版本**的 tag，
+  // 写死新路径会永远找不到（2026-11-27 重排后就是这么让门禁假红的）。
+  const cloneUpdateCandidates = [
+    join(cloneDir, 'tools', 'update', 'shell-update.mjs'),
+    join(cloneDir, 'tools', 'shell-update.mjs'),
+  ]
+  const cloneUpdate = cloneUpdateCandidates.find((f) => existsSync(f)) || cloneUpdateCandidates[0]
   const before = hashUserData(cloneDir)
   const remote = await httpGet(manifestUrl, { 'User-Agent': 'hack3rx-shell-release/1.0' })
   const remoteJson = remote.json || {}
@@ -1627,7 +1634,7 @@ const verifyPublished = async (opts) => {
   }
 
   if (!existsSync(cloneUpdate)) {
-    out.rows.push({ label: 'clone 里有 tools/update/shell-update.mjs', ok: false, detail: cloneUpdate })
+    out.rows.push({ label: '老版本 clone 里有 updater（新旧路径都认）', ok: false, detail: cloneUpdate })
   } else {
     const chk = spawnSync(process.execPath, [cloneUpdate, 'check', '--manifest', manifestUrl, '--json'], {
       cwd: cloneDir, encoding: 'utf8', timeout: 180000, maxBuffer: 32 * 1024 * 1024,

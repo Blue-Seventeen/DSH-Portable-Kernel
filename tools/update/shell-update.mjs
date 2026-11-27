@@ -26,7 +26,7 @@
  */
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { APPLY_JOURNAL, applyUpdate, listBackups, recoverUpdate, rollbackUpdate } from './shell-apply.mjs'
@@ -663,8 +663,94 @@ export const isMachineConfigPath = (rel) => {
     || /^home\/profiles\/[^/]+\/pnpm-workspace\.yaml$/.test(low)
 }
 
+/**
+ * 结构重排留下的化石清单（1.0.0 起）：旧路径 → 旧版 sha256。
+ *
+ * 为什么需要它：从 Release 整包安装的壳**没有本地清单**（整包故意不含清单：清单要记 zip 的
+ * sha256，塞进去就是循环依赖）。而"列哪些文件该删"完全依赖已安装清单，于是这些壳升级后
+ * 旧文件会原样留在盘上——2.4 MB 的 7z、一堆扁平 tools 全在那儿白占地方。
+ *
+ * 安全边界：只有磁盘上的字节与记录的旧哈希**逐字节一致**才删。用户改过一个字节就不动。
+ */
+export const LEGACY_SHELL_FILES = {
+  "tools/7z/7z.dll": 'e79ddfb6319dbf9bac6382035d23597dad979db5e71a605d81a61ee817c1e812',
+  "tools/7z/7z.exe": '707f415d7d581edd9bce99a0429ad4629d3be0316c329e8b9ebd576f7ab50b71',
+  "tools/asar-lite.mjs": '4747f0e5923842a705760c632b202b03888c4cf8085677005a6aeb09f374ee41',
+  "tools/check-text-encoding.mjs": '7c8853f141bbd88a4a5ae138ac6499fa37b2162e450a9e159c295e5b8fc8a75e',
+  "tools/clean-ship.mjs": '410bea0288c50d61d1b7ad7e324926ef5b035b2dacd8dce2358cebb683ed63ce',
+  "tools/compat-declare.mjs": 'af72ba79c4bb3dadaff06d9bd652f8b07b7266df41cb616522cc77956a6f64a6',
+  "tools/compat-live.mjs": '976f4c12efa0f904f95e5d45935b7558e029bf2daad1c9fe448ed2571981b234',
+  "tools/download.mjs": '22c34cc5e8871aa1b31baa6fee93879414aa902a4287ac97830469f2e42b6776',
+  "tools/fix-attachment.mjs": '8dc4288f18ab7aabd45f36c9ba2abcf2361c80eb53570838a6640e5189617785',
+  "tools/fix-pnpm-state.mjs": '50c9b8c252d74a1f858c7d534e29004c7d2031034860efd22f4ea51468cce86a',
+  "tools/fs-profile.ps1": '3b7fe4313ee22bb4628f3be550d840414b974ecf5aa037f6cdbc20114bdaf6cd',
+  "tools/market-history.mjs": '8ecda4eab60566a827b961c1ac789601d78e0bcc9588a35031e63263dd0a7224',
+  "tools/mask-log.mjs": 'e4b43a4d79ce0dc624b828fe281df364f601c3e0990b27cffaca6369cb722778',
+  "tools/normalize-eol.mjs": '4a9e38ab5dd180b803da334918c4fc1b7f060b89d7bbee9202cce2a82263f2eb',
+  "tools/patch-all.mjs": '3bdfd3d5d9599ded21abc1f6644efa50bcc3f42ac2f1c61ecb8af9222cab96ef',
+  "tools/patch-attachment.mjs": 'b00d03652ef12be7e41f79be227d365574c46e51b46c84eee610b0df6c34e828',
+  "tools/patch-fs.mjs": '33b7cf8f03df88873d80f4721c7f39bc53a13280b0d9d397128357304d588bc1',
+  "tools/patch-market.mjs": '0ace9fe4fa7f837b85c9f0b3f5b20e32c7467539f0a2d72769a5eed28076c122',
+  "tools/patch-pnpm.mjs": 'b4a347810772fc069eb2feb010a7e1251840aeb85f107309fcbe10052128dceb',
+  "tools/plugin-shared.mjs": '6f3a12042e360ceba6fb2a5c424050f2f4afeea36136a07c32efdeb9453f7fc7',
+  "tools/preflight.mjs": '852f2dbb4078136138a8442c6afd61d7d083118b8619ad61d3970038415f0898',
+  "tools/probe-fs.mjs": 'bb413fe19b56ccf65f34fa24dee9ad21c66a110f3f1913c977b96a7c4c29be2f',
+  "tools/say.ps1": 'bf5f7cf30d6e943edd6fb43b50bc2913be70ce011299455d4202af7c83baeee9',
+  "tools/selftest-drain.mjs": 'a5c94c9a4289dc4725e0a04bf63f8a416d914b03e41891b4795c80ba58c9e376',
+  "tools/selftest-patches.mjs": '3f5ba7ed6676400f04ce32300caaf34951299f25265706b3af4b43980c36e868',
+  "tools/selftest-shell-update.mjs": '7bc90e9118cc6c4a1cbcccce1335fe398552b36dbd7597a1ebd961d24a7373e5',
+  "tools/selftest-store.mjs": '1da327a64c5e6a918f2aeab1da085b570735f7617479fbd6648d8a4c460aa706',
+  "tools/shell-apply.mjs": '0cc730f973785f743f32924bffeef1ba2d6eb28cf6c8b6910dffff143db7e3b6',
+  "tools/shell-migrations.mjs": 'bf36fa3eb00d43561e45f6b5fb4f58fa2582af26f9b6e7f044ff3947abb8cfa6',
+  "tools/shell-release.mjs": 'f5cc5e04f59ef45b34d738755bdecb82f5e17dd01628d5dfe283c3e80dfda792',
+  "tools/shell-update.mjs": '76a24e4af2b5095a378109eb0960b8e3138c457be2989971e99db1aa9330ae46',
+  "tools/store-consistency.mjs": 'a3c309e28ae3d3aabc8a27d5cfbb1a14b51d91808463ccaea2e1edae7f5204f3',
+  "tools/update-check.mjs": '54423394cfd4dee3cbe8588bbb53d12c195a169af5912a1bfccd48214ca4a5d7',
+  "tools/verify-shell.mjs": '0d5c1453fee4f4081a20c63698c91765ddd595a3b41770bbe0ba16bc9d034738',
+  "tools/version-range.mjs": '5e53f4ff9836b7f96877c223361bb5c5707834db96dfd0afa5e4d2c971b1d5ff',
+}
+
+/**
+ * 清理结构重排留下的旧文件（幂等）。
+ *
+ * 场景：从整包安装的壳没有本地清单，升级到 1.0.0 时旧扁平 tools 与 7z 会留在盘上；
+ * 而 1.0.0 写入的新清单里没有它们，此后的升级永远认不出来 —— 残留就永久了。
+ * 所以在"已是最新"时也做一次清扫：命中化石清单且哈希一致才删，用户改过的一律不动。
+ */
+export const pruneLegacy = (opts = {}) => {
+  const gone = []
+  for (const [rel, sha] of Object.entries(LEGACY_SHELL_FILES)) {
+    const abs = join(ROOT, rel)
+    if (!existsSync(abs)) continue
+    if (isMachineConfigPath(rel) || isUserOwnedPath(rel) || !isAllowedShellPath(rel)) continue
+    let same = false
+    try { same = sha256File(abs) === sha } catch { }
+    if (!same) continue
+    if (opts.dryRun) { gone.push(rel); continue }
+    try { unlinkSync(abs); gone.push(rel) } catch { }
+  }
+  // 顺带清空因此变空的目录（只清 tools 下的一层，别乱删）
+  if (!opts.dryRun) {
+    for (const d of ['tools/7z']) {
+      const abs = join(ROOT, d)
+      try { if (existsSync(abs) && readdirSync(abs).length === 0) rmdirSync(abs) } catch { }
+    }
+  }
+  return gone.sort()
+}
+
 export const computeRemoved = (m, installed) => {
-  if (!installed.present) return []
+  if (!installed.present) {
+    // 无本地清单（整包安装）：靠化石清单认领旧文件，哈希一致才删
+    const out = []
+    for (const [rel, sha] of Object.entries(LEGACY_SHELL_FILES)) {
+      if (!isAllowedShellPath(rel)) continue
+      if (isMachineConfigPath(rel)) continue
+      if (isUserOwnedPath(rel)) continue
+      try { if (sha256File(join(ROOT, rel)) === sha) out.push(rel) } catch { }
+    }
+    return out.sort()
+  }
   // 保护集：新清单的 userOwned + **已安装清单的 userOwned**（从清单里移除的旧用户文件也不删）
   const ownedSet = new Set([
     ...(Array.isArray(m.userOwned) ? m.userOwned : USER_OWNED),
@@ -1206,6 +1292,8 @@ const runApply = async (opts) => {
       })
       return finish(EXIT_OK)
     }
+    const legacy = pruneLegacy()
+    if (legacy.length) line('顺带清理了 ' + legacy.length + ' 个结构重排残留的旧文件（eg tools/7z、tools/*.mjs）')
     line('已是最新（' + installed.shellVersion + '），没有需要更新的文件')
     return finish(EXIT_OK)
   }
